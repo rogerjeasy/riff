@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+.cache/
+.tools/
+.local/
+.superpowers/
+data/*
+!data/.gitkeep
+coverage/
+playwright-report/
+test-results/
+.DS_Store
+*.log

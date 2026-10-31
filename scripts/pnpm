@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+RIFF_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -x "$RIFF_ROOT/.tools/bin/pnpm" ]; then
+  PATH="$RIFF_ROOT/.tools/bin:$PATH"
+  export PATH
+fi
+PNPM_CONFIG_STATE_DIR="$RIFF_ROOT/.local/state"
+export PNPM_CONFIG_STATE_DIR
+cd "$RIFF_ROOT"
+node scripts/require-node.mjs
+if command -v pnpm >/dev/null 2>&1; then
+  exec pnpm "$@"
+fi
+if command -v corepack >/dev/null 2>&1; then
+  exec corepack pnpm "$@"
+fi
+echo 'pnpm is unavailable. Install the pinned version with Corepack; see docs/setup.md.' >&2
+exit 1

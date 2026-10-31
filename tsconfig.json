@@ -1,0 +1,23 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "apps/web"
+    },
+    {
+      "path": "apps/server"
+    },
+    {
+      "path": "packages/sdk"
+    },
+    {
+      "path": "packages/compiler"
+    },
+    {
+      "path": "packages/sandbox"
+    },
+    {
+      "path": "packages/twitch"
+    }
+  ]
+}

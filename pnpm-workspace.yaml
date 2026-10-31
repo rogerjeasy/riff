@@ -1,0 +1,71 @@
+packages:
+  - apps/*
+  - packages/*
+
+linkWorkspacePackages: false
+strictPeerDependencies: true
+autoInstallPeers: false
+minimumReleaseAge: 1440
+engineStrict: true
+saveExact: true
+fetchRetries: 1
+fetchTimeout: 15000
+storeDir: .cache/store
+cacheDir: .cache/pnpm
+
+# Native/build hooks are opt-in, never implicitly trusted.
+allowBuilds:
+  esbuild: true
+  # v13 ships prebuilt binaries and declares gypfile:false; no rebuild is needed.
+  better-sqlite3: false
+  msw: false
+
+catalog:
+  '@axe-core/playwright': '4.13.0'
+  '@eslint/js': '9.39.5'
+  '@fastify/cookie': '11.1.3'
+  '@fastify/csrf-protection': '8.0.2'
+  '@fastify/helmet': '13.2.0'
+  '@fastify/multipart': '10.1.6'
+  '@fastify/rate-limit': '11.2.1'
+  '@fastify/session': '11.1.6'
+  '@fastify/static': '10.1.8'
+  '@fastify/websocket': '11.3.4'
+  '@openai/codex': '0.166.0'
+  '@openai/codex-sdk': '0.166.0'
+  '@playwright/test': '1.64.0'
+  '@tailwindcss/vite': '4.3.3'
+  '@testing-library/dom': '10.4.1'
+  '@testing-library/react': '16.3.3'
+  '@testing-library/user-event': '14.6.7'
+  '@types/better-sqlite3': '^7.6.13'
+  '@types/node': '^22.13.14'
+  '@types/react': '19.3.0'
+  '@types/react-dom': '19.3.0'
+  '@types/ws': '^8.18.1'
+  '@vitejs/plugin-react': '6.1.2'
+  'better-sqlite3': '13.0.3'
+  'drizzle-kit': '0.31.11'
+  'drizzle-orm': '0.45.4'
+  'esbuild': '0.28.2'
+  'eslint': '9.39.5'
+  'fast-check': '4.10.2'
+  'fastify': '5.12.7'
+  'jsdom': '30.1.2'
+  'msw': '3.0.3'
+  'obs-websocket-js': '5.0.8'
+  'openai': '7.17.0'
+  'pino-pretty': '^13.1.3'
+  'prettier': '3.9.9'
+  'prom-client': '15.1.3'
+  'quickjs-emscripten': '0.32.0'
+  'react': '19.3.0'
+  'react-dom': '19.3.0'
+  'tailwindcss': '4.3.3'
+  'tsx': '4.23.15'
+  'typescript': '5.9.3'
+  'typescript-eslint': '8.71.2'
+  'vite': '8.3.4'
+  'vitest': '5.0.5'
+  'ws': '8.22.0'
+  'zod': '4.6.7'

@@ -1,0 +1,137 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #f4f2ff;
+  background: #111118;
+  font-synthesis: none;
+  --accent: #c3adff;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+.studio {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 44px clamp(24px, 6vw, 80px);
+}
+.brand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.brand {
+  font-size: 36px;
+  font-weight: 850;
+  letter-spacing: -2px;
+}
+.brand span {
+  color: var(--accent);
+}
+.badge {
+  border: 1px solid #454052;
+  color: #d3ccdf;
+  border-radius: 100px;
+  padding: 7px 12px;
+  font-size: 12px;
+}
+.intro {
+  margin: 96px 0 38px;
+}
+.eyebrow {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+}
+h1 {
+  font-size: clamp(36px, 5vw, 64px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+  max-width: 680px;
+  margin: 18px 0;
+}
+.description {
+  color: #bbb7c8;
+  font-size: 19px;
+  line-height: 1.6;
+}
+.status-card {
+  border: 1px solid #373241;
+  border-radius: 18px;
+  padding: 26px;
+  background: #1a1823;
+}
+h2 {
+  font-size: 15px;
+  font-weight: 650;
+  margin: 0 0 18px;
+}
+.host-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.status-dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  background: #bdb4cf;
+}
+.status-ready {
+  background: #99e3ba;
+}
+.status-unavailable {
+  background: #f7bd80;
+}
+.muted {
+  color: #bfb9cc;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  margin-top: 24px;
+  font-size: 14px;
+}
+a {
+  color: #d1bfff;
+  text-underline-offset: 4px;
+}
+a:hover {
+  text-decoration: underline;
+}
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 5px;
+  border-radius: 2px;
+}
+.studio-compact {
+  padding: 22px;
+}
+.studio-compact .intro {
+  margin-top: 38px;
+}
+.studio-compact h1 {
+  font-size: 32px;
+}
+.studio-compact .description {
+  font-size: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+pnpm-lock.yaml
+.cache
+.tools
+.local
+.superpowers
+coverage
+playwright-report
+test-results
+# Preserve the established reference documents; format new implementation docs.
+AGENTS.md
+docs/project-documentation.md
+docs/tech-stack.md

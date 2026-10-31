@@ -1,0 +1,32 @@
+[
+  {
+    "path": "apps/web",
+    "name": "@riff/web",
+    "internalDependencies": []
+  },
+  {
+    "path": "apps/server",
+    "name": "@riff/server",
+    "internalDependencies": ["@riff/compiler", "@riff/sandbox", "@riff/twitch", "@riff/sdk"]
+  },
+  {
+    "path": "packages/sdk",
+    "name": "@riff/sdk",
+    "internalDependencies": []
+  },
+  {
+    "path": "packages/compiler",
+    "name": "@riff/compiler",
+    "internalDependencies": ["@riff/sdk"]
+  },
+  {
+    "path": "packages/sandbox",
+    "name": "@riff/sandbox",
+    "internalDependencies": ["@riff/sdk"]
+  },
+  {
+    "path": "packages/twitch",
+    "name": "@riff/twitch",
+    "internalDependencies": []
+  }
+]

@@ -1,0 +1,51 @@
+{
+  "name": "riff-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.6.0",
+  "engines": {
+    "node": ">=22.23.2 <23",
+    "pnpm": "12.6.0"
+  },
+  "scripts": {
+    "preinstall": "node scripts/require-node.mjs",
+    "dev": "pnpm build:packages && pnpm --parallel --filter @riff/server --filter @riff/web dev",
+    "build:packages": "tsc -b packages/sdk packages/compiler packages/sandbox packages/twitch",
+    "build": "pnpm build:packages && pnpm --filter @riff/server build && pnpm --filter @riff/web build",
+    "start": "pnpm --filter @riff/server start",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "lint": "eslint . && node scripts/check-boundaries.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:tooling": "node --test scripts/test/*.test.mjs",
+    "test:e2e": "pnpm --filter @riff/web test:e2e",
+    "browsers:install": "pnpm --filter @riff/web browsers:install",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:tooling && pnpm check:secrets",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "smoke": "node --import tsx scripts/smoke.ts",
+    "db:generate": "pnpm --filter @riff/server db:generate",
+    "db:migrate": "pnpm --filter @riff/server db:migrate",
+    "security:audit": "pnpm audit --prod",
+    "security:secrets": "gitleaks git --redact",
+    "infra:validate": "docker compose -f infra/compose.yaml config --quiet",
+    "infra:monitoring": "docker compose -f infra/monitoring/compose.yaml up -d",
+    "setup:verify": "pnpm run doctor && pnpm format:check && pnpm check && pnpm build && pnpm check:bundles && pnpm smoke && pnpm test:e2e",
+    "check:bundles": "node scripts/check-bundles.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "prettier": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

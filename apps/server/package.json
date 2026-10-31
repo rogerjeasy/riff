@@ -1,0 +1,48 @@
+{
+  "name": "@riff/server",
+  "dependencies": {
+    "@fastify/cookie": "catalog:",
+    "@fastify/csrf-protection": "catalog:",
+    "@fastify/helmet": "catalog:",
+    "@fastify/multipart": "catalog:",
+    "@fastify/rate-limit": "catalog:",
+    "@fastify/session": "catalog:",
+    "@fastify/static": "catalog:",
+    "@fastify/websocket": "catalog:",
+    "@openai/codex": "catalog:",
+    "@openai/codex-sdk": "catalog:",
+    "better-sqlite3": "catalog:",
+    "drizzle-orm": "catalog:",
+    "fastify": "catalog:",
+    "obs-websocket-js": "catalog:",
+    "openai": "catalog:",
+    "prom-client": "catalog:",
+    "ws": "catalog:",
+    "zod": "catalog:",
+    "@riff/compiler": "workspace:*",
+    "@riff/sandbox": "workspace:*",
+    "@riff/twitch": "workspace:*",
+    "@riff/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
+    "@types/ws": "catalog:",
+    "drizzle-kit": "catalog:",
+    "pino-pretty": "catalog:"
+  },
+  "scripts": {
+    "dev": "node --import tsx --env-file-if-exists=../../.env --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit"
+  },
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.23.2 <23"
+  }
+}

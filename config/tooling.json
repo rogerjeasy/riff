@@ -1,0 +1,16 @@
+[
+  { "name": "Node.js", "command": "node", "args": ["--version"], "role": "required" },
+  { "name": "pnpm", "command": "pnpm", "args": ["--version"], "role": "required" },
+  { "name": "Git", "command": "git", "args": ["--version"], "role": "required" },
+  { "name": "Docker CLI", "command": "docker", "args": ["--version"], "role": "containers" },
+  {
+    "name": "Docker Compose",
+    "command": "docker",
+    "args": ["compose", "version"],
+    "role": "containers"
+  },
+  { "name": "Gitleaks", "command": "gitleaks", "args": ["version"], "role": "security" },
+  { "name": "Trivy", "command": "trivy", "args": ["--version"], "role": "security" },
+  { "name": "restic", "command": "restic", "args": ["version"], "role": "backups" },
+  { "name": "Caddy", "command": "caddy", "args": ["version"], "role": "hosted ingress" }
+]
