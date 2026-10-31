@@ -408,7 +408,7 @@ export function createLiveRuntime(deps: {
   }
   async function applyPending() {
     if (panic || closed) return;
-    for (const pending of repo.transitions().filter((t) => t.status === 'pending')) {
+    for (const pending of repo.pendingTransitions()) {
       const current = repo.session(pending.automationId);
       if (current?.snapshot.phase !== 'finished') continue;
       try {

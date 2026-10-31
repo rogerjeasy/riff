@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   advanceSession,
   classifyTransition,
@@ -65,6 +65,54 @@ export function transitionRepository(connection: DatabaseConnection, channelId: 
         )
         .orderBy(asc(sessionTransitions.createdAt))
         .all();
+    },
+    /** Hot path (every chat event and tick): only approved round-end work, no evidence blobs. */
+    pendingTransitions() {
+      return db
+        .select({ id: sessionTransitions.id, automationId: sessionTransitions.automationId })
+        .from(sessionTransitions)
+        .where(
+          and(
+            eq(sessionTransitions.channelId, channelId),
+            eq(sessionTransitions.status, 'pending'),
+          ),
+        )
+        .orderBy(asc(sessionTransitions.createdAt))
+        .all();
+    },
+    /**
+     * Studio list view: open work plus the most recent outcomes, without migration source or
+     * evidence. Full evidence is returned only by the preview call that created it.
+     */
+    transitionSummaries(automationId: string, recent = 10) {
+      const columns = {
+        id: sessionTransitions.id,
+        status: sessionTransitions.status,
+        sourceVersionId: sessionTransitions.sourceVersionId,
+        targetVersionId: sessionTransitions.targetVersionId,
+        plan: sessionTransitions.plan,
+        createdAt: sessionTransitions.createdAt,
+        approvedAt: sessionTransitions.approvedAt,
+        appliedAt: sessionTransitions.appliedAt,
+        cancelledAt: sessionTransitions.cancelledAt,
+      };
+      const scope = and(
+        eq(sessionTransitions.channelId, channelId),
+        eq(sessionTransitions.automationId, automationId),
+      );
+      const open = db
+        .select(columns)
+        .from(sessionTransitions)
+        .where(and(scope, inArray(sessionTransitions.status, ['review', 'pending'])))
+        .all();
+      const closed = db
+        .select(columns)
+        .from(sessionTransitions)
+        .where(and(scope, inArray(sessionTransitions.status, ['applied', 'cancelled'])))
+        .orderBy(desc(sessionTransitions.createdAt))
+        .limit(recent)
+        .all();
+      return [...open, ...closed].map(({ plan, ...row }) => ({ ...row, boundary: plan.boundary }));
     },
     insertTransition(
       input: Omit<

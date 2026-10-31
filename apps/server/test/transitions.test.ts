@@ -911,3 +911,78 @@ it.each(['pause', 'panic'] as const)(
     expect((await f.app.riff.studio.auditSession(f.automation.id)).status).toBe('verified');
   },
 );
+
+it('rehearses a paused round on private resumed copies so old and new commands are distinguishable', async () => {
+  const f = await setup();
+  f.app.riff.studio.pause(f.automation.id);
+  const before = f.repo.session(f.automation.id)!;
+  expect(before.snapshot.phase).toBe('paused');
+  const t = await f.preview();
+  const steps = t.evidence.comparison.steps as {
+    eventId: string;
+    before: { code: string };
+    after: { code: string };
+  }[];
+  const codes = steps.map((s) => [s.before.code, s.after.code]);
+  expect(t.evidence.comparison.resumedPrivately).toBe(true);
+  expect(codes.flat()).not.toContain('SESSION_PAUSED');
+  // !throw (old command) works only on the live version; !splat only on the new one.
+  expect(codes[1]).toEqual(['ACCEPTED', 'UNRELATED']);
+  expect(codes[2]).toEqual(['UNRELATED', 'ACCEPTED']);
+  // The real round stays paused and untouched.
+  expect(f.repo.session(f.automation.id)).toEqual(before);
+});
+
+it('explains why progress cannot carry over and names the specific migration failure', async () => {
+  const f = await setup();
+  const fewer = f.version(
+    { ...definition, resource: { name: 'throws', perParticipant: 2 } },
+    f.old.id,
+    '//fewer',
+  );
+  const reset = await f.app.inject({
+    method: 'POST',
+    url: `/api/versions/${fewer.id}/transition/preview`,
+    headers: { 'x-riff-request': '1' },
+    payload: { boundary: 'immediate', migrationSource: migration },
+  });
+  expect(reset.statusCode).toBe(409);
+  expect(reset.json().message).toContain('fewer throws (3 → 2)');
+  const hostile = await f.app.inject({
+    method: 'POST',
+    url: `/api/versions/${f.next.id}/transition/preview`,
+    headers: { 'x-riff-request': '1' },
+    payload: {
+      boundary: 'immediate',
+      migrationSource: '(input)=>({...input.snapshot,scores:{red:99,blue:0}})',
+    },
+  });
+  expect(hostile.statusCode).toBe(409);
+  expect(hostile.json().message).toMatch(/does not fit the new rules.*unchanged/);
+  const studio = f.app.riff.studio.snapshot();
+  const view = studio.automations[0]!.versions.find((v) => v.id === fewer.id)!;
+  expect(view.progress).toEqual({
+    kind: 'reset-required',
+    reasons: [expect.stringContaining('fewer throws')],
+  });
+  expect(studio.automations[0]!.versions.find((v) => v.id === f.next.id)!.progress?.kind).toBe(
+    'migration-required',
+  );
+});
+
+it('publishes bounded transition summaries without migration source or evidence', async () => {
+  const f = await setup();
+  for (let i = 0; i < 13; i++) {
+    const t = await f.preview();
+    if (i < 12) f.app.riff.studio.cancelTransition(t.id);
+  }
+  const listed = f.app.riff.studio.snapshot().automations[0]!.transitions;
+  // One open review plus the ten most recent closed outcomes.
+  expect(listed).toHaveLength(11);
+  expect(listed[0]).toMatchObject({ status: 'review', boundary: 'immediate' });
+  for (const row of listed) {
+    expect(row).not.toHaveProperty('evidence');
+    expect(row).not.toHaveProperty('migrationSource');
+  }
+  expect(f.repo.pendingTransitions()).toEqual([]);
+});

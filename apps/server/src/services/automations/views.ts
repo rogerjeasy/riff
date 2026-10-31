@@ -1,7 +1,7 @@
 import type { PermissionManifest } from '@riff/sdk';
 import type { IntentCheck } from '@riff/compiler';
 import type { VerificationReport } from '@riff/sandbox';
-import { classifySessionTransition } from '@riff/sandbox';
+import { assessSessionTransition, classifySessionTransition } from '@riff/sandbox';
 import { describeAudience, describeWindow } from '@riff/compiler';
 import type { VersionRow } from '../../db/repositories/studio.js';
 import { versionApprovalBlockers } from '../../db/version-health.js';
@@ -119,11 +119,28 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
 /** Why a version cannot be approved right now; empty means it can. */
 export const approvalBlockers = versionApprovalBlockers;
 
+/**
+ * How a live round would be treated if this version replaced the active one. Null when no
+ * shared-session rules differ. The host re-checks this at preview and activation.
+ */
+export function progressAssessment(active: VersionRow | undefined, row: VersionRow) {
+  const a = (active?.manifest as PermissionManifest | undefined)?.experience;
+  const b = (row.manifest as PermissionManifest).experience;
+  if (!active || active.id === row.id || !a || !b) return null;
+  try {
+    const assessment = assessSessionTransition(a, b);
+    return assessment.kind === 'identical-definition' ? null : assessment;
+  } catch {
+    return { kind: 'reset-required' as const, reasons: ['These rules no longer validate.'] };
+  }
+}
+
 export function versionView(row: VersionRow, active: VersionRow | undefined, panic: boolean) {
   return {
     ...row,
     evidence: row.evidence as Evidence,
     changes: diffVersions(active, row),
+    progress: progressAssessment(active, row),
     blockers: [
       ...approvalBlockers(row, panic),
       ...(active && active.id !== row.id && active.artifactId === row.artifactId

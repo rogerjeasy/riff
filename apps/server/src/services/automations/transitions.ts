@@ -9,7 +9,9 @@ import {
   sessionDefinitionHash,
   sessionDigest,
   sessionSeed,
-  classifySessionTransition,
+  assessSessionTransition,
+  migrationFailureReason,
+  resumeSession,
   transitionIdentity,
 } from '@riff/sandbox';
 import type {
@@ -127,10 +129,11 @@ export function createTransitionService(
           'BLOCKED',
           'Select a different verified stateful version and a current session first.',
         );
-      if (classifySessionTransition(session.definition, targetDefinition) === 'reset-required')
+      const assessment = assessSessionTransition(session.definition, targetDefinition);
+      if (assessment.kind === 'reset-required')
         throw new StudioError(
           'BLOCKED',
-          'These rules cannot preserve current progress. Explicit full session reset is required.',
+          `These rules cannot keep current progress: ${assessment.reasons.join(' ')} Choose “Start a fresh round” to reset instead.`,
         );
       const plan: SessionTransitionPlan = {
         version: 1,
@@ -173,13 +176,18 @@ export function createTransitionService(
             }));
         if (events.some((e) => e.channelId !== repo.channelId))
           throw new StudioError('BLOCKED', 'Rehearsal inputs must belong to this channel.');
+        // A paused round would answer every rehearsal message with "paused" and prove nothing.
+        // Resume private copies at the same instant so both versions face live-like rules.
+        const resumedPrivately = session.snapshot.phase === 'paused';
+        const rehearse = (snapshot: typeof migrated) =>
+          resumedPrivately ? resumeSession(snapshot, at) : snapshot;
         const before = createEngine(
           { source: source.source, manifest: source.manifest },
-          { seed, mode: 'preview', session: session.snapshot },
+          { seed, mode: 'preview', session: rehearse(session.snapshot) },
         );
         const after = createEngine(
           { source: version.source, manifest: version.manifest },
-          { seed, mode: 'preview', session: migrated },
+          { seed, mode: 'preview', session: rehearse(migrated) },
         );
         const steps = [];
         try {
@@ -219,6 +227,7 @@ export function createTransitionService(
               label: input.events?.length
                 ? 'Creator-provided hypothetical future inputs'
                 : 'Host-generated hypothetical future inputs',
+              resumedPrivately,
               seed,
               events,
               inputHash: hash(events),
@@ -262,7 +271,7 @@ export function createTransitionService(
         if (error instanceof StudioError) throw error;
         throw new StudioError(
           'BLOCKED',
-          'The preserving migration failed host validation. Explicit reset may be required.',
+          `${migrationFailureReason(error)} Current progress is unchanged.`,
         );
       } finally {
         previews--;

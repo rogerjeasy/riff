@@ -106,7 +106,7 @@ export function createStudioService(deps: {
         const active = versions.find((v) => v.id === automation.activeVersionId);
         return {
           ...automation,
-          transitions: repo.transitions(automation.id),
+          transitions: repo.transitionSummaries(automation.id),
           session:
             active && experienceOf(active) ? (repo.session(automation.id)?.snapshot ?? null) : null,
           versions: versions.map((v) => versionView(v, active, runtime.panicked)),
