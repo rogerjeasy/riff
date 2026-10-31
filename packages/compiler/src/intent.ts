@@ -1,4 +1,11 @@
-import { PROJECTILE_ASSETS, type AudienceRole, type ProjectileAsset } from '@riff/sdk';
+import {
+  PROJECTILE_ASSETS,
+  type AudienceRole,
+  type ProjectileAsset,
+  type ExperienceDefinition,
+} from '@riff/sdk';
+
+import { extractExperienceHints } from './experience-hints.js';
 
 /** Facts stated explicitly in the creator's words. Absent facts stay null. */
 export interface IntentHints {
@@ -8,7 +15,16 @@ export interface IntentHints {
   audience: AudienceRole[] | null;
   asset: ProjectileAsset | null;
 }
-export type IntentAspect = 'command' | 'allowance' | 'window' | 'audience' | 'asset';
+export type IntentAspect =
+  | 'command'
+  | 'allowance'
+  | 'window'
+  | 'audience'
+  | 'asset'
+  | 'duration'
+  | 'teams'
+  | 'resource'
+  | 'objective';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -111,6 +127,7 @@ export function extractIntentHints(intent: string): IntentHints {
 }
 
 export interface ManifestView {
+  experience?: ExperienceDefinition | null;
   trigger: { command: string; audience: AudienceRole[]; maxPerViewer: number; windowMs: number };
 }
 export const describeWindow = (ms: number) =>
@@ -136,6 +153,15 @@ export function checkIntent(
   previous?: { manifest: ManifestView; source: string } | null,
 ): IntentCheck[] {
   const hints = extractIntentHints(intent);
+  const sessionHints = extractExperienceHints(intent);
+  const experience = candidate.manifest.experience;
+  const oldExperience = previous?.manifest.experience;
+  const sessionRequest = sessionHints.requested || !!experience || !!oldExperience;
+  if (sessionRequest) {
+    hints.command = sessionHints.command?.slice(1) ?? hints.command;
+    hints.maxPerViewer = sessionHints.perParticipant;
+    hints.windowMs = null;
+  }
   const t = candidate.manifest.trigger;
   const p = previous?.manifest.trigger;
   const assetOf = (source: string) =>
@@ -186,6 +212,76 @@ export function checkIntent(
       hints.asset ? hints.asset === actualAsset : true,
     ],
   ];
+  if (sessionRequest) {
+    // Rolling windows are not gameplay resources; compare canonical session facts instead.
+    rows.splice(
+      rows.findIndex(([aspect]) => aspect === 'window'),
+      1,
+    );
+    const teamText = (teams: ExperienceDefinition['teams']) =>
+      teams.length
+        ? teams.map((team) => `${team.id} (${team.joinCommand})`).join(', ')
+        : 'no teams';
+    const resourceText = (definition: ExperienceDefinition) =>
+      `${definition.resource.perParticipant} ${definition.resource.name} per participant per round`;
+    const objectiveText = (definition: ExperienceDefinition) =>
+      `${definition.objective.kind}${definition.objective.target === null ? '' : `: ${definition.objective.target}`}`;
+    const statedTeams =
+      sessionHints.teams !== null
+        ? teamText(sessionHints.teams)
+        : sessionHints.teamCount !== null
+          ? `${sessionHints.teamCount} teams`
+          : null;
+    rows.push(
+      [
+        'duration',
+        'Round duration',
+        sessionHints.durationMs === null ? null : describeWindow(sessionHints.durationMs),
+        experience ? describeWindow(experience.durationMs) : 'no session',
+        oldExperience ? describeWindow(oldExperience.durationMs) : null,
+        !!experience &&
+          (sessionHints.durationMs === null || sessionHints.durationMs === experience.durationMs),
+      ],
+      [
+        'teams',
+        'Teams and join commands',
+        statedTeams,
+        experience ? teamText(experience.teams) : 'no session',
+        oldExperience ? teamText(oldExperience.teams) : null,
+        !!experience &&
+          (sessionHints.teams === null ||
+            teamText(sessionHints.teams) === teamText(experience.teams)) &&
+          (sessionHints.teamCount === null || sessionHints.teamCount === experience.teams.length),
+      ],
+      [
+        'resource',
+        'Session resource allowance',
+        sessionHints.perParticipant === null && sessionHints.resourceName === null
+          ? null
+          : `${sessionHints.perParticipant ?? '?'} ${sessionHints.resourceName ?? 'actions'} per participant per round`,
+        experience ? resourceText(experience) : 'no session',
+        oldExperience ? resourceText(oldExperience) : null,
+        !!experience &&
+          (sessionHints.perParticipant === null ||
+            sessionHints.perParticipant === experience.resource.perParticipant) &&
+          (sessionHints.resourceName === null ||
+            sessionHints.resourceName === experience.resource.name),
+      ],
+      [
+        'objective',
+        'Session objective',
+        sessionHints.objective === null && sessionHints.target === null
+          ? null
+          : `${sessionHints.objective ?? 'goal'}${sessionHints.target === null ? '' : `: ${sessionHints.target}`}`,
+        experience ? objectiveText(experience) : 'no session',
+        oldExperience ? objectiveText(oldExperience) : null,
+        !!experience &&
+          (sessionHints.objective === null ||
+            sessionHints.objective === experience.objective.kind) &&
+          (sessionHints.target === null || sessionHints.target === experience.objective.target),
+      ],
+    );
+  }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({
     aspect,
     label,

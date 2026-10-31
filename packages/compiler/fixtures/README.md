@@ -2,4 +2,8 @@
 
 Store recorded, redacted structured outputs with provenance. Never import these files as host modules.
 
-This directory establishes ownership for the approved product scope. Its product implementation is not part of the workspace scaffold.
+`stateful-experiences.json` records deterministic offline Tomato Battle and Community
+Goal outputs for prompt pack `riff-compiler/4`. These are template responses, not
+claims of live model generation. Both outputs pass the same sandbox verifier as
+model responses. The test suite replays their compiler contract and explicit intent
+checks without credentials or a model call.

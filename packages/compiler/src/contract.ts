@@ -5,6 +5,8 @@ import {
   DECISION_CODES,
   PROJECTILE_ASSETS,
   SDK_VERSION,
+  SESSION_LIMITS,
+  TRIGGER_LIMITS,
 } from '@riff/sdk';
 
 /** What the creator asked for. `base` is the version being edited, if any. */
@@ -101,9 +103,103 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
         {
           type: 'object',
           additionalProperties: false,
-          required: ['sdkVersion', 'capabilities', 'trigger', 'limits'],
+          required: ['sdkVersion', 'capabilities', 'trigger', 'limits', 'experience'],
           properties: {
             sdkVersion: { type: 'string', enum: [SDK_VERSION] },
+            experience: {
+              anyOf: [
+                { type: 'null' },
+                {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'version',
+                    'title',
+                    'durationMs',
+                    'maxParticipants',
+                    'teams',
+                    'resource',
+                    'contribution',
+                    'objective',
+                  ],
+                  properties: {
+                    version: { type: 'integer', enum: [1] },
+                    title: { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.titleLength },
+                    durationMs: {
+                      type: 'integer',
+                      minimum: SESSION_LIMITS.durationMs.min,
+                      maximum: SESSION_LIMITS.durationMs.max,
+                    },
+                    maxParticipants: {
+                      type: 'integer',
+                      minimum: 1,
+                      maximum: SESSION_LIMITS.maxParticipants,
+                    },
+                    teams: {
+                      type: 'array',
+                      maxItems: SESSION_LIMITS.maxTeams,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['id', 'label', 'joinCommand'],
+                        properties: {
+                          id: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,31}$' },
+                          label: {
+                            type: 'string',
+                            minLength: 1,
+                            maxLength: SESSION_LIMITS.labelLength,
+                          },
+                          joinCommand: { type: 'string', pattern: TRIGGER_LIMITS.commandPattern },
+                        },
+                      },
+                    },
+                    resource: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['name', 'perParticipant'],
+                      properties: {
+                        name: {
+                          type: 'string',
+                          minLength: 1,
+                          maxLength: SESSION_LIMITS.labelLength,
+                        },
+                        perParticipant: {
+                          type: 'integer',
+                          minimum: 1,
+                          maximum: SESSION_LIMITS.resourcePerParticipant,
+                        },
+                      },
+                    },
+                    contribution: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['command', 'points'],
+                      properties: {
+                        command: { type: 'string', pattern: TRIGGER_LIMITS.commandPattern },
+                        points: {
+                          type: 'integer',
+                          minimum: 1,
+                          maximum: SESSION_LIMITS.pointsPerContribution,
+                        },
+                      },
+                    },
+                    objective: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['kind', 'target'],
+                      properties: {
+                        kind: { type: 'string', enum: ['highest-score', 'collective-goal'] },
+                        target: {
+                          type: ['integer', 'null'],
+                          minimum: 1,
+                          maximum: SESSION_LIMITS.maxScore,
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+            },
             capabilities: { type: 'array', items: { type: 'string', enum: [...CAPABILITIES] } },
             trigger: {
               type: 'object',
@@ -148,7 +244,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects'],
+              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects', 'session'],
               properties: {
                 id: { type: 'string' },
                 viewer: { type: 'string' },
@@ -157,6 +253,28 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 at: { type: 'integer' },
                 expect: { type: 'string', enum: [...DECISION_CODES] },
                 effects: { type: 'integer' },
+                session: {
+                  anyOf: [
+                    { type: 'null' },
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['phase'],
+                      properties: {
+                        phase: { type: 'string', enum: ['running', 'paused', 'finished'] },
+                      },
+                    },
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['phase', 'remainingMs'],
+                      properties: {
+                        phase: { type: 'string', enum: ['running', 'paused', 'finished'] },
+                        remainingMs: { type: 'integer', minimum: 0 },
+                      },
+                    },
+                  ],
+                },
               },
             },
           },

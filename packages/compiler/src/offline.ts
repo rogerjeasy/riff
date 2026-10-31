@@ -1,10 +1,11 @@
 import { SDK_VERSION, type AudienceRole, type ProjectileAsset, type Scenario } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
+import { compileExperienceOffline } from './experience-output.js';
 import type { CompilerTransport } from './transport.js';
 
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|timer|countdown|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|timer|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -121,16 +122,18 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     behavior: { when: '', what: '', who: '', howMuch: '' },
     assumptions: [],
   };
-  if (UNSUPPORTED.test(request.intent))
+  const experience = compileExperienceOffline(request);
+  if (UNSUPPORTED.test(request.intent) || (!experience && /\bcountdown\b/i.test(request.intent)))
     return {
       ...empty,
       kind: 'unsupported',
       title: 'Not available yet',
-      summary: 'This needs a capability Riff does not grant in SDK 0.3.0.',
+      summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff can only show overlay projectiles.',
+        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff supports overlay projectiles and bounded score sessions.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
+  if (experience) return experience;
   const command = hints.command ? `!${hints.command}` : base?.trigger?.command;
   if (!command)
     return {
@@ -186,6 +189,7 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     source: `async (event, riff) => {\n  await riff.overlay.emit({ kind: 'projectile', asset: '${plan.asset}', x: riff.util.random() });\n}`,
     manifest: {
       sdkVersion: SDK_VERSION,
+      experience: null,
       capabilities: ['overlay'],
       trigger: {
         command: plan.command,

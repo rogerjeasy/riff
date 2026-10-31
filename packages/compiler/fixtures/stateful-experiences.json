@@ -1,0 +1,515 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/4",
+    "note": "Deterministic template responses recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "intent": "Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!throw",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 1,
+            "title": "Tomato Battle",
+            "durationMs": 120000,
+            "maxParticipants": 256,
+            "teams": [
+              {
+                "id": "red",
+                "label": "Red",
+                "joinCommand": "!red"
+              },
+              {
+                "id": "blue",
+                "label": "Blue",
+                "joinCommand": "!blue"
+              }
+            ],
+            "resource": {
+              "name": "throws",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!throw",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "A contribution consumes one resource and adds points",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "scores": {
+                    "red": 1
+                  },
+                  "participants": {
+                    "alice": {
+                      "remaining": 2,
+                      "contributions": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not contribute",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered contributions never score twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "session": {
+                  "scores": {
+                    "red": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "deadline",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 120000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Resources never renew during a round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "spend0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "spend1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "spend2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 4,
+                "expect": "RESOURCE_LIMIT",
+                "effects": 0,
+                "session": {
+                  "participants": {
+                    "alice": {
+                      "remaining": 0,
+                      "contributions": 3
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Join Red with !red or Blue with !blue; contribute with !throw",
+          "what": "Team scores accumulate; the highest score wins at the deadline",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "3 throws per participant per round; 2 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Tomato Battle",
+        "summary": "Join a team and use !throw to score during a timed battle."
+      }
+    },
+    {
+      "intent": "Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'heart', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!grow",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 1,
+            "title": "Community Goal",
+            "durationMs": 120000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "contributions",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!grow",
+              "points": 1
+            },
+            "objective": {
+              "kind": "collective-goal",
+              "target": 5
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "A contribution consumes one resource and adds points",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  },
+                  "participants": {
+                    "alice": {
+                      "remaining": 2,
+                      "contributions": 1
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not contribute",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered contributions never score twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 120000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Resources never renew during a round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "spend0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "spend1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "spend2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 4,
+                "expect": "RESOURCE_LIMIT",
+                "effects": 0,
+                "session": {
+                  "participants": {
+                    "alice": {
+                      "remaining": 0,
+                      "contributions": 3
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The collective goal ends the round early",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "goal0",
+                "viewer": "viewer0",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "goal1",
+                "viewer": "viewer0",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "goal2",
+                "viewer": "viewer0",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "goal3",
+                "viewer": "viewer1",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "goal4",
+                "viewer": "viewer1",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 4,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "phase": "finished",
+                  "scores": {
+                    "community": 5
+                  }
+                }
+              },
+              {
+                "id": "after-goal",
+                "viewer": "late",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 5,
+                "expect": "SESSION_FINISHED",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Type !grow to join and contribute",
+          "what": "Everyone builds toward 5 points; reaching the goal ends the round",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "3 contributions per participant per round; 2 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Community Goal",
+        "summary": "Use !grow to help the community reach 5 points."
+      }
+    }
+  ]
+}

@@ -1,8 +1,19 @@
 import { EXAMPLES, HOST_LIMITS, RIFF_DTS, RIFF_TEST_DTS, SDK_GUIDE, SDK_VERSION } from '@riff/sdk';
+import { compileExperienceOffline } from './experience-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/3';
+export const PROMPT_VERSION = 'riff-compiler/4';
+
+const EXPERIENCE_INTENTS = [
+  'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
+  'Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.',
+];
+const EXPERIENCE_EXAMPLES = EXPERIENCE_INTENTS.map((intent, index) => {
+  const output = compileExperienceOffline({ intent, base: null });
+  if (!output) throw new Error('A curated session example must produce a compiler output');
+  return { name: index === 0 ? 'tomato-battle' : 'community-goal', intent, ...output };
+});
 
 const TASK_RULES = `You are Riff's runtime compiler. A Twitch creator described an audience
 interaction. Turn it into ONE structured JSON object matching the output schema.
@@ -16,18 +27,43 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, timers, channel points, bans, external sites). Give the reason and
+  sounds, polls, general timers, channel points, bans, external sites). A bounded
+  experience round deadline/countdown is supported and is not a general timer. Give the reason and
   the closest supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit and riff.util. Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.
 - effectsPerEvent must equal the maximum effects the handler emits for one event.
   effectsPerMinute must be at least maxPerViewer * effectsPerEvent and at most 120.
-- capabilities lists exactly what the source uses: ["overlay"].
+- capabilities lists exactly what the source uses: ["overlay"] for projectiles;
+  every stateful experience must add "session" and read riff.session.snapshot().
+  Host-owned session changes
+  are declarative: guest code cannot mutate scores, resources or participant membership.
+- manifest.experience is null for ordinary projectile interactions. For rounds/sessions,
+  supply the full canonical ExperienceDefinition (version 1, title, durationMs,
+  maxParticipants, teams, resource, contribution, objective). sdkVersion is 0.4.0.
+  trigger.command MUST equal experience.contribution.command. Teams have unique ids
+  and join commands distinct from contribution.command. No teams for collective-goal;
+  target must be a positive integer. Highest-score uses target:null.
+- In sessions resource.perParticipant is a LIFETIME allowance for this round; there
+  is no rolling renewal. Set trigger.maxPerViewer to resource.perParticipant and
+  trigger.windowMs to durationMs. Highest-score requires teams and explicit joining;
+  collective-goal automatically enrolls each contributor. Joining emits no effect.
+  At the exact deadline, reject contributions with SESSION_FINISHED; reaching a
+  collective target finishes immediately. Unjoined team contributors get NOT_JOINED;
+  exhausted contributors get RESOURCE_LIMIT. Semantic score/resource mutations occur
+  in the host before the handler reads its frozen snapshot, including the final goal.
+- Generate sessions through these same manifest/source/tests fields and verification
+  pipeline. Do not implement session state in globals or invent bridge methods.
+  Arbitrary health, elimination, inventories, unlocks, rounds or random scoring are
+  outside these session primitives: mark unsupported instead of reducing their rules.
+- Every scenario step includes session:null or a strict phase assertion {phase}, or
+  {phase,remainingMs}. Include RESOURCE_LIMIT and deadline/goal scenarios for sessions.
+  The independent host suite checks scores/resources from the canonical definition.
 - Write 3-6 scenarios that follow the host admission order in SDK.md precisely:
   a happy path, the per-viewer limit (exhaust it, show the next one blocked), a second
   viewer who is unaffected, an unrelated message, a duplicate id, a role check when the
@@ -35,6 +71,8 @@ Rules for candidates:
 - behavior: four short plain-language phrases for the approval card:
   when ("Someone types !tomato in chat"), what ("A tomato flies across your overlay"),
   who ("Everyone in chat"), howMuch ("Up to 3 per viewer in any 60 seconds").
+  For sessions state join/contribution commands, the winning/collective goal, resources
+  per participant per round, and total round duration. Never describe them as rolling.
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {
@@ -66,7 +104,7 @@ REQUEST>>>
 ${SDK_GUIDE}
 
 Curated examples:
-${EXAMPLES.map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
+${[...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
 }
 
 /** The repair turn: the bounded failure report from the host verification pipeline. */
@@ -87,7 +125,7 @@ export function buildWorkspace(request: CompileRequest): Record<string, string> 
     'riff.d.ts': RIFF_DTS,
     'riff-test.d.ts': RIFF_TEST_DTS,
     ...Object.fromEntries(
-      EXAMPLES.map((example) => [
+      [...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => [
         `examples/${example.name}.json`,
         JSON.stringify(example, null, 2),
       ]),
