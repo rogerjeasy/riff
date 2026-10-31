@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { Worker } from 'node:worker_threads';
 import { artifactIdentity, pauseSession } from '@riff/sandbox';
 import type { ExperienceDefinition, SessionTransitionBoundary } from '@riff/sdk';
 import { createApp, migrateConnection, type RiffApp } from '../src/app.js';
@@ -842,3 +843,71 @@ it('does not persist gameplay or spend cosmetic allowance when the stateful admi
     database.close();
   }
 });
+
+it.each(['pause', 'panic'] as const)(
+  'redelivers a fenced stateful contribution after %s without retaining phantom identity or refilling cosmetics',
+  async (control) => {
+    const f = await setup(undefined, 1);
+    const post = Worker.prototype.postMessage;
+    let entered!: () => void;
+    const pendingGuest = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const transport = vi.spyOn(Worker.prototype, 'postMessage').mockImplementation(function (
+      this: Worker,
+      ...args: Parameters<Worker['postMessage']>
+    ) {
+      const request = args[0] as { event?: { id?: string } } | undefined;
+      if (request?.event?.id === 'interrupted-contribution') {
+        entered();
+        return;
+      }
+      return post.apply(this, args);
+    });
+    const inFlight = f.chat('interrupted-contribution', '!throw');
+    await pendingGuest;
+    f.setAt(2000);
+    if (control === 'pause') f.app.riff.studio.pause(f.automation.id);
+    else f.app.riff.studio.panic('pending guest');
+    expect((await inFlight)[0]?.code).toBe('STOPPED');
+    transport.mockRestore();
+    const stopped = f.repo.session(f.automation.id)!;
+    expect(stopped.snapshot).toMatchObject({
+      phase: 'paused',
+      scores: { red: 1 },
+      participants: { alice: { remaining: 2, contributions: 1 } },
+    });
+    expect(f.repo.hasAutomationEvent(f.automation.id, 'interrupted-contribution')).toBe(false);
+    expect(f.repo.hasAdmission(f.automation.id, 'interrupted-contribution')).toBe(false);
+    expect(
+      f.repo
+        .sessionJournal(stopped.id)
+        .filter((e) => e.kind === 'chat' && e.event.id === 'interrupted-contribution'),
+    ).toEqual([]);
+    f.setAt(3000);
+    if (control === 'pause') f.app.riff.studio.resumeAutomation(f.automation.id);
+    else f.app.riff.studio.resume();
+    const redelivered = (await f.chat('interrupted-contribution', '!throw'))[0];
+    expect(redelivered?.code).toBe('ACCEPTED');
+    expect(redelivered?.effects).toEqual([]);
+    expect((await f.chat('interrupted-contribution', '!throw'))[0]?.code).toBe('DUPLICATE');
+    expect(f.repo.session(f.automation.id)?.snapshot).toMatchObject({
+      scores: { red: 2 },
+      participants: { alice: { remaining: 1, contributions: 2 } },
+    });
+    expect(
+      f.repo.sessionEvents(stopped.id).filter((e) => e.eventId === 'interrupted-contribution'),
+    ).toHaveLength(1);
+    f.setAt(61001);
+    const expired = (await f.chat('post-fence-window-expired', '!throw'))[0];
+    expect(expired?.code).toBe('ACCEPTED');
+    expect(expired?.effects).toHaveLength(1);
+    expect(
+      f.repo
+        .admissionsSince(0)
+        .filter((row) => row.effects > 0)
+        .map((row) => row.at),
+    ).toEqual([1000, 61001]);
+    expect((await f.app.riff.studio.auditSession(f.automation.id)).status).toBe('verified');
+  },
+);

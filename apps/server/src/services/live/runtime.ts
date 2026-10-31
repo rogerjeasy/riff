@@ -155,8 +155,9 @@ export function createLiveRuntime(deps: {
       {
         seed: stored ? sessionSeed(stored.id) : (now() % 0xfffffff) + 1,
         mode: 'live',
-        admission: admissionFor(automationId),
-        ...(stored ? { session: stored.snapshot } : {}),
+        ...(stored
+          ? { session: stored.snapshot, effectBudget: admissionFor(automationId) }
+          : { admission: admissionFor(automationId) }),
         channelBudget,
       },
     );
@@ -371,7 +372,7 @@ export function createLiveRuntime(deps: {
         seed: sessionSeed(snapshot.id),
         mode: 'live',
         session: snapshot,
-        admission: admissionFor(reviewed.automationId),
+        effectBudget: admissionFor(reviewed.automationId),
         channelBudget,
       },
     );

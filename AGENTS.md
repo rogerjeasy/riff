@@ -452,7 +452,9 @@ older than the engine's 10-minute in-memory window. A failed write sends nothing
 pauses the interaction. Stateful sessions also record cosmetic decisions in
 `admission_events`, atomically with gameplay and outbox writes. Per-interaction effect
 windows persist across migrations, preserving rollbacks and restarts, independently
-of semantic resources and session identities. Failed writes rebuild counters from
+of semantic resources and session identities. Stateful engines retain only cosmetic
+effect history across replacement; transient input caches remain private so fenced,
+uncommitted events can be redelivered after pause/panic. Failed writes rebuild counters from
 durable history before explicit resume. `founder` badges count as subscribers: the set id is recorded
 from Helix (`packages/twitch/fixtures/helix.get-global-chat-badges.json`) and Twitch
 states the badge displays only for current subscribers.

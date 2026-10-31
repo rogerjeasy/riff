@@ -74,6 +74,8 @@ export interface EngineOptions {
   seed: number;
   mode?: ExecutionMode;
   admission?: AdmissionState;
+  /** Stateful cosmetic history may persist without retaining uncommitted input identities. */
+  effectBudget?: Pick<AdmissionState, 'effects'>;
   channelBudget?: ChannelBudget;
   onIncident?: (incident: Incident) => void;
 }
@@ -99,6 +101,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
   const mode: ExecutionMode = options.mode ?? 'preview';
   const artifactId = artifactIdentity(artifact);
   const state = options.admission ?? createAdmissionState();
+  const effectBudget = options.effectBudget ?? state;
   const { trigger, limits, experience } = artifact.manifest;
   let session: SessionSnapshot | null =
     options.session && experience ? validateSessionSnapshot(experience, options.session) : null;
@@ -402,15 +405,15 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       });
     }
     session = staged;
-    state.effects = state.effects.filter((at) => at > event.at - 60_000);
+    effectBudget.effects = effectBudget.effects.filter((at) => at > event.at - 60_000);
     const shared = options.channelBudget;
     if (shared) shared.effects = shared.effects.filter((at) => at > event.at - 60_000);
     const remaining = Math.min(
-      limits.effectsPerMinute - state.effects.length,
+      limits.effectsPerMinute - effectBudget.effects.length,
       shared ? shared.perMinute - shared.effects.length : Infinity,
     );
     const effects = reply.effects.length <= remaining ? reply.effects : [];
-    state.effects.push(...effects.map(() => event.at));
+    effectBudget.effects.push(...effects.map(() => event.at));
     shared?.effects.push(...effects.map(() => event.at));
     return decision(event.id, 'ACCEPTED', {
       ...base,
