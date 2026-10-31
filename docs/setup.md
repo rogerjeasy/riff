@@ -43,7 +43,7 @@ Defaults work without an `.env` file. To override them, copy `.env.example` to `
 
 The Twitch, encryption, model, transcription and OBS fields in `.env.example` reserve future integration configuration. They are not consumed as active credentials in this foundation. Do not enable remote access for a public deployment: authentication, authorization and worker isolation are separate implementation gates.
 
-Node reads `.env` for the server commands; Drizzle explicitly loads it from the repository root. Change `RIFF_API_TARGET` too if you change the host port during UI development. The Playwright configuration uses separate ports 4173/8788 and an ignored test database, without loading `.env`.
+Node reads `.env` for the server and migration commands; Drizzle Kit generation explicitly loads it from the repository root. Change `RIFF_API_TARGET` too if you change the host port during UI development. The Playwright configuration uses separate ports 4173/8788 and an ignored test database, without loading `.env`.
 
 ## Data and migrations
 
@@ -54,7 +54,7 @@ Node reads `.env` for the server commands; Drizzle explicitly loads it from the 
 ./scripts/pnpm db:migrate
 ```
 
-The initial migration creates only `channels`; future product tables remain planned. WAL, foreign keys and a bounded busy timeout are enabled. Real-file tests cover persistence, migration reapplication and close/reopen. Startup opens the configured database but does **not** automatically apply migrations; deployment orchestration must run them once before serving schema-dependent features. Shutdown closes the connection.
+The initial migration creates only `channels`; future product tables remain planned. WAL, foreign keys and a bounded busy timeout are enabled. Real-file tests cover persistence, migration reapplication and close/reopen. The migration command reuses the host connection factory to create missing parent directories and closes the connection even on failure. Startup opens the configured database but does **not** automatically apply migrations; deployment orchestration must run them once before serving schema-dependent features. Shutdown closes the connection.
 
 ## Verification
 
@@ -94,7 +94,9 @@ The Brewfile does not replace an existing Docker engine or install GUI applicati
 
 ```sh
 ./scripts/pnpm infra:validate
-docker compose -f infra/compose.yaml up --build
+docker compose -f infra/compose.yaml build
+docker compose -f infra/compose.yaml run --rm app node dist/migrate.js
+docker compose -f infra/compose.yaml up
 # Optional local HTTP proxy, on 127.0.0.1:8080:
 docker compose -f infra/compose.yaml --profile proxy up --build
 ```
