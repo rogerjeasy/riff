@@ -1,0 +1,9 @@
+{
+  "_source": "https://dev.twitch.tv/docs/authentication/getting-tokens-oauth/#use-the-authorization-code-to-get-a-token",
+  "_note": "Credential-like example values replaced with stable fake values.",
+  "access_token": "fake-access-token-code",
+  "expires_in": 14124,
+  "refresh_token": "fake-refresh-token-code",
+  "scope": ["channel:moderate", "chat:edit", "chat:read"],
+  "token_type": "bearer"
+}

@@ -1,0 +1,6 @@
+{
+  "_source": "https://dev.twitch.tv/docs/authentication/refresh-tokens/#how-to-use-a-refresh-token",
+  "error": "Bad Request",
+  "status": 400,
+  "message": "Invalid refresh token"
+}

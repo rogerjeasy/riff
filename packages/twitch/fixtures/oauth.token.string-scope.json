@@ -1,0 +1,9 @@
+{
+  "_source": "https://dev.twitch.tv/docs/authentication/refresh-tokens/",
+  "_note": "Credential-like example values replaced with stable fake values.",
+  "access_token": "fake-access-token-string",
+  "refresh_token": "fake-refresh-token-string",
+  "expires_in": 5215742,
+  "scope": "channel:read:subscriptions",
+  "token_type": "bearer"
+}

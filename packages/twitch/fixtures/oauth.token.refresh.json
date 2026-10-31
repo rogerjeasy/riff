@@ -1,0 +1,9 @@
+{
+  "_source": "https://dev.twitch.tv/docs/authentication/refresh-tokens/#how-to-use-a-refresh-token",
+  "_note": "Credential-like example values replaced with stable fake values.",
+  "access_token": "fake-access-token-refreshed",
+  "expires_in": 15583,
+  "refresh_token": "fake-refresh-token-rotated",
+  "scope": ["channel:read:subscriptions", "channel:manage:polls"],
+  "token_type": "bearer"
+}
