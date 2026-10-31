@@ -17,10 +17,11 @@ existing baseline from supporting selections and conditional deployment tools.
 The development foundation now exists; see [README](README.md),
 [setup instructions](docs/setup.md), and [verified setup status](docs/setup-status.md).
 Contracts for the full product below remain requirements, not implemented features.
-SDK 0.2.0 and the supervised QuickJS private execution engine now support reviewed
-projectile handlers, rolling host quotas, deduplication and deterministic replay.
-The HTTP host still exposes only health and static UI. Runtime compilation,
-approval/activation and live integrations remain unavailable. See
+The host now exposes health, static UI and bounded private synthetic replay at
+`POST /api/preview`. SDK 0.2.0 and the supervised QuickJS preview engine support
+reviewed projectile handlers, rolling host quotas, deduplication and deterministic
+replay. Runtime compilation, approval/activation and live integrations remain
+unavailable. HTTP callers cannot provide executable source. See
 [the preview contract](packages/sdk/SDK.md).
 
 When this file and your instincts disagree, this file wins. When this file and the
@@ -370,7 +371,7 @@ Current commands (use `./scripts/pnpm` for this checkout's local toolchain):
 ```text
 pnpm dev              server (:8787) and web (:5173)
 pnpm build            packages, server and three browser entries
-pnpm test             trusted host, runtime and execution invariant tests
+pnpm test             trusted host, runtime, private replay and DOM tests
 pnpm test:tooling      workspace graph and source-boundary tests
 pnpm test:e2e          Chromium/axe checks; requires local sockets
 pnpm lint             ESLint plus architecture boundary enforcement
@@ -422,6 +423,17 @@ capability is enabled. Unsupported manifests fail closed.
 live sink. Calls/new expressions and escaping async faults are instrumented with
 reserved host observers; rejected or pending observed work quarantines the run.
 Limits additionally include 256 observed call results and 100 pending jobs per event.
+Trusted worker startup has a separate 10-second bound; the two-second handler wall
+clock starts at readiness. The 50 ms interrupt budget measures worker CPU usage.
 The existing pinned TypeScript dependency is also declared in the sandbox to parse
 and instrument guest source without regex rewriting. This is not the future
 generated-code lint/typecheck/bundling pipeline.
+
+`POST /api/preview` accepts only a seed and up to 64 validated synthetic events,
+executes the server-owned Tomato Toss reference and returns private decisions and
+effects. It keeps one active replay per app, rejects cross-site requests and unknown
+fields, and cancels the engine on client disconnect. No credentials are used. The
+console alone renders these effects in a private stage; the public overlay remains
+inactive. Client stop aborts the request, clears effects and fences late responses.
+Replay state is ephemeral and scoped to one request; no live durability or shared
+channel-wide broker is claimed.

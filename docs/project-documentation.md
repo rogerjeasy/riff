@@ -12,7 +12,7 @@
 | Competition | [Official hackathon website](https://twitchcon-codex.devpost.com/) |
 | Engineering baseline | [Existing engineering contract](../AGENTS.md) |
 | Technology inventory | [Complete technology stack](tech-stack.md) |
-| Implementation status | Development foundation established: six workspaces, dependencies, host/database setup, three browser entries and verification tooling. Features F01–F40 remain implementation requirements. See [setup status](setup-status.md). |
+| Implementation status | Development foundation established: six workspaces, dependencies, host/database setup, three browser entries and verification tooling. A narrow first increment of F05/F13/F14/F16 now implements synthetic private Tomato Toss replay with host limits and decision evidence; production feature criteria remain requirements. See [setup status](setup-status.md) and [the preview contract](../packages/sdk/SDK.md). |
 
 This document defines Riff's complete product vision. The owner has approved inclusion of all nine expansion capabilities in §6.4, together with inclusive participation. Product scope is not reduced by assumptions about engineering capacity or the hackathon timeframe; delivery is organized by dependencies and evidence. Technical details, performance figures, research outcomes, and acceptance criteria remain **proposals or targets**, unless explicitly identified as verified external facts. They are not claims that Riff already implements them. Winning first place is the ambition; the strategy is to maximize demonstrable quality against the rubric, not to promise a result.
 

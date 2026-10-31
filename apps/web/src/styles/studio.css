@@ -135,3 +135,149 @@ a:hover {
     transition: none !important;
   }
 }
+
+.rehearsal {
+  margin: 40px 0;
+  border-top: 1px solid #454052;
+  padding-top: 32px;
+}
+.preview-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.preview-heading h2 {
+  font-size: 30px;
+  margin: 8px 0;
+}
+.preview-stage {
+  position: relative;
+  overflow: hidden;
+  min-height: 260px;
+  border: 1px solid #514460;
+  border-radius: 18px;
+  background: radial-gradient(ellipse at bottom, #3b2240, #181521 75%);
+  margin: 24px 0;
+}
+.stage-caption {
+  padding: 18px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #d7c3f4;
+}
+.stage-caption span {
+  float: right;
+  letter-spacing: 0;
+  color: #c9c2d3;
+}
+.stage-empty {
+  position: absolute;
+  inset: 45% 20px auto;
+  text-align: center;
+  color: #c9c2d3;
+}
+.projectile {
+  position: absolute;
+  top: 55%;
+  font-size: 48px;
+  animation: tomato-arrive 0.6s ease-out both;
+}
+@keyframes tomato-arrive {
+  from {
+    transform: translateY(130px) rotate(-45deg) scale(0.4);
+  }
+  to {
+    transform: translateY(0) rotate(15deg) scale(1);
+  }
+}
+.preview-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.preview-controls label {
+  display: grid;
+  gap: 8px;
+  color: #ddd6e7;
+  font-size: 14px;
+  flex: 1;
+}
+.preview-controls input,
+.preview-controls select {
+  min-width: 140px;
+  width: 100%;
+}
+.preview-controls input,
+.preview-controls select,
+.rehearsal button {
+  border: 1px solid #746781;
+  border-radius: 8px;
+  background: #211c2a;
+  color: #f4f2ff;
+  padding: 12px 15px;
+  font: inherit;
+}
+.preview-controls button[type='submit'] {
+  background: #c3adff;
+  color: #20162e;
+  font-weight: 650;
+}
+.rehearsal button {
+  cursor: pointer;
+}
+.rehearsal button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+.rehearsal :focus-visible {
+  outline: 3px solid #e5ccff;
+  outline-offset: 3px;
+}
+.evidence {
+  margin-top: 28px;
+  padding: 22px;
+  border-radius: 12px;
+  background: #1a1823;
+}
+.evidence h3 {
+  margin-top: 0;
+}
+.evidence ol {
+  padding: 0;
+  list-style: none;
+}
+.evidence li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 15px;
+  border-top: 1px solid #454052;
+  padding: 12px 0;
+  font-size: 14px;
+}
+.decision-accepted {
+  color: #99e3ba;
+  font-weight: 650;
+}
+.decision-blocked {
+  color: #ffc99e;
+  font-weight: 650;
+}
+.artifact {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: #c9c2d3;
+}
+@media (prefers-reduced-motion: reduce) {
+  .projectile {
+    animation: none;
+  }
+}

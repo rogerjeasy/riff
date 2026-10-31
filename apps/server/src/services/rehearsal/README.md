@@ -1,5 +1,6 @@
 # Rehearsal
 
-Own isolated scenarios, deterministic replay, snapshots, random cursor, event-time observations, and counterexamples.
-
-This directory establishes ownership for the approved product scope. Its product implementation is not part of the workspace scaffold.
+The first increment is a bounded synthetic replay service for the reviewed Tomato
+Toss artifact. It owns per-request engine state and cancellation, accepts no live
+sinks or arbitrary source, and permits one active replay per application.
+Snapshots, scenario scrubbing and counterexamples remain future work.

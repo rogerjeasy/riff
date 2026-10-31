@@ -44,3 +44,21 @@ A fresh reviewer found two material setup defects. Both were reproduced before f
 One minor documentation clarification is deferred: Vite reads `RIFF_API_TARGET` from the shell environment, while the server reads root `.env`. For a custom port, export the proxy target in the shell used to start development; setting it only in root `.env` does not configure the Vite proxy. Default ports work without changes.
 
 The reviewer did not certify full product functionality, guest isolation, production packaging, browser/container execution, online advisories or live integrations. These remain the explicit implementation/environment gates above.
+
+## Private preview increment — October 31, 2026
+
+The earlier foundation inventory above is historical. The HTTP surface now also
+includes `POST /api/preview`; the console renders private synthetic Tomato Toss
+replay with real QuickJS execution, host-owned quotas, deduplication, version/seed
+evidence and stop/reset controls. SDK 0.2.0 enables only projectile overlay output.
+See [SDK.md](../packages/sdk/SDK.md) for limits and unsupported surfaces. Source
+cannot be supplied over HTTP. Runtime generation and live activation remain pending.
+
+A focused browser scenario is included for quotas, independent viewers, duplicates,
+time advancement, accessibility and stop/reset. This session still denies the
+Playwright server socket with EPERM, so no browser or visual-pass claim is made.
+DOM tests cover stopped late responses and recoverable server errors.
+
+Verification for this increment: 55 trusted host/runtime/DOM tests and 15 tooling
+tests pass; lint, type checks, formatting, production build, bundle isolation and
+Fastify/SQLite smoke checks pass. Browser execution remains blocked as described.

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { InteractionPreview } from '../console/rehearsal/preview.js';
 import { fetchHealth } from '../lib/health.js';
 
 const messages = {
@@ -46,6 +47,7 @@ export function FoundationPanel({ compact = false }: { compact?: boolean }) {
         <p className="muted">Live connections and automation controls are not configured yet.</p>
         {status === 'unavailable' && <p>Start the local server, then refresh this page.</p>}
       </section>
+      {!compact && <InteractionPreview />}
       {!compact && (
         <nav aria-label="Development surfaces">
           <a href="/dock/">

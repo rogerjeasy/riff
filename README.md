@@ -4,7 +4,17 @@ Invent your next live experience together.
 
 This repository contains the development foundation for the approved Riff product: six TypeScript workspaces, installed dependencies, a local Fastify service, SQLite migrations, and separate console, overlay, and OBS dock entries. The complete F01–F40 scope remains in the [product documentation](docs/project-documentation.md).
 
-Live compilation, Twitch authentication, generated-code execution, effects, approval, and collaboration are **not implemented yet**. The interface identifies this state explicitly. No credentials are needed to start the foundation.
+The console now includes a **private Tomato Toss preview** backed by the supervised
+QuickJS execution engine. Synthetic chat events exercise host-enforced rolling
+quotas, duplicate protection and replay; accepted actions render private tomatoes.
+Runtime generation, Twitch authentication, approval, live activation and collaboration
+remain unimplemented. No credentials are needed for preview.
+
+Try `!tomato` three times as Alice, then a fourth time; switch to Bob, replay a
+duplicate, or advance the replay clock by 60 seconds. Inspect the decision trace,
+artifact identity and seed. Stop clears the stage and cancels the run; reset starts
+a fresh rehearsal. The source is an explicitly labeled reviewed reference module.
+See [the execution contract](packages/sdk/SDK.md) and [implementation design](docs/superpowers/specs/2026-10-31-interaction-preview-design.md).
 
 ## Start here
 

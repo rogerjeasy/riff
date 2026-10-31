@@ -1,5 +1,6 @@
 # Rehearsal studio
 
-Timeline scrubbing, scenario injection, counterexamples, and version comparisons.
-
-This directory establishes ownership for the approved product scope. Its product implementation is not part of the workspace scaffold.
+Private Tomato Toss preview: synthetic chat inputs, viewer switching, time
+advancement, duplicate replay, host decision evidence and local stop/reset.
+The reviewed reference module is explicitly labeled. Runtime generation, timeline
+scrubbing, counterexamples and version comparisons remain future work.
