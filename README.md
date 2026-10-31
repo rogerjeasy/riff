@@ -81,13 +81,47 @@ engine and proves the live scoreboard reproduces exactly from its inputs, or nam
 the first entry that does not. It is read-only and works while the channel is stopped.
 
 Visual-only edits preserve the session when its canonical rules are unchanged.
-Changing those rules, incompatible rollback, and starting a new round require explicit
-reset consent. Prior event identities remain protected. The studio exposes the
-current phase, resource evidence, score, deadline and reset controls; private rehearsal
-uses isolated synthetic participants and time advancement.
+Compatible rule edits use a reviewed migration; incompatible changes and starting a
+new round require explicit full-reset consent. Prior event identities and cosmetic
+rate budgets remain protected.
 
-See the [stateful design](docs/superpowers/specs/2026-10-31-stateful-experiences-design.md)
-for contracts and the [SDK guide](packages/sdk/SDK.md) for supported primitives.
+## Live evolution — F32
+
+Edit a running Tomato Battle with:
+
+> Change the command to `!splat`, keep everyone's teams and scores, and give each
+> player two additional throws.
+
+The compiler produces the new behavior and a separate migration. Independent host
+checks verify it against empty, populated, exhausted, paused and finished snapshots.
+In review, choose **immediate**, **round-end**, or **stopped**, then preview the change.
+The card shows preserved progress, changed rules, reset requirements and actual
+before/after decisions from identical hypothetical inputs in private engines.
+
+Approval binds the exact version, migration and evidence. The host reruns migration
+against current progress, including chat accepted during review, before committing
+state and version together. A failed or stale transition leaves the old interaction
+intact. Migrations run in a bounded, effect-free isolate; generated code cannot waive
+preservation checks or refill host abuse counters.
+
+Round-end changes persist across restart and can be cancelled in the live panel.
+They apply to the finished round without starting another. Stopped changes require
+a paused interaction and leave it paused. Emergency stop cancels pending changes.
+Rollback reviews the current state against an earlier approved version; it never
+restores an old score snapshot. **Verify round** also replays migrations and uses the
+same random seed as live play.
+
+This first implementation preserves existing participants, teams, scores,
+contributions, phase and remaining time, and supports resource increases and command
+edits. Changes such as removing resources, changing points per contribution, team
+identities or the objective require a full reset. Increasing configured round duration
+does not extend the current round's remaining time. The offline compiler supports the
+reference edit; model output follows the same migration checks. No recurring-round
+scheduler or partial-reset mechanism is introduced.
+
+See the [stateful design](docs/superpowers/specs/2026-10-31-stateful-experiences-design.md),
+[live evolution design](docs/superpowers/specs/2026-10-31-live-evolution-design.md)
+and [SDK guide](packages/sdk/SDK.md) for contracts and supported primitives.
 
 ## How it is built
 
