@@ -1,7 +1,14 @@
 import { createSessionControl, experienceOf, sessionSeed } from './sessions.js';
 import {
+  ADMISSION_RETENTION_MS,
+  recordsAdmission,
+  restoreAdmission,
+  restoreChannelEffects,
+} from './admission.js';
+import {
   createAdmissionState,
   createEngine,
+  DECISION_MESSAGES,
   eventSchema,
   type AdmissionState,
   type ExecutionEngine,
@@ -49,9 +56,26 @@ export function createLiveRuntime(deps: {
   let lastAt = 0;
   let lastEvent: { at: number; viewer: string; code: string } | null = null;
 
+  let lastPrune = 0;
+  const recentAdmissions = () => repo.admissionsSince(now() - ADMISSION_RETENTION_MS);
+  // Counters are rebuilt from durable records, so a restart never hands a viewer a
+  // fresh allowance, forgets a delivered event, or refills the effect budget.
+  try {
+    channelBudget.effects = restoreChannelEffects(recentAdmissions(), now());
+  } catch {
+    /* A degraded read starts empty; writes still fail closed below. */
+  }
   const admissionFor = (automationId: string) => {
     let state = admissions.get(automationId);
-    if (!state) admissions.set(automationId, (state = createAdmissionState()));
+    if (!state) {
+      try {
+        state = restoreAdmission(recentAdmissions(), automationId);
+      } catch {
+        state = createAdmissionState();
+      }
+      admissions.set(automationId, state);
+      lastAt = Math.max(lastAt, state.lastAt);
+    }
     return state;
   };
   function publishActivity(entry: Parameters<ChannelRepository['record']>[0]) {
@@ -140,6 +164,14 @@ export function createLiveRuntime(deps: {
       return [];
     }
     if (panic) return [];
+    if (now() - lastPrune > 60_000) {
+      lastPrune = now();
+      try {
+        repo.pruneAdmissions(now() - ADMISSION_RETENTION_MS);
+      } catch {
+        /* Retention is housekeeping; admission still reads only the recent span. */
+      }
+    }
     lastAt = Math.max(lastAt, now());
     const event = eventSchema.safeParse({
       id: message.id,
@@ -166,11 +198,38 @@ export function createLiveRuntime(deps: {
           );
           decision = result.decision;
           sessionDelivered = result.delivered;
-        } else decision = await engine.dispatch(event.data);
+        } else if (repo.hasAdmission(automationId, event.data.id)) {
+          // Durable identity outlives the engine's in-memory dedupe window and restarts.
+          decision = {
+            eventId: event.data.id,
+            artifactId: engine.artifactId,
+            mode: 'live',
+            code: 'DUPLICATE',
+            reason: DECISION_MESSAGES.DUPLICATE,
+            effects: [],
+            viewerId: event.data.viewerId,
+            at: event.data.at,
+            allowance: null,
+          };
+        } else {
+          decision = await engine.dispatch(event.data);
+          // Recorded before any effect leaves the host; a failed write sends nothing.
+          if (recordsAdmission(decision.code))
+            repo.recordAdmission({
+              automationId,
+              eventId: event.data.id,
+              viewerId: event.data.viewerId,
+              at: event.data.at,
+              code: decision.code,
+              effects: decision.effects.length,
+            });
+        }
       } catch {
         generation++;
         engine.stop();
         engines.delete(automationId);
+        // In-memory counters may include the unrecorded event; rebuild from storage.
+        admissions.delete(automationId);
         try {
           repo.updateAutomation(automationId, { status: 'paused' });
           sessions.pause(automationId);
@@ -185,7 +244,7 @@ export function createLiveRuntime(deps: {
           mode: 'live',
           code: 'STOPPED',
           reason:
-            'Session storage failed; progress and effects were not committed. Resume to retry.',
+            'Riff could not save this event, so no effect was sent and the interaction was paused. Resume to retry.',
           effects: [],
           viewerId: event.data.viewerId,
           at: event.data.at,

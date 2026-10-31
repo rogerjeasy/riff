@@ -1,3 +1,4 @@
+import { admissionRepository } from './admission.js';
 import { sessionRepository } from './sessions.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, max } from 'drizzle-orm';
@@ -18,6 +19,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
   return {
     channelId,
     ...sessionRepository(connection, channelId),
+    ...admissionRepository(connection, channelId),
     ensure(displayName: string) {
       db.insert(channels)
         .values({ id: channelId, displayName, createdAt: new Date() })

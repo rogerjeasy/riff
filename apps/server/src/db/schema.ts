@@ -173,6 +173,29 @@ export const sessionEvents = sqliteTable(
   ],
 );
 /**
+ * Durable admission record for rolling-window interactions: every command decision,
+ * written before any effect leaves the host, so duplicate suppression, per-viewer
+ * windows and effect budgets survive a restart. Rows older than the longest window
+ * are pruned.
+ */
+export const admissionEvents = sqliteTable(
+  'admission_events',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    channelId: text('channel_id').notNull(),
+    automationId: text('automation_id').notNull(),
+    eventId: text('event_id').notNull(),
+    viewerId: text('viewer_id').notNull(),
+    at: integer('at').notNull(),
+    code: text('code').$type<DecisionCode>().notNull(),
+    effects: integer('effects').notNull(),
+  },
+  (table) => [
+    uniqueIndex('admission_event_identity').on(table.channelId, table.automationId, table.eventId),
+    index('admission_recent').on(table.channelId, table.at),
+  ],
+);
+/**
  * Ordered round journal: every committed state change, written in the same
  * transaction, so an audit can rebuild the round from its inputs alone.
  */
