@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as sandbox from '@riff/sandbox';
 
 const manifest = {
-  sdkVersion: '0.2.0',
+  sdkVersion: '0.3.0',
   capabilities: ['overlay'],
   trigger: { command: '!tomato', audience: ['viewer'], maxPerViewer: 3, windowMs: 60_000 },
   limits: { effectsPerEvent: 1, effectsPerMinute: 60 },
@@ -216,7 +216,6 @@ describe('preview execution contract', () => {
     );
     expect((await sync.dispatch(event('a'))).code).toBe('ACCEPTED');
     const pending = sync.dispatch(event('b'));
-    await new Promise((resolve) => setTimeout(resolve, 10));
     sync.stop();
     expect((await pending).code).toBe('STOPPED');
   });

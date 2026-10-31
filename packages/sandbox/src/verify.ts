@@ -1,0 +1,456 @@
+import ts from 'typescript';
+import {
+  CAPABILITIES,
+  type AudienceRole,
+  type Capability,
+  type DecisionCode,
+  type PermissionManifest,
+  type Scenario,
+} from '@riff/sdk';
+import { artifactSchema, manifestSchema, scenariosSchema } from './contract.js';
+import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
+import { instrumentHandler } from './instrument.js';
+
+export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
+export type StageStatus = 'passed' | 'failed' | 'skipped';
+export interface Finding {
+  severity: 'error' | 'warning';
+  rule: string;
+  message: string;
+  line: number | null;
+}
+export interface StepResult {
+  id: string;
+  viewer: string;
+  roles: AudienceRole[];
+  text: string;
+  at: number;
+  expect: DecisionCode;
+  expectEffects: number | null;
+  actual: DecisionCode;
+  actualEffects: number;
+  passed: boolean;
+}
+export interface ScenarioResult {
+  name: string;
+  kind: string;
+  origin: 'generated' | 'host';
+  passed: boolean;
+  steps: StepResult[];
+  durationMs: number;
+}
+export interface StageReport {
+  id: StageId;
+  label: string;
+  status: StageStatus;
+  durationMs: number;
+  summary: string;
+}
+export interface VerificationReport {
+  ok: boolean;
+  artifactId: string | null;
+  stages: StageReport[];
+  findings: Finding[];
+  capabilitiesUsed: Capability[];
+  generated: ScenarioResult[];
+  host: ScenarioResult[];
+  /** Compact failure text suitable for a single repair round (≤ 4 KB). */
+  failureReport: string | null;
+}
+
+const FORBIDDEN_IDENTIFIERS = new Map([
+  ['eval', 'Dynamic evaluation is not available'],
+  ['Function', 'Dynamic code construction is not available'],
+  ['require', 'Modules are not available; use only the riff bridge'],
+  ['globalThis', 'Global mutation is not available'],
+  ['Date', 'Use riff.util.now() for time'],
+  ['fetch', 'Network access is not available'],
+  ['XMLHttpRequest', 'Network access is not available'],
+  ['WebSocket', 'Network access is not available'],
+  ['setTimeout', 'Timers are not available in this SDK version'],
+  ['setInterval', 'Timers are not available in this SDK version'],
+  ['process', 'Host process access is not available'],
+]);
+
+/** Restricted-syntax and least-privilege analysis of a handler expression. */
+export function analyzeSource(source: string, manifest: PermissionManifest) {
+  const findings: Finding[] = [];
+  const used = new Set<Capability>();
+  const file = ts.createSourceFile(
+    'handler.js',
+    `(${source})`,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const line = (node: ts.Node) => file.getLineAndCharacterOfPosition(node.getStart()).line + 1;
+  const add = (severity: Finding['severity'], rule: string, message: string, node?: ts.Node) =>
+    findings.push({ severity, rule, message, line: node ? line(node) : null });
+  const visit = (node: ts.Node) => {
+    if (ts.isImportDeclaration(node) || node.kind === ts.SyntaxKind.ImportKeyword)
+      add('error', 'no-import', 'Imports are not available inside a handler', node);
+    if (ts.isWithStatement(node)) add('error', 'no-with', '`with` is not allowed', node);
+    if (ts.isIdentifier(node) && FORBIDDEN_IDENTIFIERS.has(node.text)) {
+      const parent = node.parent;
+      const isPropertyName =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node);
+      if (!isPropertyName)
+        add('error', 'no-ambient', FORBIDDEN_IDENTIFIERS.get(node.text) ?? 'Not allowed', node);
+    }
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === 'random' &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'Math'
+    )
+      add('error', 'no-ambient', 'Use riff.util.random() for deterministic randomness', node);
+    if (
+      (ts.isWhileStatement(node) || ts.isDoStatement(node)) &&
+      node.expression.kind === ts.SyntaxKind.TrueKeyword
+    )
+      add('error', 'bounded-loops', 'Unbounded loops are not allowed', node);
+    if (ts.isForStatement(node) && !node.condition)
+      add('error', 'bounded-loops', 'Loops need an explicit bound', node);
+    if (ts.isRegularExpressionLiteral(node) && node.text.length > 200)
+      add('error', 'small-literals', 'Regular expressions are limited to 200 characters', node);
+    if (ts.isStringLiteralLike(node) && node.text.length > 500)
+      add('error', 'small-literals', 'String literals are limited to 500 characters', node);
+    if (ts.isPropertyAccessExpression(node) && CAPABILITIES.includes(node.name.text as Capability))
+      used.add(node.name.text as Capability);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  try {
+    instrumentHandler(source);
+  } catch (error) {
+    add('error', 'handler-shape', error instanceof Error ? error.message : 'Invalid handler');
+  }
+  for (const capability of used)
+    if (!manifest.capabilities.includes(capability))
+      add('error', 'declared-capabilities', `Uses \`${capability}\` without declaring it`);
+  for (const capability of manifest.capabilities)
+    if (!used.has(capability))
+      add('warning', 'least-privilege', `Declares \`${capability}\` but never uses it`);
+  return { findings, capabilitiesUsed: [...used] };
+}
+
+/** Run declarative scenarios through fresh preview engines, one engine per scenario. */
+export async function runScenarios(
+  artifact: { source: string; manifest: PermissionManifest },
+  scenarios: Scenario[],
+  origin: 'generated' | 'host',
+  seed = 7,
+): Promise<ScenarioResult[]> {
+  const results: ScenarioResult[] = [];
+  for (const scenario of scenarios) {
+    const started = performance.now();
+    const engine = createEngine(artifact, { seed, mode: 'preview' });
+    const steps: StepResult[] = [];
+    try {
+      for (const step of scenario.steps) {
+        const decision = await engine.dispatch({
+          id: step.id,
+          channelId: 'verification',
+          viewerId: step.viewer,
+          roles: step.roles,
+          text: step.text,
+          at: step.at,
+        });
+        const expectEffects = step.effects;
+        const passed =
+          decision.code === step.expect &&
+          (expectEffects < 0
+            ? decision.effects.length > 0
+            : decision.effects.length === expectEffects);
+        steps.push({
+          id: step.id,
+          viewer: step.viewer,
+          roles: step.roles,
+          text: step.text,
+          at: step.at,
+          expect: step.expect,
+          expectEffects: expectEffects < 0 ? null : expectEffects,
+          actual: decision.code,
+          actualEffects: decision.effects.length,
+          passed,
+        });
+      }
+    } finally {
+      engine.stop();
+    }
+    results.push({
+      name: scenario.name,
+      kind: scenario.kind,
+      origin,
+      passed: steps.every((step) => step.passed),
+      steps,
+      durationMs: Math.round(performance.now() - started),
+    });
+  }
+  return results;
+}
+
+/**
+ * The host's own acceptance suite, derived only from the manifest. Generated code and
+ * generated tests cannot edit it. `effects: -1` means "at least one effect".
+ */
+export function hostScenarios(manifest: PermissionManifest): Scenario[] {
+  const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
+  const eligible: AudienceRole[] = audience.includes('viewer')
+    ? ['viewer']
+    : [audience[0] ?? 'broadcaster', 'viewer'];
+  const step = (
+    id: string,
+    viewer: string,
+    text: string,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+    roles = eligible,
+  ) => ({ id, viewer, roles, text, at, expect, effects });
+  const perEvent = manifest.limits.effectsPerEvent;
+  const perMinute = manifest.limits.effectsPerMinute;
+  // Only assert what the budget guarantees regardless of how many effects a call emits.
+  const fitsBudget = maxPerViewer * perEvent <= perMinute;
+  const otherFits = (maxPerViewer + 1) * perEvent <= perMinute;
+  const scenarios: Scenario[] = [
+    {
+      name: `${command} from an eligible viewer produces an effect`,
+      kind: 'happy',
+      steps: [step('h1', 'ada', command, 0, 'ACCEPTED', -1)],
+    },
+    {
+      name: 'Surrounding spaces and capitals still match; suffixes do not',
+      kind: 'negative',
+      steps: [
+        step('h1', 'ada', `  ${command.toUpperCase()} `, 0, 'ACCEPTED', -1),
+        step('h2', 'ben', `${command}s`, 1, 'UNRELATED', 0),
+        step('h3', 'ben', `hello ${command}`, 2, 'UNRELATED', 0),
+        step('h4', 'ben', 'hello chat', 3, 'UNRELATED', 0),
+      ],
+    },
+    {
+      name: 'A redelivered event never produces a second effect',
+      kind: 'duplicate',
+      steps: [
+        step('h1', 'ada', command, 0, 'ACCEPTED', -1),
+        step('h1', 'ada', command, 5, 'DUPLICATE', 0),
+      ],
+    },
+  ];
+  if (fitsBudget) {
+    const steps = Array.from({ length: maxPerViewer }, (_, i) =>
+      step(`a${i}`, 'ada', command, i, 'ACCEPTED', -1),
+    );
+    steps.push(step('over', 'ada', command, maxPerViewer, 'VIEWER_LIMIT', 0));
+    if (otherFits) steps.push(step('other', 'ben', command, maxPerViewer + 1, 'ACCEPTED', -1));
+    scenarios.push({
+      name: `Viewer allowance: ${maxPerViewer} accepted, next blocked${otherFits ? ', another viewer unaffected' : ''}`,
+      kind: 'limit',
+      steps,
+    });
+    if (maxPerViewer <= 10 && otherFits)
+      scenarios.push({
+        name: 'Allowance returns when the rolling window passes',
+        kind: 'window',
+        steps: [
+          ...Array.from({ length: maxPerViewer }, (_, i) =>
+            step(`w${i}`, 'ada', command, i, 'ACCEPTED', -1),
+          ),
+          step('wover', 'ada', command, windowMs - 1, 'VIEWER_LIMIT', 0),
+          step('wback', 'ada', command, Math.max(windowMs, 60_000), 'ACCEPTED', -1),
+        ],
+      });
+  }
+  if (!audience.includes('viewer'))
+    scenarios.push({
+      name: `Only ${audience.join(', ')} may trigger it`,
+      kind: 'role',
+      steps: [
+        step('r1', 'cy', command, 0, 'AUDIENCE', 0, ['viewer']),
+        step('r2', 'ada', command, 1, 'ACCEPTED', -1),
+      ],
+    });
+  return scenarios;
+}
+
+function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
+  const lines: string[] = [];
+  for (const stage of report.stages)
+    if (stage.status === 'failed') lines.push(`Stage ${stage.id} failed: ${stage.summary}`);
+  for (const finding of report.findings.filter((f) => f.severity === 'error'))
+    lines.push(
+      `- ${finding.rule}${finding.line ? ` (line ${finding.line})` : ''}: ${finding.message}`,
+    );
+  for (const result of [...report.generated, ...report.host].filter((r) => !r.passed)) {
+    lines.push(`Scenario "${result.name}" (${result.origin}) failed:`);
+    for (const step of result.steps.filter((s) => !s.passed))
+      lines.push(
+        `  step ${step.id} ${step.viewer} "${step.text}" @${step.at}ms expected ${step.expect}` +
+          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}`,
+      );
+  }
+  const text = lines.join('\n');
+  return text.length > 4096 ? `${text.slice(0, 4080)}\n…truncated` : text;
+}
+
+/**
+ * The fixed validation chain: manifest → static analysis → compile/instrument →
+ * generated scenarios → host suite. Later stages are skipped after a failure.
+ */
+export async function verifyCandidate(candidate: {
+  source: string;
+  manifest: unknown;
+  tests: unknown;
+}): Promise<VerificationReport> {
+  const stages: StageReport[] = [];
+  let findings: Finding[] = [];
+  let capabilitiesUsed: Capability[] = [];
+  let generated: ScenarioResult[] = [];
+  let host: ScenarioResult[] = [];
+  let artifactId: string | null = null;
+  const timed = async <T>(fn: () => Promise<T> | T) => {
+    const started = performance.now();
+    const value = await fn();
+    return { value, durationMs: Math.round(performance.now() - started) };
+  };
+  const skip = (id: StageId, label: string) =>
+    stages.push({
+      id,
+      label,
+      status: 'skipped',
+      durationMs: 0,
+      summary: 'Skipped after an earlier failure.',
+    });
+  const finish = () => {
+    const base = {
+      ok: stages.every((stage) => stage.status === 'passed'),
+      artifactId,
+      stages,
+      findings,
+      capabilitiesUsed,
+      generated,
+      host,
+    };
+    return { ...base, failureReport: base.ok ? null : compactFailure(base) };
+  };
+
+  const manifest = await timed(() => manifestSchema.safeParse(candidate.manifest));
+  const tests = scenariosSchema.safeParse(candidate.tests);
+  if (!manifest.value.success) {
+    stages.push({
+      id: 'manifest',
+      label: 'Permission manifest',
+      status: 'failed',
+      durationMs: manifest.durationMs,
+      summary: manifest.value.error.issues
+        .slice(0, 4)
+        .map((issue) => `${issue.path.join('.') || 'manifest'}: ${issue.message}`)
+        .join('; '),
+    });
+    for (const [id, label] of [
+      ['static', 'Restricted syntax'],
+      ['compile', 'Sandbox compile'],
+      ['generated', 'Generated tests'],
+      ['host', 'Host policy checks'],
+    ] as const)
+      skip(id, label);
+    return finish();
+  }
+  const parsedManifest = manifest.value.data;
+  stages.push({
+    id: 'manifest',
+    label: 'Permission manifest',
+    status: 'passed',
+    durationMs: manifest.durationMs,
+    summary: `Capabilities: ${parsedManifest.capabilities.join(', ') || 'none'}; within host ceilings.`,
+  });
+
+  const analysis = await timed(() => analyzeSource(candidate.source, parsedManifest));
+  findings = analysis.value.findings;
+  capabilitiesUsed = analysis.value.capabilitiesUsed;
+  const errors = findings.filter((finding) => finding.severity === 'error');
+  stages.push({
+    id: 'static',
+    label: 'Restricted syntax',
+    status: errors.length ? 'failed' : 'passed',
+    durationMs: analysis.durationMs,
+    summary: errors.length
+      ? `${errors.length} rule violation${errors.length === 1 ? '' : 's'}.`
+      : `No forbidden syntax; ${findings.length} warning${findings.length === 1 ? '' : 's'}.`,
+  });
+  if (errors.length) {
+    for (const [id, label] of [
+      ['compile', 'Sandbox compile'],
+      ['generated', 'Generated tests'],
+      ['host', 'Host policy checks'],
+    ] as const)
+      skip(id, label);
+    return finish();
+  }
+
+  const artifact = { source: candidate.source, manifest: parsedManifest };
+  const compiled = await timed(() => {
+    const parsed = artifactSchema.safeParse(artifact);
+    if (!parsed.success) return 'Source exceeds the size limit.';
+    artifactId = artifactIdentity(parsed.data);
+    return null;
+  });
+  stages.push({
+    id: 'compile',
+    label: 'Sandbox compile',
+    status: compiled.value ? 'failed' : 'passed',
+    durationMs: compiled.durationMs,
+    summary: compiled.value ?? 'Instrumented for QuickJS with call observation and fault guards.',
+  });
+  if (compiled.value) {
+    skip('generated', 'Generated tests');
+    skip('host', 'Host policy checks');
+    return finish();
+  }
+
+  if (!tests.success) {
+    stages.push({
+      id: 'generated',
+      label: 'Generated tests',
+      status: 'failed',
+      durationMs: 0,
+      summary: `Tests are malformed: ${tests.error.issues
+        .slice(0, 3)
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ')}`,
+    });
+  } else {
+    const kinds = new Set(tests.data.map((scenario) => scenario.kind));
+    const missing = (['happy', 'negative'] as const).filter((kind) => !kinds.has(kind));
+    const hasEdge = kinds.has('limit') || kinds.has('role') || kinds.has('window');
+    const run = await timed(() => runScenarios(artifact, tests.data, 'generated'));
+    generated = run.value;
+    const passed = generated.filter((result) => result.passed).length;
+    const coverage = missing.length || !hasEdge;
+    stages.push({
+      id: 'generated',
+      label: 'Generated tests',
+      status: passed === generated.length && !coverage ? 'passed' : 'failed',
+      durationMs: run.durationMs,
+      summary: coverage
+        ? `Needs a happy path, a limit or role edge, and an unrelated-event negative (${passed}/${generated.length} passed).`
+        : `${passed}/${generated.length} scenarios passed in the sandbox.`,
+    });
+  }
+
+  const hostRun = await timed(() => runScenarios(artifact, hostScenarios(parsedManifest), 'host'));
+  host = hostRun.value;
+  const hostPassed = host.filter((result) => result.passed).length;
+  stages.push({
+    id: 'host',
+    label: 'Host policy checks',
+    status: hostPassed === host.length ? 'passed' : 'failed',
+    durationMs: hostRun.durationMs,
+    summary: `${hostPassed}/${host.length} independent checks passed.`,
+  });
+  return finish();
+}
+
+export { matchesCommand };

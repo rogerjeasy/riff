@@ -27,6 +27,11 @@ export default tseslint.config(
     },
   },
   {
+    // Tests may assert presence after explicit expectations; production code may not.
+    files: ['**/test/**/*.ts', '**/test/**/*.tsx', '**/e2e/**/*.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
     files: ['**/*.mjs', '**/*.js'],
     extends: [js.configs.recommended],
     languageOptions: {

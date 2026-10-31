@@ -3,7 +3,7 @@ import type { ChatEvent } from '@riff/sdk';
 
 const referenceArtifact = {
   manifest: {
-    sdkVersion: '0.2.0',
+    sdkVersion: '0.3.0',
     capabilities: ['overlay'],
     trigger: { command: '!tomato', audience: ['viewer'], maxPerViewer: 3, windowMs: 60_000 },
     limits: { effectsPerEvent: 1, effectsPerMinute: 60 },

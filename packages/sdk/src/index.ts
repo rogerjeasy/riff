@@ -1,5 +1,5 @@
-/** Public SDK version. Versioned preview execution contract. */
-export const SDK_VERSION = '0.2.0' as const;
+/** Public SDK version. 0.3.0 adds live mode, the heart asset and declarative scenarios. */
+export const SDK_VERSION = '0.3.0' as const;
 
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -14,12 +14,28 @@ export const HOST_LIMITS = Object.freeze({
   observedResultsPerEvent: 256,
   pendingJobsPerEvent: 100,
   stateBytes: 1024 * 1024,
+  sourceBytes: 16_384,
+  /** Delivery identities are remembered for this long (EventSub redelivery window). */
+  dedupeWindowMs: 10 * 60_000,
+  /** A private rehearsal holds at most this many distinct events. */
+  previewEvents: 256,
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
 export const CAPABILITIES = ['overlay'] as const;
+export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
-export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
+export const AUDIENCE_ROLES = ['viewer', 'subscriber', 'moderator', 'broadcaster'] as const;
+export type AudienceRole = (typeof AUDIENCE_ROLES)[number];
+export const PROJECTILE_ASSETS = ['tomato', 'star', 'heart'] as const;
+export type ProjectileAsset = (typeof PROJECTILE_ASSETS)[number];
+/** Trigger policy bounds shared by validators, editors and the compiler prompt. */
+export const TRIGGER_LIMITS = Object.freeze({
+  maxPerViewer: { min: 1, max: 100 },
+  windowMs: { min: 1000, max: 3_600_000 },
+  commandPattern: '^![a-z0-9_-]{1,32}$',
+});
+
 export interface ChatEvent {
   id: string;
   channelId: string;
@@ -31,9 +47,11 @@ export interface ChatEvent {
 }
 export interface PermissionManifest {
   sdkVersion: typeof SDK_VERSION;
-  capabilities: (typeof CAPABILITIES)[number][];
+  capabilities: Capability[];
   trigger: {
+    /** Lowercase `!command`. Chat text matches after trimming and lowercasing. */
     command: string;
+    /** Any listed role is eligible. `viewer` means everyone in chat. */
     audience: AudienceRole[];
     maxPerViewer: number;
     windowMs: number;
@@ -42,12 +60,12 @@ export interface PermissionManifest {
 }
 export interface ProjectileEffect {
   kind: 'projectile';
-  asset: 'tomato' | 'star';
+  asset: ProjectileAsset;
   x: number;
 }
 export interface AutomationContext {
   overlay: {
-    /** Queue a bounded private projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
+    /** Queue a bounded projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
     emit(effect: ProjectileEffect): Promise<void>;
   };
   util: {
@@ -61,6 +79,7 @@ export interface AutomationArtifact {
   source: string;
   manifest: PermissionManifest;
 }
+export type ExecutionMode = 'preview' | 'live';
 export type DecisionCode =
   | 'ACCEPTED'
   | 'UNRELATED'
@@ -71,12 +90,61 @@ export type DecisionCode =
   | 'INVALID_EVENT'
   | 'INCIDENT'
   | 'DISABLED'
+  | 'CAPACITY'
   | 'STOPPED';
+export const DECISION_CODES: readonly DecisionCode[] = [
+  'ACCEPTED',
+  'UNRELATED',
+  'AUDIENCE',
+  'VIEWER_LIMIT',
+  'CHANNEL_LIMIT',
+  'DUPLICATE',
+  'INVALID_EVENT',
+  'INCIDENT',
+  'DISABLED',
+  'CAPACITY',
+  'STOPPED',
+];
+/** Viewer allowance after admission, for explanations. */
+export interface AllowanceSnapshot {
+  used: number;
+  max: number;
+  windowMs: number;
+  /** Event time at which the oldest counted action expires; null when nothing is counted. */
+  nextAt: number | null;
+}
 export interface ExecutionDecision {
   eventId: string;
   artifactId: string;
   code: DecisionCode;
   reason: string;
   effects: ProjectileEffect[];
-  mode: 'preview';
+  mode: ExecutionMode;
+  viewerId: string | null;
+  at: number | null;
+  allowance: AllowanceSnapshot | null;
 }
+
+/** One synthetic chat message inside a declarative scenario. */
+export interface ScenarioStep {
+  /** Stable synthetic viewer identity, e.g. "alice". */
+  viewer: string;
+  roles: AudienceRole[];
+  text: string;
+  /** Milliseconds since the scenario started; must not decrease. */
+  at: number;
+  /** Reuse an earlier step's id to model a duplicate delivery. */
+  id: string;
+  expect: DecisionCode;
+  /** Exact number of effects expected for this step. */
+  effects: number;
+}
+export type ScenarioKind = 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window';
+/** Generated tests are data, never code: they run in the same engine as live events. */
+export interface Scenario {
+  name: string;
+  kind: ScenarioKind;
+  steps: ScenarioStep[];
+}
+export const SCENARIO_LIMITS = Object.freeze({ minScenarios: 3, maxScenarios: 12, maxSteps: 24 });
+export * from './guide.js';

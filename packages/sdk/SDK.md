@@ -1,53 +1,66 @@
-# Riff SDK 0.2.0 — private preview contract
+# Riff SDK 0.3.0 — handler contract
 
-Compatibility: 0.1.0 had no executable capability API. Version 0.2.0 introduces the
-preview bridge; manifests must explicitly specify 0.2.0. Live execution is unavailable.
+Compatibility: 0.2.0 artifacts must be regenerated. 0.3.0 adds live execution, the
+`heart` asset, case-insensitive commands and declarative scenario tests.
 
-Source is a JavaScript handler expression `(event, riff) => void | Promise<void>`.
-This is the execution target for a future restricted TypeScript bundler. Imports,
-external module loading, ambient clocks, randomness, network and filesystem are
-unavailable. Invocation globals never survive the next event.
+## Handler
 
-`ChatEvent`: id, channelId, viewerId (nonempty strings <=100 chars), roles (viewer,
-subscriber, moderator, broadcaster), text (<=500 chars without control characters),
-at (ordered host observation milliseconds). Preview roles are explicitly synthetic;
-a live adapter must derive identity and roles from authenticated platform events.
+Source is ONE JavaScript function expression `(event, riff) => void | Promise<void>`.
+No imports, require, eval, Function, Date, Math.random, timers, network, filesystem or
+globalThis. Loops need explicit bounds. Every invocation starts from fresh globals and
+closures; nothing survives to the next event. The host has already checked the
+command, the audience and every allowance before the handler runs, so a handler only
+decides which effects to show.
 
-`PermissionManifest`: sdkVersion; capabilities (`overlay` only); trigger {command,
-audience, maxPerViewer, windowMs}; limits {effectsPerEvent, effectsPerMinute}.
-An exact trimmed command match is required. Audience matches any listed role.
-Rolling windows retain accepted actions where timestamp > now - windowMs; duplicate
-identities, irrelevant commands and blocked actions never spend viewer allowance.
-Each admitted handler with effects spends one action even if it emits multiple effects.
-Limits are host enforced even when the handler omits all checks.
+`event`: { id, channelId, viewerId, roles, text, at }. roles ⊆ viewer, subscriber,
+moderator, broadcaster; every chatter has `viewer`. text ≤ 500 chars.
 
-`riff.overlay.emit(effect): Promise<void>` stages a projectile with kind `projectile`,
-asset `tomato` or `star` and normalized x between 0 and 1. Example:
-`await riff.overlay.emit({kind:'projectile', asset:'tomato', x:0.5})`.
+`riff.overlay.emit(effect): Promise<void>` (capability `overlay`) stages one
+projectile: { kind: 'projectile', asset: 'tomato' | 'star' | 'heart', x } with x a
+finite number in [0, 1] (horizontal launch position). Example:
+`await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: riff.util.random() })`
 
-`riff.util.now(): number` returns event.at. Example: `const at = riff.util.now()`.
-`riff.util.random(): number` advances a seeded xorshift32 sequence in [0,1).
-Example: `const x = riff.util.random()`.
+`riff.util.now()` returns event.at. `riff.util.random()` is a seeded deterministic
+number in [0, 1).
 
-No state capability is enabled. Unsupported manifests fail closed. All effects are
-validated, staged and discarded on any invocation fault, including caught bridge
-rejections. Resource violations quarantine a preview; ordinary quota decisions do not.
-Call results are instrumented and observed, including detached async calls. Any
-observed rejection or pending promise quarantines the run, even if guest code
-catches it; this deliberately strict subset has no external async work. Reserved
-`__riff` bindings cannot occur in guest source. The host allows at most 256 observed
-call results and 100 pending jobs per invocation.
+Any thrown error, invalid effect, undeclared capability, too many effects, more than
+25 bridge calls, 50 ms CPU, 2 s wall time or 64 MB memory quarantines the version and
+discards every effect from that event.
 
-Each preview is limited to 256 unique event identities; start a new isolated session
-when full. Preview output carries mode `preview` and cannot address a live sink.
+## Permission manifest
 
-Artifact identity hashes parsed source/manifest, policy version and resource ceilings.
-Replay also requires the seed and ordered original events, including role observations.
-The runtime has a 64 MB QuickJS heap, 50 ms worker CPU budget checked by the interrupt handler, 2 s supervisor wall
-deadline, 25 bridge calls, 10 effects/event hard ceiling and 120 effects/minute hard
-ceiling per isolated preview channel. Worker CPU is measured with Node
-[threadCpuUsage](https://nodejs.org/docs/latest-v22.x/api/process.html#processthreadcpuusagepreviousvalue),
-excluding trusted runtime setup; the parent supervisor independently bounds handler wall time. Trusted worker/WASM
-startup has a separate 10-second limit and must send readiness before the two-second
-handler wall clock begins. Startup failure still quarantines that preview. No durable live or cross-automation budget exists
-in this increment. Admission and dispatch are serialized within each engine.
+{
+  sdkVersion: '0.3.0',
+  capabilities: ['overlay'],              // exactly the capabilities the source uses
+  trigger: {
+    command: '!tomato',                   // lowercase, ^![a-z0-9_-]{1,32}$
+    audience: ['viewer'],                 // any listed role may trigger; viewer = everyone
+    maxPerViewer: 3,                      // 1..100 accepted actions per viewer ...
+    windowMs: 60000                       // ... in any rolling window, 1000..3600000 ms
+  },
+  limits: { effectsPerEvent: 1, effectsPerMinute: 60 }   // 1..10 and 1..120
+}
+
+## Host admission order (scenario expectations must follow it exactly)
+
+For each event the host returns exactly one decision code:
+1. DUPLICATE — the same event id was already seen in this scenario (0 effects).
+2. UNRELATED — text.trim().toLowerCase() !== command (0 effects). "!tomatoes" and
+   "hi !tomato" are UNRELATED; "  !TOMATO " matches.
+3. AUDIENCE — none of the event roles is listed in trigger.audience (0 effects).
+4. VIEWER_LIMIT — this viewer already has maxPerViewer accepted actions with
+   time > at - windowMs (0 effects). Only ACCEPTED events that emitted at least one
+   effect count. An action at t=0 with windowMs=60000 stops counting at t=60000.
+5. CHANNEL_LIMIT — the effects emitted in the last 60 s reached effectsPerMinute.
+6. ACCEPTED — the handler ran; the step's effects count is the number it emitted.
+
+## Scenario tests (data, not code)
+
+Tests are an array of 3..12 scenarios. Each scenario runs in a fresh engine:
+{ name, kind: 'happy'|'limit'|'role'|'negative'|'duplicate'|'window', steps: [
+  { id, viewer, roles, text, at, expect, effects } ] }
+- id: unique per message unless deliberately repeated to model a duplicate delivery.
+- viewer: lowercase synthetic name like "alice". at: ms since scenario start, never
+  decreasing. expect: a decision code above. effects: exact number expected.
+Required coverage: at least one happy path, one limit/role/window edge, and one
+negative (unrelated chat does nothing).

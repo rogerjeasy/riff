@@ -17,6 +17,25 @@ export function instrumentHandler(source: string): string {
     ts.forEachChild(node, check);
   }
   check(original);
+  // The artifact must be exactly one function expression; reject statement smuggling
+  // such as `x => x); other(` that would run code outside the handler.
+  const wrapped = ts.createSourceFile(
+    'wrapped.js',
+    `(${source})`,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const only = wrapped.statements.length === 1 ? wrapped.statements[0] : undefined;
+  const inner =
+    only && ts.isExpressionStatement(only) && ts.isParenthesizedExpression(only.expression)
+      ? only.expression.expression
+      : undefined;
+  if (
+    !inner ||
+    !(ts.isArrowFunction(inner) || ts.isFunctionExpression(inner) || ts.isCallExpression(inner))
+  )
+    throw new Error('Handler must be a single function expression');
   const result = ts.transpileModule(`const __riffHandler = (${source});`, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
     reportDiagnostics: true,
