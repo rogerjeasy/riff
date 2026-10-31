@@ -190,3 +190,137 @@ describe('round journal audit', () => {
     expect((await replay(battle, [prefilled, ...entries.slice(1)], state)).status).toBe('diverged');
   });
 });
+
+it('audits a migration from the original definition and rejects changed migration artifacts', async () => {
+  const next = {
+    ...battle,
+    contribution: { ...battle.contribution, command: '!splat' },
+    resource: { ...battle.resource, perParticipant: 5 },
+  };
+  const { entries, state } = await record(battle, [
+    { chat: '!red', viewer: 'alice', at: 2000 },
+    { chat: '!throw', viewer: 'alice', at: 3000 },
+  ]);
+  const source = `(input) => { const s=JSON.parse(JSON.stringify(input.snapshot)); for(const p of Object.values(s.participants))p.remaining+=2; return s; }`;
+  const plan = {
+    version: 1 as const,
+    sourceArtifactId: host.artifactIdentity(artifact(battle)),
+    targetArtifactId: host.artifactIdentity(artifact(next)),
+    sourceDefinitionHash: host.sessionDefinitionHash(battle),
+    targetDefinitionHash: host.sessionDefinitionHash(next),
+    migrationSourceHash: host.migrationSourceHash(source),
+    boundary: 'immediate' as const,
+    preserve: [
+      'identity',
+      'participants',
+      'teams',
+      'scores',
+      'contributions',
+      'phase',
+      'time',
+    ] as const,
+    resets: [] as const,
+  };
+  const migrated = await host.runSessionMigration(source, {
+    oldDefinition: battle,
+    newDefinition: next,
+    snapshot: state,
+    at: 4000,
+  });
+  const journal = [
+    ...entries,
+    {
+      seq: 4,
+      kind: 'migration' as const,
+      at: 4000,
+      versionId: 'v2',
+      digest: host.sessionDigest(migrated),
+      oldDefinition: battle,
+      newDefinition: next,
+      plan,
+      source,
+    },
+  ];
+  const audit = await host.replaySessionJournal({
+    definition: next,
+    entries: journal,
+    expected: migrated,
+    artifactFor: (id) => artifact(id === 'v1' ? battle : next),
+  });
+  expect(audit.status).toBe('verified');
+  expect(audit.replayed?.participants.alice).toMatchObject({ remaining: 4, contributions: 1 });
+  const corrupt = journal.map((e) =>
+    e.kind === 'migration' ? { ...e, source: '(input) => input.snapshot' } : e,
+  );
+  expect(
+    (
+      await host.replaySessionJournal({
+        definition: next,
+        entries: corrupt,
+        expected: migrated,
+        artifactFor: (id) => artifact(id === 'v1' ? battle : next),
+      })
+    ).status,
+  ).toBe('diverged');
+});
+
+it('audits random-dependent accepted decisions using the live session seed and per-event seed', async () => {
+  const randomArtifact = {
+    ...artifact(goal),
+    source: `async (e,riff)=>{if(riff.util.random()<0.5)throw new Error('choice');}`,
+  };
+  const state = host.createSessionSnapshot(goal, 1000, 'random-round');
+  const live = host.createEngine(randomArtifact, {
+    seed: host.sessionSeed(state.id),
+    mode: 'live',
+    session: state,
+  });
+  const entries: host.JournalEntry[] = [
+    {
+      seq: 1,
+      kind: 'start',
+      at: 1000,
+      versionId: 'v1',
+      snapshot: state,
+      digest: host.sessionDigest(state),
+    },
+  ];
+  let expected = state;
+  try {
+    for (let i = 0; i < 3; i++) {
+      const event = {
+        id: `random-${i}`,
+        channelId: 'c',
+        viewerId: `v${i}`,
+        roles: ['viewer' as const],
+        text: '!grow',
+        at: 2000 + i,
+      };
+      const decision = await live.dispatch(event);
+      if (decision.code === 'INCIDENT') break;
+      expected = live.session!;
+      entries.push({
+        seq: entries.length + 1,
+        kind: 'chat',
+        at: event.at,
+        versionId: 'v1',
+        event,
+        code: decision.code,
+        digest: host.sessionDigest(expected),
+      });
+    }
+    expect(entries.length).toBeGreaterThan(1);
+    expect(
+      (
+        await host.replaySessionJournal({
+          definition: goal,
+          entries,
+          expected,
+          artifactFor: () => randomArtifact,
+        })
+      ).status,
+    ).toBe('verified');
+  } finally {
+    live.stop();
+  }
+});

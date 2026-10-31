@@ -1,10 +1,11 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   advanceSession,
   createSessionSnapshot,
   pauseSession,
   replaySessionJournal,
   resumeSession,
+  sessionSeed,
   sessionDefinitionSchema,
   sessionSnapshotSchema,
   type ExecutionEngine,
@@ -29,9 +30,7 @@ export const experienceOf = (version: VersionRow) => {
 const sameDefinition = (a: ExperienceDefinition, b: ExperienceDefinition) =>
   JSON.stringify(sessionDefinitionSchema.parse(a)) ===
   JSON.stringify(sessionDefinitionSchema.parse(b));
-export function sessionSeed(id: string) {
-  return createHash('sha256').update(id).digest().readUInt32LE() || 1;
-}
+export { sessionSeed };
 
 /** Durable semantic state. No guest work or external effects run in a transaction. */
 export function createSessionControl(deps: {

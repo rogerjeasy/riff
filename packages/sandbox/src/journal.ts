@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
-import type { ChatEvent, DecisionCode, ExperienceDefinition, SessionSnapshot } from '@riff/sdk';
-import { createEngine, type ExecutionEngine } from './engine.js';
+import type {
+  ChatEvent,
+  DecisionCode,
+  ExperienceDefinition,
+  SessionSnapshot,
+  SessionTransitionPlan,
+} from '@riff/sdk';
+import { artifactIdentity, createEngine, type ExecutionEngine } from './engine.js';
 import {
   advanceSession,
   createSessionSnapshot,
@@ -9,6 +15,13 @@ import {
   sessionDefinitionSchema,
   validateSessionSnapshot,
 } from './session.js';
+
+import {
+  migrationSourceHash,
+  runSessionMigration,
+  sessionDefinitionHash,
+  sessionTransitionPlanSchema,
+} from './transition.js';
 
 /** Host transitions that change a round without chat input. */
 export type ControlTransition = 'pause' | 'resume' | 'advance';
@@ -19,7 +32,14 @@ export type ControlTransition = 'pause' | 'resume' | 'advance';
  * transition that does not reproduce.
  */
 export type JournalEntry = { seq: number; at: number; versionId: string; digest: string } & (
-  | { kind: 'start'; snapshot: SessionSnapshot }
+  | { kind: 'start'; snapshot: SessionSnapshot; definition?: ExperienceDefinition }
+  | {
+      kind: 'migration';
+      oldDefinition: ExperienceDefinition;
+      newDefinition: ExperienceDefinition;
+      source: string;
+      plan: SessionTransitionPlan;
+    }
   | { kind: 'chat'; event: ChatEvent; code: DecisionCode }
   | { kind: ControlTransition }
 );
@@ -61,6 +81,11 @@ export function sessionDigest(snapshot: SessionSnapshot): string {
     .slice(0, 16);
 }
 
+/** Stable round seed shared by live execution and audit. Example: sessionSeed(snapshot.id). */
+export function sessionSeed(id: string): number {
+  return createHash('sha256').update(id).digest().readUInt32LE() || 1;
+}
+
 /** Name the pure host function that turns `before` into `after`. */
 export function classifyTransition(
   before: SessionSnapshot,
@@ -84,7 +109,13 @@ export async function replaySessionJournal(input: {
   signal?: AbortSignal;
 }): Promise<SessionAudit> {
   const started = performance.now();
-  const definition = sessionDefinitionSchema.parse(input.definition);
+  const original = input.entries[0];
+  const firstMigration = input.entries.find((e) => e.kind === 'migration');
+  let definition = sessionDefinitionSchema.parse(
+    (original?.kind === 'start' ? original.definition : undefined) ??
+      firstMigration?.oldDefinition ??
+      input.definition,
+  );
   const counts = { joins: 0, contributions: 0, rejections: 0, controls: 0 };
   const result = (
     status: SessionAudit['status'],
@@ -138,12 +169,41 @@ export async function replaySessionJournal(input: {
         state = fresh;
       } else if (!state) {
         return fail('a round start', entry.kind);
+      } else if (entry.kind === 'migration') {
+        const artifact = input.artifactFor(entry.versionId);
+        const prior = input.artifactFor(
+          input.entries[input.entries.indexOf(entry) - 1]?.versionId ?? '',
+        );
+        if (!artifact || !prior)
+          return result('unavailable', 'A required migration version is unavailable.', state);
+        try {
+          const plan = sessionTransitionPlanSchema.parse(entry.plan);
+          if (
+            sessionDefinitionHash(definition) !== sessionDefinitionHash(entry.oldDefinition) ||
+            plan.sourceDefinitionHash !== sessionDefinitionHash(definition) ||
+            plan.targetDefinitionHash !== sessionDefinitionHash(entry.newDefinition) ||
+            plan.migrationSourceHash !== migrationSourceHash(entry.source) ||
+            plan.sourceArtifactId !== artifactIdentity(prior) ||
+            plan.targetArtifactId !== artifactIdentity(artifact)
+          )
+            return fail('verified migration artifacts', 'changed migration artifacts');
+          state = await runSessionMigration(entry.source, {
+            oldDefinition: definition,
+            newDefinition: entry.newDefinition,
+            snapshot: state,
+            at: entry.at,
+          });
+          definition = sessionDefinitionSchema.parse(entry.newDefinition);
+          counts.controls++;
+        } catch {
+          return fail('valid preserving migration', 'invalid migration');
+        }
       } else if (entry.kind === 'chat') {
         let engine = engines.get(entry.versionId);
         if (!engine) {
           const artifact = input.artifactFor(entry.versionId);
           if (!artifact) return fail(`version ${entry.versionId}`, 'a missing version');
-          engine = createEngine(artifact, { seed: 1, mode: 'preview' });
+          engine = createEngine(artifact, { seed: sessionSeed(state.id), mode: 'preview' });
           engines.set(entry.versionId, engine);
         }
         engine.restoreSession(state);

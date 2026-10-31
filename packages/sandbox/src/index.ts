@@ -48,6 +48,7 @@ export {
   classifyTransition,
   replaySessionJournal,
   sessionDigest,
+  sessionSeed,
   type ControlTransition,
   type JournalEntry,
   type SessionAudit,
