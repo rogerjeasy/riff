@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import type { Activity, Automation, Studio, Version } from '../../lib/types.js';
+import { SessionHud } from '../sessions/session-hud.js';
+import { sameDefinition } from '../../sessions/presentation.js';
 import { ago, audienceLabel, formatWindow, tone } from '../format.js';
 
 const STATUS_LABEL: Record<Automation['status'], string> = {
@@ -17,6 +19,8 @@ export function LivePanel(props: {
   notify: (message: string, kind?: 'good' | 'bad') => void;
 }) {
   const { studio } = props;
+  const [confirmReset, setConfirmReset] = useState<string | null>(null);
+  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
   const act = async (fn: () => Promise<unknown>, success: string) => {
     try {
       await fn();
@@ -48,6 +52,17 @@ export function LivePanel(props: {
             const active = automation.versions.find((v) => v.id === automation.activeVersionId);
             const shown = active ?? automation.versions[0];
             const t = shown?.manifest.trigger;
+            const previous = automation.versions.find(
+              (v) =>
+                v.id !== active?.id &&
+                v.approvedAt !== null &&
+                (v.status === 'superseded' || v.status === 'approved'),
+            );
+            const rollbackNeedsReset = Boolean(
+              automation.session &&
+              previous &&
+              !sameDefinition(active?.manifest.experience, previous.manifest.experience),
+            );
             const quarantined = active?.status === 'quarantined';
             return (
               <li
@@ -68,11 +83,17 @@ export function LivePanel(props: {
                     {active ? ` · v${active.number}` : ''}
                   </span>
                 </div>
-                {t && (
+                {t && !shown?.manifest.experience && (
                   <p className="instruction">
                     Type <b>{t.command}</b> · {audienceLabel(t.audience)} · {t.maxPerViewer} per{' '}
                     {formatWindow(t.windowMs)}
                   </p>
+                )}
+                {automation.session && active?.manifest.experience && (
+                  <SessionHud
+                    definition={active.manifest.experience}
+                    snapshot={automation.session}
+                  />
                 )}
                 <div className="row-actions">
                   {automation.status === 'live' && (
@@ -107,14 +128,26 @@ export function LivePanel(props: {
                     <button
                       type="button"
                       className="button small ghost"
-                      onClick={() =>
-                        void act(
-                          () => api.automation(automation.id, 'rollback'),
-                          'Rolled back to the previous approved version.',
-                        )
-                      }
+                      onClick={() => {
+                        if (rollbackNeedsReset) setConfirmRollback(automation.id);
+                        else
+                          void act(
+                            () => api.automation(automation.id, 'rollback'),
+                            'Rolled back to the previous approved version.',
+                          );
+                      }}
                     >
                       Roll back
+                    </button>
+                  )}
+                  {automation.session && (
+                    <button
+                      type="button"
+                      className="button small ghost"
+                      onClick={() => setConfirmReset(automation.id)}
+                      disabled={studio.panic}
+                    >
+                      Reset session…
                     </button>
                   )}
                   {shown && (
@@ -127,6 +160,70 @@ export function LivePanel(props: {
                     </button>
                   )}
                 </div>
+                {confirmReset === automation.id && (
+                  <div
+                    className="session-reset-confirm"
+                    role="group"
+                    aria-label="Confirm session reset"
+                  >
+                    <p>
+                      Reset this session? Current scores, participant resources and progress will be
+                      cleared. A new round starts.
+                    </p>
+                    <button
+                      type="button"
+                      className="button small"
+                      onClick={() => {
+                        setConfirmReset(null);
+                        void act(
+                          () => api.resetSession(automation.id),
+                          'Session reset. A new round has started.',
+                        );
+                      }}
+                    >
+                      Confirm reset session
+                    </button>
+                    <button
+                      type="button"
+                      className="button small ghost"
+                      onClick={() => setConfirmReset(null)}
+                    >
+                      Cancel reset
+                    </button>
+                  </div>
+                )}
+                {confirmRollback === automation.id && (
+                  <div
+                    className="session-reset-confirm"
+                    role="group"
+                    aria-label="Confirm rollback reset"
+                  >
+                    <p>
+                      The previous version has different round rules. Rolling back requires
+                      resetting current progress, scores and resources.
+                    </p>
+                    <button
+                      type="button"
+                      className="button small"
+                      onClick={() => {
+                        setConfirmRollback(null);
+                        void act(
+                          () => api.automation(automation.id, 'rollback', true),
+                          'Rolled back and reset session progress.',
+                        );
+                      }}
+                    >
+                      Reset progress and roll back
+                    </button>
+                    <button
+                      type="button"
+                      className="button small ghost"
+                      onClick={() => setConfirmRollback(null)}
+                    >
+                      Cancel rollback
+                    </button>
+                  </div>
+                )}
                 <ol className="history" aria-label={`${automation.title} versions`}>
                   {automation.versions
                     .filter((v) => v.status !== 'discarded')

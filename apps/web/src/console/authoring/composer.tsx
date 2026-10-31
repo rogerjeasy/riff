@@ -3,6 +3,14 @@ import type { Run, Version } from '../../lib/types.js';
 
 const EXAMPLES = [
   {
+    label: 'Tomato Battle',
+    text: 'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
+  },
+  {
+    label: 'Community Goal',
+    text: 'Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.',
+  },
+  {
     label: 'Tomato Toss',
     text: 'Let viewers throw tomatoes with !tomato, limited to three throws per person in any rolling 60 seconds.',
   },

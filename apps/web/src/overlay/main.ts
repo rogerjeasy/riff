@@ -1,42 +1,11 @@
-import { z } from 'zod';
+import { overlayMessageSchema } from './messages.js';
+import { createSessionHud } from '../sessions/presentation.js';
+import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import { clearStage, launch, type Asset } from '../effects/projectile.js';
 import './overlay.css';
 
 // The overlay is a read-only consumer: it validates every message, ignores unknown
 // types, never sends commands and clears itself when the server goes quiet.
-const message = z.discriminatedUnion('type', [
-  z.object({
-    v: z.literal(1),
-    type: z.literal('hello'),
-    payload: z.object({ channel: z.string() }),
-  }),
-  z.object({
-    v: z.literal(1),
-    type: z.literal('heartbeat'),
-    payload: z.object({ at: z.number() }),
-  }),
-  z.object({
-    v: z.literal(1),
-    type: z.literal('effect'),
-    payload: z.object({
-      id: z.string(),
-      asset: z.enum(['tomato', 'star', 'heart']),
-      x: z.number().min(0).max(1),
-      viewer: z.string().max(100).nullable(),
-    }),
-  }),
-  z.object({
-    v: z.literal(1),
-    type: z.literal('instructions'),
-    payload: z.object({ lines: z.array(z.string().max(200)).max(4) }),
-  }),
-  z.object({
-    v: z.literal(1),
-    type: z.literal('clear'),
-    payload: z.object({ reason: z.string() }),
-  }),
-  z.object({ v: z.literal(1), type: z.literal('test'), payload: z.object({ at: z.number() }) }),
-]);
 
 const root = document.getElementById('overlay-root') as HTMLElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -54,6 +23,25 @@ const reducedMotion =
   params.get('motion') === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 let retry = 0;
+const sessionsRoot = document.createElement('div');
+sessionsRoot.className = 'overlay-sessions';
+root.append(sessionsRoot);
+let sessions: { definition: ExperienceDefinition; snapshot: SessionSnapshot }[] = [];
+function renderSessions() {
+  sessionsRoot.replaceChildren(
+    ...sessions.map((session) =>
+      createSessionHud(session.definition, session.snapshot, { now: Date.now() }),
+    ),
+  );
+}
+setInterval(renderSessions, 1000);
+function clearOverlay() {
+  clearStage(stage);
+  setInstructions([]);
+  sessions = [];
+  sessionsRoot.replaceChildren();
+  notice.hidden = true;
+}
 
 function setInstructions(lines: string[]) {
   instructions.replaceChildren(
@@ -79,8 +67,7 @@ function armWatchdog() {
   clearTimeout(watchdog);
   // No heartbeat for 5 s: the server may be gone; never leave stale effects on air.
   watchdog = setTimeout(() => {
-    clearStage(stage);
-    setInstructions([]);
+    clearOverlay();
     root.dataset.mode = 'disconnected';
   }, 5000);
 }
@@ -96,7 +83,7 @@ function connect() {
   socket.onmessage = (event) => {
     let parsed;
     try {
-      parsed = message.safeParse(JSON.parse(String(event.data)));
+      parsed = overlayMessageSchema.safeParse(JSON.parse(String(event.data)));
     } catch {
       return;
     }
@@ -115,10 +102,15 @@ function connect() {
         reducedMotion,
       });
     } else if (data.type === 'instructions') setInstructions(data.payload.lines);
-    else if (data.type === 'clear') clearStage(stage);
+    else if (data.type === 'sessions') {
+      sessions = data.payload.sessions;
+      renderSessions();
+    } else if (data.type === 'clear') clearOverlay();
     else if (data.type === 'test') flash('✓ Riff overlay connected');
   };
   socket.onclose = (event) => {
+    clearTimeout(watchdog);
+    clearOverlay();
     root.dataset.mode = event.code === 4001 ? 'unauthorized' : 'reconnecting';
     if (event.code === 4001) return; // rotated or wrong key: stop until the URL changes
     retry = Math.min(retry + 1, 6);

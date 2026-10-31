@@ -12,7 +12,41 @@ export type DecisionCode =
   | 'INCIDENT'
   | 'DISABLED'
   | 'CAPACITY'
-  | 'STOPPED';
+  | 'STOPPED'
+  | 'NOT_JOINED'
+  | 'RESOURCE_LIMIT'
+  | 'SESSION_PAUSED'
+  | 'SESSION_FINISHED'
+  | 'ALREADY_JOINED'
+  | 'PARTICIPANT_LIMIT';
+export interface ExperienceDefinition {
+  version: 1;
+  title: string;
+  durationMs: number;
+  maxParticipants: number;
+  teams: { id: string; label: string; joinCommand: string }[];
+  resource: { name: string; perParticipant: number };
+  contribution: { command: string; points: number };
+  objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+}
+export interface SessionParticipant {
+  teamId: string | null;
+  remaining: number;
+  contributions: number;
+}
+export interface SessionSnapshot {
+  id: string;
+  phase: 'running' | 'paused' | 'finished';
+  startedAt: number;
+  deadlineAt: number | null;
+  remainingMs: number;
+  updatedAt: number;
+  revision: number;
+  participants: Record<string, SessionParticipant>;
+  scores: Record<string, number>;
+  winner: string | null;
+  outcome: 'deadline' | 'goal' | null;
+}
 export interface Effect {
   kind: 'projectile';
   asset: Asset;
@@ -34,8 +68,10 @@ export interface Decision {
   viewerId: string | null;
   at: number | null;
   allowance: Allowance | null;
+  session?: SessionSnapshot;
 }
 export interface Manifest {
+  experience?: ExperienceDefinition | null;
   sdkVersion: string;
   capabilities: string[];
   trigger: { command: string; audience: Role[]; maxPerViewer: number; windowMs: number };
@@ -48,7 +84,18 @@ export interface Stage {
   durationMs: number;
   summary: string;
 }
+export interface SessionAssertion {
+  phase?: SessionSnapshot['phase'];
+  scores?: Record<string, number>;
+  remainingMs?: number;
+  participants?: Record<
+    string,
+    { teamId?: string | null; remaining?: number; contributions?: number }
+  >;
+}
 export interface StepResult {
+  session?: SessionSnapshot;
+  expectSession?: SessionAssertion;
   id: string;
   viewer: string;
   roles: Role[];
@@ -134,6 +181,7 @@ export interface Automation {
   updatedAt: number;
   versions: Version[];
   canRollback: boolean;
+  session: SessionSnapshot | null;
 }
 export interface Activity {
   id: number;
@@ -209,5 +257,6 @@ export interface PreviewResult {
   artifactId: string;
   seed: number;
   decisions: Decision[];
+  session?: SessionSnapshot;
   durationMs: number;
 }

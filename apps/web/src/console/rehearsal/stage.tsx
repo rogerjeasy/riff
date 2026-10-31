@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import { clearStage, launch } from '../../effects/projectile.js';
 import type { Decision, PreviewResult, Role, Version } from '../../lib/types.js';
+import { SessionHud } from '../sessions/session-hud.js';
 import { CODE_LABEL, explain, formatClock, formatDuration, shortHash, tone } from '../format.js';
 
 interface Persona {
@@ -47,6 +48,8 @@ export function Rehearsal(props: {
   const request = useRef<AbortController | null>(null);
   const sequence = useRef(0);
   const shown = useRef(0);
+  const definition = version?.manifest.experience;
+  const session = result?.session ?? result?.decisions.at(-1)?.session;
   const command = version?.manifest.trigger.command ?? '!tomato';
 
   const reset = useCallback(() => {
@@ -131,22 +134,55 @@ export function Rehearsal(props: {
     const outsider = PERSONAS.find((p) => !p.roles.some((r) => t.audience.includes(r)));
     const steps: { who: Persona; text: string; at: number; dup?: boolean }[] = [];
     let at = 0;
-    for (let i = 0; i < Math.min(t.maxPerViewer, 6) + 1; i++)
-      steps.push({ who: eligible, text: command, at: (at += 400) });
-    if (second !== eligible) steps.push({ who: second, text: command, at: (at += 400) });
-    steps.push({ who: eligible, text: command, at: (at += 10), dup: true });
-    steps.push({ who: second, text: 'hello chat!', at: (at += 400) });
-    if (outsider) steps.push({ who: outsider, text: command, at: (at += 400) });
-    // The first accepted action stops counting exactly one window after it happened.
-    steps.push({
-      who: eligible,
-      text: command,
-      at: Math.max(at + 1, (steps[0]?.at ?? 0) + t.windowMs),
-    });
+    if (definition) {
+      const firstTeam = definition.teams[0];
+      const secondTeam = definition.teams[1] ?? firstTeam;
+      if (firstTeam) steps.push({ who: eligible, text: firstTeam.joinCommand, at: 0 });
+      if (secondTeam && second !== eligible)
+        steps.push({ who: second, text: secondTeam.joinCommand, at: 0 });
+      for (let i = 0; i <= Math.min(definition.resource.perParticipant, 100); i++)
+        steps.push({
+          who: eligible,
+          text: command,
+          at: Math.min((at += 100), definition.durationMs - 1),
+        });
+      if (second !== eligible)
+        steps.push({
+          who: second,
+          text: command,
+          at: Math.min((at += 100), definition.durationMs - 1),
+        });
+      steps.push({
+        who: eligible,
+        text: command,
+        at: Math.min(at + 1, definition.durationMs - 1),
+        dup: true,
+      });
+      if (outsider)
+        steps.push({
+          who: outsider,
+          text: firstTeam?.joinCommand ?? command,
+          at: Math.min(at + 1, definition.durationMs - 1),
+        });
+      steps.push({ who: eligible, text: command, at: definition.durationMs });
+    } else {
+      for (let i = 0; i < Math.min(t.maxPerViewer, 6) + 1; i++)
+        steps.push({ who: eligible, text: command, at: (at += 400) });
+      if (second !== eligible) steps.push({ who: second, text: command, at: (at += 400) });
+      steps.push({ who: eligible, text: command, at: (at += 10), dup: true });
+      steps.push({ who: second, text: 'hello chat!', at: (at += 400) });
+      if (outsider) steps.push({ who: outsider, text: command, at: (at += 400) });
+      // The first accepted action stops counting exactly one window after it happened.
+      steps.push({
+        who: eligible,
+        text: command,
+        at: Math.max(at + 1, (steps[0]?.at ?? 0) + t.windowMs),
+      });
+    }
     let list: RehearsalEvent[] = [];
     for (const step of steps) {
       if (sequence.current !== run) return;
-      const dupId = step.dup ? list[0]?.id : undefined;
+      const dupId = step.dup ? list.find((event) => event.text === command)?.id : undefined;
       list = [
         ...list,
         {
@@ -220,15 +256,61 @@ export function Rehearsal(props: {
         </div>
       </div>
 
+      {definition && session && (
+        <SessionHud definition={definition} snapshot={session} now={clock} viewerId={persona.id} />
+      )}
+      {definition && (
+        <div className="rehearsal-actions" role="group" aria-label="Session participation">
+          {definition.teams.map((team) => (
+            <button
+              key={team.id}
+              type="button"
+              className="button small"
+              disabled={disabled || events.length >= 120}
+              onClick={() => send(persona, team.joinCommand)}
+            >
+              Join {team.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="button small"
+            disabled={disabled || events.length >= 120}
+            onClick={() => send(persona, command)}
+          >
+            Contribute {command}
+          </button>
+          <button
+            type="button"
+            className="button small ghost"
+            disabled={disabled || events.length >= 120}
+            onClick={() => {
+              const deadline = session?.deadlineAt ?? definition.durationMs;
+              setClock(deadline);
+              send(persona, 'rehearsal clock advance', deadline);
+            }}
+          >
+            Advance to deadline
+          </button>
+          <p className="note">Synthetic viewers and clock · resources last for the whole round.</p>
+        </div>
+      )}
       <div className="personas" role="group" aria-label="Synthetic viewers">
         {PERSONAS.map((p) => {
           const d = allowances.get(p.id);
-          const max = version?.manifest.trigger.maxPerViewer ?? 3;
-          const used = d?.allowance
-            ? d.allowance.nextAt !== null && d.allowance.nextAt <= clock
-              ? 0
-              : d.allowance.used
-            : 0;
+          const max =
+            definition?.resource.perParticipant ?? version?.manifest.trigger.maxPerViewer ?? 3;
+          const participant =
+            session && Object.hasOwn(session.participants, p.id)
+              ? session.participants[p.id]
+              : undefined;
+          const used = definition
+            ? max - (participant?.remaining ?? max)
+            : d?.allowance
+              ? d.allowance.nextAt !== null && d.allowance.nextAt <= clock
+                ? 0
+                : d.allowance.used
+              : 0;
           const eligible = version
             ? p.roles.some((r) => version.manifest.trigger.audience.includes(r))
             : true;
@@ -301,8 +383,12 @@ export function Rehearsal(props: {
         <button
           type="button"
           className="button small ghost"
-          onClick={() => setClock((c) => c + 10_000)}
-          disabled={!version || playing}
+          onClick={() => {
+            const at = clock + 10_000;
+            setClock(at);
+            if (definition) send(persona, 'rehearsal clock advance', at);
+          }}
+          disabled={disabled || events.length >= 120}
         >
           +10 s
         </button>
@@ -310,6 +396,7 @@ export function Rehearsal(props: {
           type="button"
           className="button small ghost"
           onClick={() => setClock((c) => c + (version?.manifest.trigger.windowMs ?? 60_000))}
+          hidden={Boolean(definition)}
           disabled={!version || playing}
         >
           Skip {formatDuration(version?.manifest.trigger.windowMs ?? 60_000)}
@@ -352,12 +439,24 @@ export function Rehearsal(props: {
                 data-testid="decision"
                 data-tone={tone(decision.code)}
               >
-                <span className={`badge ${tone(decision.code)}`}>{CODE_LABEL[decision.code]}</span>
+                <span className={`badge ${tone(decision.code)}`}>
+                  {decision.code === 'ACCEPTED' && definition
+                    ? 'Accepted'
+                    : CODE_LABEL[decision.code]}
+                </span>
                 <span>
                   {version
                     ? explain(decision, event?.text ?? '', who, version.manifest)
                     : decision.reason}
                 </span>
+                {decision.session && (
+                  <span className="session-evidence">
+                    {decision.session.phase} · revision {decision.session.revision} ·{' '}
+                    {Object.entries(decision.session.scores)
+                      .map(([team, score]) => `${team}: ${score}`)
+                      .join(', ')}
+                  </span>
+                )}
                 <span className="mono muted">{formatClock(event?.at ?? 0)}</span>
               </li>
             );

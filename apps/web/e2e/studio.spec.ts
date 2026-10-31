@@ -80,3 +80,74 @@ test('dock keeps the stop control reachable at OBS dock width', async ({ page })
   await expect(page.getByRole('button', { name: /Stop everything|Resume/ })).toBeVisible();
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
+
+test('offline stateful examples rehearse shared scores, resources, deadline and collective goal', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.getByLabel('Describe the interaction in one or two sentences')).toBeVisible();
+  const newIdea = page.getByRole('button', { name: 'New idea', exact: true });
+  if (await newIdea.isVisible()) await newIdea.click();
+  await page.getByRole('button', { name: 'Tomato Battle', exact: true }).click();
+  await page.getByRole('button', { name: /^Generate/ }).click();
+  await expect(page.getByRole('heading', { name: 'Tomato Battle v1' })).toBeVisible({
+    timeout: 30000,
+  });
+  await expect(page.getByText(/offline template compiler/).first()).toBeVisible();
+  const rehearsal = page.getByRole('region', { name: /Rehearse “Tomato Battle”/ });
+  await rehearsal.getByRole('button', { name: 'Join Red' }).click();
+  await expect(rehearsal.getByTestId('decision')).toHaveCount(1);
+  for (let i = 0; i < 4; i++) {
+    await rehearsal.getByRole('button', { name: 'Contribute !throw' }).click();
+    await expect(rehearsal.getByTestId('decision')).toHaveCount(i + 2);
+  }
+  await expect(rehearsal.getByTestId('decision').first()).toContainText('Resources spent');
+  await expect(rehearsal.locator('.session-hud')).toContainText('Red: 3');
+  await expect(rehearsal.locator('.session-hud')).toContainText('0 of 3 throws left');
+  await rehearsal.getByRole('button', { name: /Bob/ }).click();
+  await rehearsal.getByRole('button', { name: 'Join Blue' }).click();
+  await expect(rehearsal.getByTestId('decision')).toHaveCount(6);
+  await rehearsal.getByRole('button', { name: 'Contribute !throw' }).click();
+  await expect(rehearsal.locator('.session-hud')).toContainText('Blue: 1');
+  await rehearsal.getByRole('button', { name: 'Redeliver last' }).click();
+  await expect(rehearsal.getByTestId('decision').first()).toContainText('Duplicate');
+  await expect(rehearsal.locator('.session-hud')).toContainText('Blue: 1');
+  await rehearsal.getByRole('button', { name: 'Advance to deadline' }).click();
+  await expect(rehearsal.locator('.session-hud')).toContainText('Finished');
+  await expect(rehearsal.locator('.session-hud')).toContainText('Red wins');
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+
+  await page.getByRole('button', { name: 'Approve v1 & go live' }).click();
+  const interaction = page
+    .locator('.interaction')
+    .filter({ has: page.getByRole('heading', { name: 'Tomato Battle', exact: true }) });
+  await expect(interaction.locator('.session-hud')).toContainText('Running');
+  await interaction.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(interaction.locator('.session-hud')).toContainText('Paused');
+  await interaction.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(interaction.locator('.session-hud')).toContainText('Running');
+  await interaction.getByRole('button', { name: 'Reset session…' }).click();
+  await expect(interaction.getByRole('group', { name: 'Confirm session reset' })).toBeVisible();
+  await interaction.getByRole('button', { name: 'Confirm reset session' }).click();
+  await expect(page.getByText('Session reset. A new round has started.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'New idea', exact: true }).click();
+  await page.getByRole('button', { name: 'Community Goal', exact: true }).click();
+  await page.getByRole('button', { name: /^Generate/ }).click();
+  await expect(page.getByRole('heading', { name: 'Community Goal v1' })).toBeVisible({
+    timeout: 30000,
+  });
+  const cooperative = page.getByRole('region', { name: /Rehearse “Community Goal”/ });
+  for (let i = 0; i < 3; i++) {
+    await cooperative.getByRole('button', { name: 'Contribute !grow' }).click();
+    await expect(cooperative.getByTestId('decision')).toHaveCount(i + 1);
+  }
+  await cooperative.getByRole('button', { name: /Bob/ }).click();
+  for (let i = 0; i < 2; i++) {
+    await cooperative.getByRole('button', { name: 'Contribute !grow' }).click();
+    await expect(cooperative.getByTestId('decision')).toHaveCount(i + 4);
+  }
+  await expect(cooperative.locator('.session-hud')).toContainText('Community: 5 / 5');
+  await expect(cooperative.locator('.session-hud')).toContainText('Goal reached');
+});

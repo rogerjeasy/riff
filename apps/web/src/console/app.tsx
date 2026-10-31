@@ -274,12 +274,13 @@ export function App() {
                 automation={automation}
                 panic={studio.panic}
                 previewed={previewed.has(selected.id)}
-                onApprove={async (version) => {
+                onApprove={async (version, resetSession) => {
                   try {
                     await api.approve(
                       version.id,
                       version.artifactId ?? '',
                       automation?.activeVersionId ?? null,
+                      resetSession,
                     );
                     notify(`Live! Viewers can now type ${version.manifest.trigger.command}.`);
                     await refresh();

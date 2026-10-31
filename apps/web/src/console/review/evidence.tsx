@@ -1,3 +1,4 @@
+import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
 import { CODE_LABEL, shortHash } from '../format.js';
@@ -14,7 +15,7 @@ export function Evidence(props: {
   version: Version;
   automation: Automation | undefined;
   panic: boolean;
-  onApprove: (version: Version) => Promise<void>;
+  onApprove: (version: Version, resetSession?: boolean) => Promise<void>;
   onDiscard: (version: Version) => Promise<void>;
   previewed: boolean;
 }) {
@@ -25,10 +26,18 @@ export function Evidence(props: {
   const passedScenarios = scenarios.filter((s) => s.passed).length;
   const widening = version.changes.filter((c) => c.authority === 'more');
   const [accepted, setAccepted] = useState(false);
+  const [resetConsent, setResetConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const active = props.automation?.versions.find((v) => v.id === props.automation?.activeVersionId);
   const isLive = version.status === 'active';
-  const approvable = version.blockers.length === 0 && (widening.length === 0 || accepted);
+  const needsReset = Boolean(
+    props.automation?.session &&
+    !sameDefinition(active?.manifest.experience, version.manifest.experience),
+  );
+  const approvable =
+    (!needsReset || resetConsent) &&
+    version.blockers.length === 0 &&
+    (widening.length === 0 || accepted);
 
   return (
     <section className="card evidence" aria-labelledby="evidence-heading">
@@ -232,6 +241,17 @@ export function Evidence(props: {
                 {widening.map((c) => c.label.toLowerCase()).join(', ')}.
               </label>
             )}
+            {needsReset && (
+              <label className="confirm">
+                <input
+                  type="checkbox"
+                  checked={resetConsent}
+                  onChange={(e) => setResetConsent(e.target.checked)}
+                />
+                I agree to reset session progress, scores and resources because this version changes
+                the round rules.
+              </label>
+            )}
             {!props.previewed && version.blockers.length === 0 && (
               <p className="note">Tip: rehearse it on the private stage before going live.</p>
             )}
@@ -243,7 +263,8 @@ export function Evidence(props: {
                 onClick={async () => {
                   setBusy(true);
                   try {
-                    await props.onApprove(version);
+                    if (needsReset) await props.onApprove(version, resetConsent);
+                    else await props.onApprove(version);
                   } finally {
                     setBusy(false);
                   }
@@ -311,9 +332,34 @@ function ScenarioList({ title, results }: { title: string; results: ScenarioResu
                       <td>
                         {CODE_LABEL[step.expect]}
                         {step.expectEffects === null ? ' (≥1)' : ` (${step.expectEffects})`}
+                        {step.expectSession && (
+                          <details>
+                            <summary>Expected session</summary>
+                            <pre aria-label="Expected session evidence">
+                              {JSON.stringify(step.expectSession, null, 2)}
+                            </pre>
+                          </details>
+                        )}
                       </td>
                       <td>
                         {CODE_LABEL[step.actual]} ({step.actualEffects})
+                        {step.session && (
+                          <details>
+                            <summary>{step.session.phase} · session evidence</summary>
+                            <pre aria-label="Actual session evidence">
+                              {JSON.stringify(
+                                {
+                                  phase: step.session.phase,
+                                  scores: step.session.scores,
+                                  remainingMs: step.session.remainingMs,
+                                  participants: step.session.participants,
+                                },
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          </details>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { experienceDefinitionSchema, sessionSnapshotSchema } from '../sessions/schemas.js';
 import type { PreviewResult, Run, Studio } from './types.js';
 
 /** Thrown with a user-safe message; never contains stack traces. */
@@ -18,7 +19,21 @@ const studioSchema = z
     panic: z.boolean(),
     automations: z.array(
       z
-        .object({ id: z.string(), versions: z.array(z.object({ id: z.string() }).passthrough()) })
+        .object({
+          id: z.string(),
+          session: sessionSnapshotSchema.nullable().default(null),
+          versions: z.array(
+            z
+              .object({
+                id: z.string(),
+                manifest: z
+                  .object({ experience: experienceDefinitionSchema.nullable().optional() })
+                  .passthrough()
+                  .optional(),
+              })
+              .passthrough(),
+          ),
+        })
         .passthrough(),
     ),
     activity: z.array(z.object({ id: z.number(), message: z.string() }).passthrough()),
@@ -29,6 +44,7 @@ const studioSchema = z
   .passthrough();
 const previewSchema = z.object({
   provenance: z.literal('synthetic'),
+  session: sessionSnapshotSchema.optional(),
   artifactId: z.string().regex(/^[a-f0-9]{64}$/),
   seed: z.number(),
   durationMs: z.number(),
@@ -37,6 +53,7 @@ const previewSchema = z.object({
       z
         .object({
           code: z.string(),
+          session: sessionSnapshotSchema.optional(),
           effects: z.array(
             z
               .object({ asset: z.enum(['tomato', 'star', 'heart']), x: z.number().min(0).max(1) })
@@ -97,11 +114,22 @@ export const api = {
       await request('POST', `/api/versions/${versionId}/preview`, { seed, events }, signal),
     ) as unknown as PreviewResult;
   },
-  approve: (versionId: string, artifactId: string, expectedActiveVersionId: string | null) =>
-    request('POST', `/api/versions/${versionId}/approve`, { artifactId, expectedActiveVersionId }),
+  approve: (
+    versionId: string,
+    artifactId: string,
+    expectedActiveVersionId: string | null,
+    resetSession = false,
+  ) =>
+    request('POST', `/api/versions/${versionId}/approve`, {
+      artifactId,
+      expectedActiveVersionId,
+      ...(resetSession ? { resetSession: true } : {}),
+    }),
   discard: (versionId: string) => request('POST', `/api/versions/${versionId}/discard`, {}),
-  automation: (id: string, action: 'pause' | 'resume' | 'rollback') =>
-    request('POST', `/api/automations/${id}/${action}`, {}),
+  automation: (id: string, action: 'pause' | 'resume' | 'rollback', resetSession = false) =>
+    request('POST', `/api/automations/${id}/${action}`, resetSession ? { resetSession: true } : {}),
+  resetSession: (id: string) =>
+    request('POST', `/api/automations/${id}/session/reset`, { confirm: true }),
   panic: () => request('POST', '/api/channel/panic', {}),
   resume: () => request('POST', '/api/channel/resume', { confirm: true }),
   overlay: () => request<{ url: string; connections: number }>('GET', '/api/overlay'),

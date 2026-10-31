@@ -45,6 +45,12 @@ export const CODE_LABEL: Record<DecisionCode, string> = {
   DISABLED: 'Quarantined',
   CAPACITY: 'Rehearsal full',
   STOPPED: 'Stopped',
+  NOT_JOINED: 'Join a team first',
+  RESOURCE_LIMIT: 'Resources spent',
+  SESSION_PAUSED: 'Round paused',
+  SESSION_FINISHED: 'Round finished',
+  ALREADY_JOINED: 'Already joined',
+  PARTICIPANT_LIMIT: 'Round full',
 };
 export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
   code === 'ACCEPTED' ||
@@ -72,6 +78,8 @@ export function explain(
   const asset = decision.effects[0]?.asset ?? 'effect';
   switch (decision.code) {
     case 'ACCEPTED':
+      if (manifest.experience)
+        return `${viewer}: ${decision.reason} ${decision.effects.length ? `${decision.effects.length} visual effect${decision.effects.length === 1 ? '' : 's'}.` : 'No visual effect.'}`;
       return `${viewer} typed ${t.command} — ${n === 1 ? `a ${asset} flies` : `${n} ${asset}s fly`}. ${a ? `${a.used} of ${a.max} used this ${formatWindow(t.windowMs)}.` : ''}`;
     case 'VIEWER_LIMIT':
       return `${viewer} already used ${t.maxPerViewer} of ${t.maxPerViewer} in the last ${formatWindow(t.windowMs)}${a?.nextAt != null && decision.at != null ? ` — next one in ${formatClock(a.nextAt - decision.at)}` : ''}. Nothing thrown; the interaction keeps running.`;
