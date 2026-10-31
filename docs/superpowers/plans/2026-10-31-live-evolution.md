@@ -28,6 +28,7 @@
 
 Files: SDK types/guide, sandbox transition.ts, migration-worker.ts, index.ts, transition tests.
 Produces: exported transition schema, classification, immutable transition identity, async migration runner and independent preservation validator. Choose exact names and report interfaces for later tasks.
+
 - [x] Write failing tests for reference edit (+2 throws and command rename), preservation, incompatible points/teams/resources, hostile code and deterministic execution.
 - [x] Implement bounded effect-free worker and independently validate exact preserved fields, resource delta, phase/clock/session identity and revision. No arbitrary score rewriting.
 - [x] Run focused tests, lint/type checks; commit focused implementation with tests.
@@ -36,6 +37,7 @@ Produces: exported transition schema, classification, immutable transition ident
 
 Files: server schema/new generated migration/repositories, live/runtime.ts and sessions.ts, automations/studio.ts, routes/studio.ts; sandbox journal.ts and tests.
 Consumes: Task 1 exports. Produces: private preview/review, approval, pending/cancel and rollback APIs with typed evidence for studio.
+
 - [x] Write failing tests for current-state revalidation, concurrent chat, paused/round-end boundaries, panic cancellation, storage failure, restart and stale review rejection.
 - [x] Persist transition artifacts/evidence/pending status; serialize migration activation with chat/ticks, prepare runtime, CAS state/version/journal atomically and fence old effects.
 - [x] Extend journal with verified migrations and original definition; align audit/live random seed and prove random-dependent replay.
@@ -46,6 +48,7 @@ Consumes: Task 1 exports. Produces: private preview/review, approval, pending/ca
 
 Files: compiler contract/offline/prompt/intent and tests; server authoring as required; web API/types/review/live and DOM tests.
 Consumes: Task 1 transition contract and Task 2 APIs.
+
 - [x] Write failing tests for natural-language reference edit and structured model transition output through the same verification pipeline.
 - [x] Implement generation of migration artifacts and independent host checks; preserve backward compatibility for legacy artifacts.
 - [x] Add review card with preserved/changed/reset/takes effect; private comparison, boundary choice, pending/cancel and reviewed rollback. Stale UI requests fail visibly.
@@ -54,6 +57,7 @@ Consumes: Task 1 transition contract and Task 2 APIs.
 ### Task 4: Verification and documentation
 
 Files: README, AGENTS, SDK docs, regression tests and implementation files only for confirmed defects.
+
 - [x] Run lint, typecheck, full tests, tooling, build, bundle check, smoke and secret scans.
 - [x] Review whole feature against approved acceptance criteria and fix concrete defects with regressions.
 - [x] Record environment restrictions separately; update docs with verified behavior and limitations.

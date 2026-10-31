@@ -94,9 +94,17 @@ Edit a running Tomato Battle with:
 
 The compiler produces the new behavior and a separate migration. Independent host
 checks verify it against empty, populated, exhausted, paused and finished snapshots.
-In review, choose **immediate**, **round-end**, or **stopped**, then preview the change.
-The card shows preserved progress, changed rules, reset requirements and actual
-before/after decisions from identical hypothetical inputs in private engines.
+When a round is live, review asks one question: **Keep everyone's progress** or
+**Start a fresh round**. If the new rules cannot carry progress over (fewer resources,
+different points, teams, objective, a shorter round or fewer players), keeping is
+disabled and the card says why in plain language. To keep progress, choose when it
+takes effect (**right now**, **when this round ends**, or **while paused**) and preview.
+The card lists what is kept and what changes, highlights changed rules, shows each
+player's progress with deltas (for example `1 → 3 +2` throws), and compares the live
+and new versions answering the same hypothetical chat in private engines. A paused
+round is resumed on private copies for that comparison, so the old command visibly
+stops working and the new one starts. Failed migrations name the reason without
+echoing guest output.
 
 Approval binds the exact version, migration and evidence. The host reruns migration
 against current progress, including chat accepted during review, before committing
