@@ -10,8 +10,7 @@ export function registerHealthRoute(app: FastifyInstance, checkDatabase: () => b
     }
     return reply.code(healthy ? 200 : 503).send({
       status: healthy ? 'ok' : 'unavailable',
-      mode: 'foundation',
-      integrations: 'disabled',
+      mode: 'studio',
     });
   });
 }

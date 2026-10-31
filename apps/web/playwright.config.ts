@@ -11,19 +11,23 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: 'pnpm --filter @riff/server exec node --import tsx src/index.ts',
-      cwd: '../..',
+      // Run node directly so Playwright's stop signal reaches the server process.
+      command: 'rm -f ../../.cache/e2e/riff.db* && exec node --import tsx src/index.ts',
+      cwd: '../server',
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
       url: 'http://127.0.0.1:8788/api/health',
       env: {
         RIFF_PORT: '8788',
         RIFF_DB_PATH: './.cache/e2e/riff.db',
+        RIFF_COMPILER_MODE: 'mock',
         NODE_ENV: 'test',
         LOG_LEVEL: 'silent',
       },
       reuseExistingServer: false,
     },
     {
-      command: 'pnpm run dev --port 4173',
+      command: 'exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173',
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
       url: 'http://127.0.0.1:4173',
       env: { RIFF_API_TARGET: 'http://127.0.0.1:8788' },
       reuseExistingServer: false,

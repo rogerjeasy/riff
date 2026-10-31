@@ -1,55 +1,59 @@
-import { createPreviewEngine } from '@riff/sandbox';
-import type { ChatEvent } from '@riff/sdk';
+import { createEngine } from '@riff/sandbox';
+import type { ChatEvent, ExecutionDecision } from '@riff/sdk';
 
-const referenceArtifact = {
-  manifest: {
-    sdkVersion: '0.3.0',
-    capabilities: ['overlay'],
-    trigger: { command: '!tomato', audience: ['viewer'], maxPerViewer: 3, windowMs: 60_000 },
-    limits: { effectsPerEvent: 1, effectsPerMinute: 60 },
-  },
-  source: `async (event, riff) => {
-    await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: riff.util.random() });
-  }`,
-};
+export interface PreviewResult {
+  provenance: 'synthetic';
+  artifactId: string;
+  seed: number;
+  decisions: ExecutionDecision[];
+  durationMs: number;
+}
 
-/** One bounded rehearsal at a time per application. No live adapters are accepted. */
-export function createPreviewService() {
-  let active: ReturnType<typeof createPreviewEngine> | undefined;
+/**
+ * Private rehearsal. Every request rebuilds isolated state from the seed and the
+ * ordered synthetic events (deterministic replay) in a fresh preview-mode engine with
+ * its own worker, counters and clock. Results only return over HTTP: there is no
+ * code path from here to the live overlay broker or to Twitch.
+ */
+export function createPreviewService(options: { maxConcurrent?: number } = {}) {
+  const active = new Set<ReturnType<typeof createEngine>>();
   let closed = false;
   return {
-    async replay(events: ChatEvent[], seed: number, signal?: AbortSignal) {
-      if (active || closed) return null;
-      const engine = createPreviewEngine(referenceArtifact, seed);
-      active = engine;
-      const cancel = () => {
-        engine.stop();
-        if (active === engine) active = undefined;
-      };
+    async replay(
+      artifact: { source: string; manifest: unknown },
+      events: ChatEvent[],
+      seed: number,
+      signal?: AbortSignal,
+    ): Promise<PreviewResult | null> {
+      if (closed || active.size >= (options.maxConcurrent ?? 2)) return null;
+      const started = performance.now();
+      const engine = createEngine(artifact, { seed, mode: 'preview' });
+      active.add(engine);
+      const cancel = () => engine.stop();
       signal?.addEventListener('abort', cancel, { once: true });
-      if (signal?.aborted) cancel();
       try {
-        const decisions = [];
+        const decisions: ExecutionDecision[] = [];
         for (const event of events) {
           if (signal?.aborted) break;
           decisions.push(await engine.dispatch(event));
         }
         return {
-          provenance: 'synthetic' as const,
-          reference: 'Tomato Toss',
+          provenance: 'synthetic',
           artifactId: engine.artifactId,
           seed,
           decisions,
+          durationMs: Math.round(performance.now() - started),
         };
       } finally {
         engine.stop();
+        active.delete(engine);
         signal?.removeEventListener('abort', cancel);
-        if (active === engine) active = undefined;
       }
     },
     close() {
       closed = true;
-      active?.stop();
+      for (const engine of active) engine.stop();
     },
   };
 }
+export type PreviewService = ReturnType<typeof createPreviewService>;

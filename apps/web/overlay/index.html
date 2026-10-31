@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Riff — Overlay</title>
-    <link rel="stylesheet" href="/src/overlay/overlay.css" />
   </head>
   <body>
-    <div id="overlay-root" data-mode="inactive" aria-label="Inactive stream overlay"></div>
+    <div id="overlay-root" data-mode="inactive" aria-label="Stream overlay">
+      <div id="stage" class="overlay-stage"></div>
+      <div id="instructions" class="overlay-instructions" hidden></div>
+      <div id="notice" class="overlay-notice" hidden></div>
+    </div>
+    <script type="module" src="/src/overlay/main.ts"></script>
   </body>
 </html>

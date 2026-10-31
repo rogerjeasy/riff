@@ -14,7 +14,10 @@ describe('server configuration', () => {
   it('allows a container interface only when explicitly enabled', () => {
     expect(parseEnv({ RIFF_HOST: '0.0.0.0', RIFF_ALLOW_REMOTE: 'true' }).host).toBe('0.0.0.0');
   });
-  it('rejects enabling an unimplemented compiler transport', () => {
+  it('accepts only known compiler transports and strong secrets', () => {
     expect(() => parseEnv({ RIFF_COMPILER_MODE: 'sdk' })).toThrow();
+    expect(parseEnv({ RIFF_COMPILER_MODE: 'codex' }).compilerMode).toBe('codex');
+    expect(() => parseEnv({ RIFF_SECRET: 'short' })).toThrow();
+    expect(parseEnv({ TWITCH_CLIENT_ID: 'a' }).twitch).toBeNull();
   });
 });

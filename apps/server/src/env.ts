@@ -3,14 +3,28 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
 export const workspaceRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const optional = z
+  .string()
+  .optional()
+  .transform((value) => (value && value.trim() ? value.trim() : null));
 const schema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     RIFF_HOST: z.enum(['127.0.0.1', '::1', 'localhost', '0.0.0.0']).default('127.0.0.1'),
     RIFF_ALLOW_REMOTE: z.enum(['true', 'false']).default('false'),
     RIFF_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+    RIFF_PUBLIC_URL: z.string().url().default('http://localhost:5173'),
+    RIFF_SERVER_URL: z.string().url().default('http://localhost:8787'),
     RIFF_DB_PATH: z.string().min(1).default('./data/riff.db'),
-    RIFF_COMPILER_MODE: z.literal('mock').default('mock'),
+    /** mock = deterministic offline template compiler; codex = Codex SDK at runtime. */
+    RIFF_COMPILER_MODE: z.enum(['mock', 'codex']).default('mock'),
+    RIFF_COMPILER_MODEL: optional,
+    RIFF_COMPILER_EFFORT: z.enum(['minimal', 'low', 'medium', 'high']).default('low'),
+    RIFF_SECRET: optional,
+    TWITCH_CLIENT_ID: optional,
+    TWITCH_CLIENT_SECRET: optional,
+    TWITCH_EVENTSUB_WS_URL: optional,
+    TWITCH_HELIX_URL: optional,
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -19,6 +33,10 @@ const schema = z
     message:
       'Binding all interfaces requires RIFF_ALLOW_REMOTE=true; keep container ports on loopback.',
     path: ['RIFF_HOST'],
+  })
+  .refine((value) => !value.RIFF_SECRET || value.RIFF_SECRET.length >= 32, {
+    message: 'RIFF_SECRET must be at least 32 characters (try: openssl rand -base64 32).',
+    path: ['RIFF_SECRET'],
   });
 
 export function parseEnv(input: Record<string, string | undefined>) {
@@ -27,12 +45,27 @@ export function parseEnv(input: Record<string, string | undefined>) {
     const fields = result.error.issues.map(({ path, message }) => `${path.join('.')}: ${message}`);
     throw new Error(`Invalid server configuration: ${fields.join('; ')}`);
   }
+  const env = result.data;
   return {
-    environment: result.data.NODE_ENV,
-    host: result.data.RIFF_HOST,
-    port: result.data.RIFF_PORT,
-    databasePath: resolve(workspaceRoot, result.data.RIFF_DB_PATH),
-    compilerMode: result.data.RIFF_COMPILER_MODE,
-    logLevel: result.data.LOG_LEVEL,
+    environment: env.NODE_ENV,
+    host: env.RIFF_HOST,
+    port: env.RIFF_PORT,
+    publicUrl: env.RIFF_PUBLIC_URL.replace(/\/$/, ''),
+    databasePath: resolve(workspaceRoot, env.RIFF_DB_PATH),
+    compilerMode: env.RIFF_COMPILER_MODE,
+    compilerModel: env.RIFF_COMPILER_MODEL,
+    compilerEffort: env.RIFF_COMPILER_EFFORT,
+    secret: env.RIFF_SECRET,
+    twitch:
+      env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET
+        ? {
+            clientId: env.TWITCH_CLIENT_ID,
+            clientSecret: env.TWITCH_CLIENT_SECRET,
+            redirectUri: `${env.RIFF_SERVER_URL.replace(/\/$/, '')}/auth/twitch/callback`,
+            eventSubUrl: env.TWITCH_EVENTSUB_WS_URL,
+            helixBaseUrl: env.TWITCH_HELIX_URL,
+          }
+        : null,
+    logLevel: env.LOG_LEVEL,
   };
 }

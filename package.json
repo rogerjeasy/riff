@@ -36,7 +36,8 @@
     "infra:validate": "docker compose -f infra/compose.yaml config --quiet",
     "infra:monitoring": "docker compose -f infra/monitoring/compose.yaml up -d",
     "setup:verify": "pnpm run doctor && pnpm format:check && pnpm check && pnpm build && pnpm check:bundles && pnpm smoke && pnpm test:e2e",
-    "check:bundles": "node scripts/check-bundles.mjs"
+    "check:bundles": "node scripts/check-bundles.mjs",
+    "compile:live": "pnpm --filter @riff/server compile:live"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

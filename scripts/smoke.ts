@@ -10,10 +10,8 @@ const app = await createApp({
 try {
   const response = await app.inject({ method: 'GET', url: '/api/health' });
   assert.equal(response.statusCode, 200);
-  assert.equal(response.json<{ mode: string }>().mode, 'foundation');
-  console.log(
-    'Foundation smoke passed: Fastify → SQLite → health response. Live integrations remain disabled.',
-  );
+  assert.equal(response.json<{ mode: string }>().mode, 'studio');
+  console.log('Smoke passed: Fastify → SQLite → health response.');
 } finally {
   await app.close();
   database.close();

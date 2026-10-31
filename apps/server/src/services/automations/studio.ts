@@ -1,0 +1,175 @@
+import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
+import type { Hub } from '../hub.js';
+import type { LiveRuntime } from '../live/runtime.js';
+import type { OverlayBroker } from '../overlay/broker.js';
+import { approvalBlockers, versionView } from './views.js';
+
+export class StudioError extends Error {
+  constructor(
+    readonly code: 'NOT_FOUND' | 'STALE' | 'BLOCKED',
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/** Approval, activation, pause, rollback and emergency stop for one channel. */
+export function createStudioService(deps: {
+  repo: ChannelRepository;
+  hub: Hub;
+  runtime: LiveRuntime;
+  overlay: OverlayBroker;
+}) {
+  const { repo, hub, runtime } = deps;
+  const changed = () => hub.publish('studio', null);
+  const control = (
+    message: string,
+    automationId: string | null,
+    versionId: string | null,
+    code: string,
+  ) =>
+    hub.publish(
+      'activity',
+      repo.record({
+        at: Date.now(),
+        kind: 'control',
+        automationId,
+        versionId,
+        eventId: null,
+        viewer: null,
+        code,
+        message,
+      }),
+    );
+  const mustVersion = (id: string) => {
+    const version = repo.version(id);
+    if (!version) throw new StudioError('NOT_FOUND', 'That version no longer exists.');
+    return version;
+  };
+  const mustAutomation = (id: string) => {
+    const automation = repo.automation(id);
+    if (!automation) throw new StudioError('NOT_FOUND', 'That interaction no longer exists.');
+    return automation;
+  };
+  const activeOf = (automationId: string) => {
+    const automation = repo.automation(automationId);
+    return automation?.activeVersionId ? repo.version(automation.activeVersionId) : undefined;
+  };
+
+  function goLive(version: VersionRow, reason: 'approve' | 'rollback') {
+    repo.activate(version.automationId, version.id);
+    const fresh = mustVersion(version.id);
+    runtime.activate(version.automationId, fresh);
+    control(
+      reason === 'approve'
+        ? `Approved and activated “${version.title}” v${version.number} (${version.artifactId?.slice(0, 12)}).`
+        : `Rolled back “${version.title}” to v${version.number}. Viewer allowances were kept.`,
+      version.automationId,
+      version.id,
+      reason === 'approve' ? 'APPROVED' : 'ROLLBACK',
+    );
+    changed();
+    return fresh;
+  }
+
+  return {
+    snapshot() {
+      const state = repo.state();
+      const automations = repo.automations().map((automation) => {
+        const versions = repo.versions(automation.id);
+        const active = versions.find((v) => v.id === automation.activeVersionId);
+        return {
+          ...automation,
+          versions: versions.map((v) => versionView(v, active, runtime.panicked)),
+          canRollback: versions.some((v) => v.status === 'superseded' && v.approvedAt),
+        };
+      });
+      return {
+        panic: runtime.panicked,
+        panicAt: state.panicAt,
+        overlay: { connections: deps.overlay.connections },
+        running: runtime.running(),
+        lastEvent: runtime.lastEvent,
+        automations,
+        activity: repo.activity(40),
+      };
+    },
+    /**
+     * Activate exactly the reviewed artifact. The caller must echo the artifact hash it
+     * reviewed and the active version it expects to replace; anything stale is refused.
+     */
+    approve(versionId: string, expected: { artifactId: string; activeVersionId: string | null }) {
+      const version = mustVersion(versionId);
+      const blockers = approvalBlockers(version, runtime.panicked);
+      if (blockers.length) throw new StudioError('BLOCKED', blockers.join(' '));
+      if (version.artifactId !== expected.artifactId)
+        throw new StudioError('STALE', 'This is not the version you reviewed. Review it again.');
+      const automation = mustAutomation(version.automationId);
+      if (automation.activeVersionId !== expected.activeVersionId)
+        throw new StudioError(
+          'STALE',
+          'The live version changed while you were reviewing. Review the new difference first.',
+        );
+      return goLive(version, 'approve');
+    },
+    pause(automationId: string) {
+      const automation = mustAutomation(automationId);
+      runtime.pause(automation.id);
+      repo.updateAutomation(automation.id, { status: 'paused' });
+      deps.overlay.clear('pause');
+      control(`Paused “${automation.title}”.`, automation.id, automation.activeVersionId, 'PAUSED');
+      changed();
+    },
+    resumeAutomation(automationId: string) {
+      const automation = mustAutomation(automationId);
+      const active = activeOf(automation.id);
+      if (!active || active.status !== 'active')
+        throw new StudioError(
+          'BLOCKED',
+          'There is no healthy approved version to resume. Roll back or approve a new version.',
+        );
+      repo.updateAutomation(automation.id, { status: 'live' });
+      runtime.resumeAutomation(automation.id, active);
+      control(
+        `Resumed “${automation.title}” v${active.number}.`,
+        automation.id,
+        active.id,
+        'RESUMED',
+      );
+      changed();
+    },
+    /** Activate the most recent previously approved version; with none, pause instead. */
+    rollback(automationId: string) {
+      const automation = mustAutomation(automationId);
+      const previous = repo
+        .versions(automation.id)
+        .find(
+          (v) =>
+            v.id !== automation.activeVersionId &&
+            v.approvedAt &&
+            ['superseded', 'approved'].includes(v.status),
+        );
+      if (!previous) {
+        this.pause(automation.id);
+        return null;
+      }
+      if (runtime.panicked)
+        throw new StudioError('BLOCKED', 'Everything is stopped. Resume the channel first.');
+      return goLive(previous, 'rollback');
+    },
+    discard(versionId: string) {
+      const version = mustVersion(versionId);
+      if (version.status !== 'candidate' && version.status !== 'failed')
+        throw new StudioError('BLOCKED', 'Only unapproved candidates can be discarded.');
+      repo.updateVersion(version.id, { status: 'discarded' });
+      changed();
+    },
+    panic(source: string) {
+      runtime.panic(source);
+    },
+    resume() {
+      runtime.resume();
+    },
+  };
+}
+export type StudioService = ReturnType<typeof createStudioService>;
