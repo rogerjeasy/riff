@@ -118,7 +118,8 @@ effects. Preview engines have no route to the overlay or Twitch; the overlay bro
 rejects non-live decisions by construction.
 
 **Live controls.** Approval checks the artifact hash and the expected live version
-(stale reviews get 409). Edits and rollbacks keep viewer allowances. `Stop everything`
+(stale reviews get 409). Edits, rollbacks and restarts keep viewer allowances, duplicate
+protection and effect budgets (recorded in SQLite before any effect is sent). `Stop everything`
 (console, dock or `!riff panic` from the broadcaster or a moderator) flips an in-memory
 fence first, clears the overlay, persists second and stays stopped across restarts
 until explicitly resumed.

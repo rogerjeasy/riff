@@ -388,7 +388,8 @@ configuration inventory; `apps/server/src/env.ts` validates it (loopback binding
 explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optional
 EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
 Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
-`experience_sessions`, `session_events`, `session_outbox`, `session_journal`.
+`experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
+`admission_events`.
 
 ---
 
@@ -440,10 +441,17 @@ Implemented end to end, with Tomato Toss as the reference interaction:
 Deliberate deviations from the plan above, recorded here so they stay honest:
 generated tests are declarative scenarios (data run by the engine) rather than
 TypeScript test files; there is no esbuild/tsc stage because handlers are a single JS
-expression checked by the TypeScript parser; dedupe and rate windows live in memory
-per process (a restart starts fresh windows); the compiler's filesystem boundary is
-Codex's read-only sandbox in a temp directory, not a separate OS isolate. `founder`
-badges count as subscribers (`packages/twitch/src/normalize.ts`, UNVERIFIED).
+expression checked by the TypeScript parser; the compiler's filesystem boundary is
+Codex's read-only sandbox in a temp directory, not a separate OS isolate.
+
+Rolling-window admission is durable: every command decision is written to
+`admission_events` before any effect leaves the host, and live counters (duplicate
+identities, per-viewer windows, per-interaction and channel effect budgets) are rebuilt
+from the last hour of records on start. Durable identity also catches redeliveries
+older than the engine's 10-minute in-memory window. A failed write sends nothing and
+pauses the interaction. `founder` badges count as subscribers: the set id is recorded
+from Helix (`packages/twitch/fixtures/helix.get-global-chat-badges.json`) and Twitch
+states the badge displays only for current subscribers.
 
 ## Stateful experiences — F31
 
