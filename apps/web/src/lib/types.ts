@@ -166,6 +166,8 @@ export interface Version {
     intent: IntentCheck[];
     migration?: { source: string; ok: boolean; snapshots: string[]; failure: string | null };
   };
+  /** Present when a live round's rules differ from this version's; null/absent otherwise. */
+  progress?: ProgressAssessment | null;
   origin: 'codex' | 'offline' | 'manual' | 'reference';
   compileRunId: string | null;
   status: VersionStatus;
@@ -186,7 +188,7 @@ export interface Automation {
   versions: Version[];
   canRollback: boolean;
   session: SessionSnapshot | null;
-  transitions?: Transition[];
+  transitions?: TransitionSummary[];
 }
 export interface Activity {
   id: number;
@@ -281,6 +283,22 @@ export interface SessionAudit {
 }
 
 export type TransitionBoundary = 'immediate' | 'round-end' | 'stopped';
+export type TransitionStatus = 'review' | 'pending' | 'applied' | 'cancelled';
+/** Studio list view: no migration source or evidence (those come only from the preview call). */
+export interface TransitionSummary {
+  id: string;
+  status: TransitionStatus;
+  sourceVersionId: string;
+  targetVersionId: string;
+  boundary?: TransitionBoundary;
+  createdAt?: number;
+  appliedAt?: number | null;
+}
+/** Host assessment of carrying a live round over to this version's rules. */
+export interface ProgressAssessment {
+  kind: 'migration-required' | 'reset-required';
+  reasons: string[];
+}
 export interface Transition {
   id: string;
   sourceVersionId: string;
@@ -288,7 +306,7 @@ export interface Transition {
   sourceSessionId: string;
   migrationSource: string;
   evidenceId: string;
-  status: 'review' | 'pending' | 'applied' | 'cancelled';
+  status: TransitionStatus;
   plan: { targetArtifactId: string; boundary: TransitionBoundary };
   evidence: {
     preserved: string[];
@@ -301,6 +319,8 @@ export interface Transition {
     comparison: {
       provenance: 'synthetic';
       label: string;
+      /** A paused round was resumed privately so the comparison exercises live-like rules. */
+      resumedPrivately?: boolean;
       events: { id: string; text: string }[];
       steps: {
         eventId: string;

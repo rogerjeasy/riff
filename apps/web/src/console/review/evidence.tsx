@@ -19,7 +19,7 @@ interface EvidenceProps {
   onApprove: (version: Version, resetSession?: boolean) => Promise<void>;
   onDiscard: (version: Version) => Promise<void>;
   previewed: boolean;
-  onTransitioned?: (() => Promise<void>) | undefined;
+  onTransitioned?: ((message: string) => Promise<void>) | undefined;
 }
 
 export function Evidence(props: EvidenceProps) {
@@ -51,6 +51,18 @@ function EvidenceCard(props: EvidenceProps) {
     props.automation?.session &&
     !sameDefinition(active?.manifest.experience, version.manifest.experience),
   );
+  // A live round with different rules: the creator picks one path, never two at once.
+  const choosable = Boolean(
+    needsReset &&
+    props.automation &&
+    active?.manifest.experience &&
+    version.manifest.experience &&
+    active.id !== version.id,
+  );
+  const canKeep = version.progress?.kind !== 'reset-required';
+  const resetReasons = version.progress?.reasons ?? [];
+  const [mode, setMode] = useState<'keep' | 'fresh'>(canKeep ? 'keep' : 'fresh');
+  const keeping = choosable && canKeep && mode === 'keep';
   const approvable =
     !props.panic &&
     (!needsReset || resetConsent) &&
@@ -259,24 +271,75 @@ function EvidenceCard(props: EvidenceProps) {
                 {widening.map((c) => c.label.toLowerCase()).join(', ')}.
               </label>
             )}
-            {props.automation?.session &&
-              active?.manifest.experience &&
-              version.manifest.experience &&
-              active.id !== version.id && (
-                <TransitionReview
-                  key={`${version.id}:${active.id}:${props.automation.session.id}`}
-                  version={version}
-                  automation={props.automation}
-                  panic={props.panic}
-                  allowed={
-                    !props.panic &&
-                    version.blockers.length === 0 &&
-                    (widening.length === 0 || accepted)
-                  }
-                  onChanged={props.onTransitioned}
-                />
-              )}
-            {needsReset && (
+            {choosable && (
+              <fieldset className="progress-choice">
+                <legend>A round is live. What happens to everyone’s progress?</legend>
+                <div className="choice-row">
+                  <label
+                    className="choice-card"
+                    data-selected={keeping}
+                    data-disabled={!canKeep || undefined}
+                  >
+                    <input
+                      type="radio"
+                      name={`progress-${version.id}`}
+                      checked={keeping}
+                      disabled={!canKeep}
+                      onChange={() => setMode('keep')}
+                    />
+                    <span>
+                      <b>
+                        Keep everyone’s progress{' '}
+                        {canKeep && <span className="badge good">Recommended</span>}
+                      </b>
+                      <small>
+                        Teams, scores and contributions carry over. Preview it privately first.
+                      </small>
+                    </span>
+                  </label>
+                  <label className="choice-card" data-selected={!keeping}>
+                    <input
+                      type="radio"
+                      name={`progress-${version.id}`}
+                      checked={!keeping}
+                      onChange={() => setMode('fresh')}
+                    />
+                    <span>
+                      <b>Start a fresh round</b>
+                      <small>
+                        Clears teams, scores, contributions, resources and time, then starts over
+                        with v{version.number}’s rules.
+                      </small>
+                    </span>
+                  </label>
+                </div>
+                {!canKeep && resetReasons.length > 0 && (
+                  <div className="why-reset" role="note">
+                    <p>Progress can’t carry over because:</p>
+                    <ul>
+                      {resetReasons.map((r) => (
+                        <li key={r}>{r}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </fieldset>
+            )}
+            {keeping && props.automation && (
+              <TransitionReview
+                key={`${version.id}:${active?.id}:${props.automation.session?.id}`}
+                version={version}
+                automation={props.automation}
+                panic={props.panic}
+                allowed={
+                  !props.panic &&
+                  version.blockers.length === 0 &&
+                  (widening.length === 0 || accepted)
+                }
+                onChanged={props.onTransitioned}
+              />
+            )}
+            {needsReset && !keeping && (
               <label className="confirm">
                 <input
                   type="checkbox"
@@ -291,24 +354,26 @@ function EvidenceCard(props: EvidenceProps) {
               <p className="note">Tip: rehearse it on the private stage before going live.</p>
             )}
             <div className="approve-actions">
-              <button
-                type="button"
-                className="button go"
-                disabled={!approvable || busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    if (needsReset) await props.onApprove(version, resetConsent);
-                    else await props.onApprove(version);
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-              >
-                {active
-                  ? `Approve v${version.number} & replace v${active.number}`
-                  : `Approve v${version.number} & go live`}
-              </button>
+              {!keeping && (
+                <button
+                  type="button"
+                  className="button go"
+                  disabled={!approvable || busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      if (needsReset) await props.onApprove(version, resetConsent);
+                      else await props.onApprove(version);
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  {active
+                    ? `Approve v${version.number} & replace v${active.number}`
+                    : `Approve v${version.number} & go live`}
+                </button>
+              )}
               {(version.status === 'candidate' || version.status === 'failed') && (
                 <button
                   type="button"
@@ -319,7 +384,11 @@ function EvidenceCard(props: EvidenceProps) {
                 </button>
               )}
             </div>
-            <p className="note mono">Approval binds to artifact {shortHash(version.artifactId)}.</p>
+            {!keeping && (
+              <p className="note mono">
+                Approval binds to artifact {shortHash(version.artifactId)}.
+              </p>
+            )}
           </>
         )}
       </footer>

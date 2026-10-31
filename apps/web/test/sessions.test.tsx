@@ -124,9 +124,57 @@ it('offers a reviewed preserving change with boundary choice and keeps authority
       onDiscard={async () => undefined}
     />,
   );
-  expect(screen.getByLabelText('When this change takes effect')).toBeTruthy();
+  expect(screen.getByRole('group', { name: 'When this change takes effect' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Preview keeping progress' })).toBeTruthy();
-  expect(screen.getByText(/leaves it paused/)).toBeTruthy();
+  expect(screen.getByText(/stays paused until you resume it/)).toBeTruthy();
+  // One path at a time: keeping progress is preselected and the reset approval is not offered.
+  expect((screen.getByLabelText(/Keep everyone’s progress/) as HTMLInputElement).checked).toBe(
+    true,
+  );
+  expect(screen.queryByRole('button', { name: /Approve v2 & replace/ })).toBeNull();
+  expect(screen.queryByLabelText(/I agree to reset session progress/)).toBeNull();
+  fireEvent.click(screen.getByLabelText(/Start a fresh round/));
+  expect(screen.queryByRole('group', { name: 'When this change takes effect' })).toBeNull();
+  expect(screen.getByLabelText(/I agree to reset session progress/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: /Approve v2 & replace/ })).toBeTruthy();
+});
+
+it('explains why progress cannot carry over and offers only a fresh round', () => {
+  const fewer: Version = {
+    ...version,
+    id: 'v2',
+    number: 2,
+    status: 'candidate',
+    manifest: {
+      ...version.manifest,
+      experience: { ...definition, resource: { name: 'throws', perParticipant: 2 } },
+    },
+    progress: {
+      kind: 'reset-required',
+      reasons: ['Each player would get fewer throws (3 → 2).'],
+    },
+    changes: [],
+  };
+  render(
+    <Evidence
+      version={fewer}
+      automation={automation}
+      panic={false}
+      previewed
+      onApprove={async () => undefined}
+      onDiscard={async () => undefined}
+    />,
+  );
+  const keep = screen.getByLabelText(/Keep everyone’s progress/) as HTMLInputElement;
+  expect(keep.disabled).toBe(true);
+  expect(keep.checked).toBe(false);
+  expect((screen.getByLabelText(/Start a fresh round/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByText('Each player would get fewer throws (3 → 2).')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Preview keeping progress' })).toBeNull();
+  const approve = screen.getByRole('button', { name: /Approve v2 & replace/ });
+  expect(approve.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
+  expect(approve.hasAttribute('disabled')).toBe(false);
 });
 
 const editedVersion: Version = {
@@ -200,6 +248,7 @@ it.each([
       <Evidence version={editedVersion} automation={automation} {...common} />,
     );
     fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+    fireEvent.click(screen.getByLabelText(/Start a fresh round/));
     fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
     expect(
       screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
@@ -225,12 +274,18 @@ it.each([
       (screen.getByLabelText(/I understand this grants more authority/) as HTMLInputElement)
         .checked,
     ).toBe(false);
+    // The progress choice resets with the context, back to the safe default.
+    expect((screen.getByLabelText(/Keep everyone’s progress/) as HTMLInputElement).checked).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByLabelText(/Start a fresh round/));
     expect(
       (screen.getByLabelText(/I agree to reset session progress/) as HTMLInputElement).checked,
     ).toBe(false);
     expect(
       screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
     ).toBe(true);
+    fireEvent.click(screen.getByLabelText(/Keep everyone’s progress/));
     const t = transition();
     t.sourceVersionId = source.id;
     t.sourceSessionId = nextAutomation.session.id;
@@ -238,10 +293,15 @@ it.each([
     t.plan.targetArtifactId = target.artifactId!;
     vi.spyOn(api, 'previewTransition').mockResolvedValue(t);
     fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-    const reviewedApproval = await screen.findByRole('button', { name: 'Approve reviewed change' });
+    const reviewedApproval = await screen.findByRole('button', {
+      name: 'Apply now and keep progress',
+    });
     expect(reviewedApproval.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/Confirm the authority change above/)).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
     expect(reviewedApproval.hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByRole('button', { name: /Approve v2 & replace/ })).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Start a fresh round/));
     expect(
       screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
     ).toBe(true);
@@ -263,6 +323,7 @@ it('retains outer-card acknowledgements when accepted chat advances the same rou
   };
   const { rerender } = render(<Evidence automation={automation} {...common} />);
   fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+  fireEvent.click(screen.getByLabelText(/Start a fresh round/));
   fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
   rerender(
     <Evidence
@@ -303,13 +364,13 @@ it('compares participants appearing on either side and labels absent membership 
     <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-  await screen.findByRole('button', { name: 'Approve reviewed change' });
-  const comparison = screen.getByText('Progress after hypothetical chat').closest('details')!;
+  await screen.findByRole('button', { name: 'Apply now and keep progress' });
+  const comparison = screen.getByText('Progress after this rehearsal').closest('details')!;
   expect(comparison.textContent).toContain('bob');
-  expect(comparison.textContent).toContain('Absent → Community');
-  expect(comparison.textContent).toContain('Absent → 5');
-  expect(comparison.textContent).toContain('red → Absent');
-  expect(comparison.textContent).toContain('2 → Absent');
+  expect(comparison.textContent).toContain('Not joined → Community');
+  expect(comparison.textContent).toContain('Not joined → 5');
+  expect(comparison.textContent).toContain('Red → Not joined');
+  expect(comparison.textContent).toContain('2 → Not joined');
 });
 
 it('validates transition wire evidence and sends exact approval identities', async () => {
@@ -356,11 +417,19 @@ it('shows actual transition comparisons and requires existing authority consent 
     />,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-  const button = await screen.findByRole('button', { name: 'Approve reviewed change' });
+  const button = await screen.findByRole('button', { name: 'Apply now and keep progress' });
   expect(button.hasAttribute('disabled')).toBe(true);
-  expect(screen.getByText(/UNRELATED: Old command/)).toBeTruthy();
-  expect(screen.getByText(/ACCEPTED: New command/)).toBeTruthy();
+  const row = screen.getByRole('rowheader', { name: '!splat' }).closest('tr')!;
+  expect(row.textContent).toContain('Ignored');
+  expect(row.textContent).toContain('Old command');
+  expect(row.textContent).toContain('Accepted');
+  expect(row.textContent).toContain('New command');
   expect(screen.getByText('2 → 4')).toBeTruthy();
+  expect(screen.getByText('+2')).toBeTruthy();
+  // Rule changes are named in plain language, not as raw definitions.
+  expect(screen.getByLabelText('Reviewed transition').textContent).toContain(
+    'Command: !throw → !splat',
+  );
   expect(screen.getByText(/Synthetic inputs/)).toBeTruthy();
   fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
   expect(button.hasAttribute('disabled')).toBe(false);
@@ -382,10 +451,7 @@ it.each(['boundary', 'source', 'version', 'session'] as const)(
       <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-    if (change === 'boundary')
-      fireEvent.change(screen.getByLabelText('When this change takes effect'), {
-        target: { value: 'round-end' },
-      });
+    if (change === 'boundary') fireEvent.click(screen.getByLabelText(/When this round ends/));
     if (change === 'source')
       fireEvent.change(screen.getByLabelText('Migration source (optional)'), {
         target: { value: '(input) => ({...input.snapshot})' },
@@ -410,7 +476,9 @@ it.each(['boundary', 'source', 'version', 'session'] as const)(
       );
     resolve(transition());
     await screen.findByText(/changed during preview/);
-    expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /keep progress|Schedule|while paused/ }),
+    ).toBeNull();
   },
 );
 
@@ -423,18 +491,18 @@ it('invalidates reviewed source changes and shows stale approval errors without 
     <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Approve reviewed change' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Apply now and keep progress' }));
   await screen.findByText('The live version changed. Review again.');
-  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply now and keep progress' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
-  await screen.findByRole('button', { name: 'Approve reviewed change' });
+  await screen.findByRole('button', { name: 'Apply now and keep progress' });
   fireEvent.change(screen.getByLabelText('Migration source (optional)'), {
     target: { value: 'changed source' },
   });
-  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply now and keep progress' })).toBeNull();
   expect(screen.getByRole('alert').textContent).toContain('Preview again');
   fireEvent.change(screen.getByLabelText('Migration source (optional)'), { target: { value: '' } });
-  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply now and keep progress' })).toBeNull();
 });
 
 it('explains stopped timing and prevents panic approval', async () => {
@@ -445,25 +513,21 @@ it('explains stopped timing and prevents panic approval', async () => {
   const { rerender } = render(
     <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
   );
-  fireEvent.change(screen.getByLabelText('When this change takes effect'), {
-    target: { value: 'stopped' },
-  });
+  fireEvent.click(screen.getByLabelText(/While paused/));
   fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
   expect(
-    (await screen.findByRole('button', { name: 'Approve reviewed change' })).hasAttribute(
-      'disabled',
-    ),
+    (await screen.findByRole('button', { name: 'Apply while paused' })).hasAttribute('disabled'),
   ).toBe(true);
   expect(screen.getByText('Pause this interaction before approving this timing.')).toBeTruthy();
   rerender(<TransitionReview version={editedVersion} automation={automation} panic allowed />);
   expect(
     screen.getByRole('button', { name: 'Preview keeping progress' }).hasAttribute('disabled'),
   ).toBe(true);
-  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply while paused' })).toBeNull();
 });
 
 it('shows pending cancellation and routes stateful rollback to review of a healthy approved target', async () => {
-  const pending = { ...transition(), status: 'pending' as const };
+  const pending = { ...transition(), targetVersionId: 'older', status: 'pending' as const };
   const cancel = vi
     .spyOn(api, 'cancelTransition')
     .mockResolvedValue({ ...pending, status: 'cancelled' });
@@ -491,7 +555,7 @@ it('shows pending cancellation and routes stateful rollback to review of a healt
     overlay: { connections: 0 },
     twitch: { state: 'unconfigured', configured: false },
     panic: false,
-  } as Studio;
+  } as unknown as Studio;
   vi.spyOn(api, 'overlay').mockResolvedValue({ url: 'http://localhost/overlay', connections: 0 });
   render(
     <LivePanel
@@ -502,12 +566,13 @@ it('shows pending cancellation and routes stateful rollback to review of a healt
       notify={() => undefined}
     />,
   );
+  expect(screen.getByText(/takes over when this round ends/).textContent).toContain('v2');
   fireEvent.click(screen.getByRole('button', { name: 'Cancel pending change' }));
   expect(cancel).toHaveBeenCalledWith('t1');
-  fireEvent.click(screen.getByRole('button', { name: 'Roll back' }));
+  // One rollback entry point; it routes to the review where keep-vs-reset is chosen.
+  expect(screen.queryByRole('button', { name: /Reset progress and roll back/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Review rollback to v2…' }));
   expect(select).toHaveBeenCalledWith(expect.objectContaining({ id: 'older' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Reset progress and roll back…' }));
-  expect(select).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'older' }));
   expect(approveReset).not.toHaveBeenCalled();
 });
 
@@ -624,6 +689,7 @@ describe('session controls', () => {
           number: 2,
           status: 'candidate',
           manifest: { ...version.manifest, experience: { ...definition, durationMs: 60000 } },
+          progress: { kind: 'reset-required', reasons: ['The round gets shorter.'] },
         }}
         automation={automation}
         panic={false}

@@ -20,6 +20,16 @@ export class ApiError extends Error {
   }
 }
 const errorBody = z.object({ message: z.string().max(400), code: z.string().optional() });
+const boundarySchema = z.enum(['immediate', 'round-end', 'stopped']);
+const transitionSummarySchema = z
+  .object({
+    id: z.string(),
+    status: z.enum(['review', 'pending', 'applied', 'cancelled']),
+    sourceVersionId: z.string(),
+    targetVersionId: z.string(),
+    boundary: boundarySchema.optional(),
+  })
+  .passthrough();
 // Boundary validation: shape-check the envelope; nested evidence is rendered defensively.
 const studioSchema = z
   .object({
@@ -29,7 +39,7 @@ const studioSchema = z
         .object({
           id: z.string(),
           session: sessionSnapshotSchema.nullable().default(null),
-          transitions: z.array(z.lazy(() => transitionSchema)).default([]),
+          transitions: z.array(transitionSummarySchema).max(64).default([]),
           versions: z.array(
             z
               .object({

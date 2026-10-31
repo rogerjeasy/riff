@@ -274,7 +274,10 @@ export function App() {
                 automation={automation}
                 panic={studio.panic}
                 previewed={previewed.has(selected.id)}
-                onTransitioned={refresh}
+                onTransitioned={async (message) => {
+                  await refresh();
+                  notify(message);
+                }}
                 onApprove={async (version, resetSession) => {
                   try {
                     await api.approve(

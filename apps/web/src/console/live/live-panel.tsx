@@ -134,6 +134,11 @@ export function LivePanel(props: {
                       type="button"
                       className="button small ghost"
                       disabled={studio.panic || Boolean(automation.session && !previous)}
+                      title={
+                        automation.session
+                          ? 'Opens a private review: keep current progress or start a fresh round'
+                          : undefined
+                      }
                       onClick={() => {
                         if (automation.session && previous) props.onSelect(previous);
                         else
@@ -143,17 +148,9 @@ export function LivePanel(props: {
                           );
                       }}
                     >
-                      Roll back
-                    </button>
-                  )}
-                  {automation.session && previous && (
-                    <button
-                      type="button"
-                      className="button small ghost"
-                      disabled={studio.panic}
-                      onClick={() => props.onSelect(previous)}
-                    >
-                      Reset progress and roll back…
+                      {automation.session
+                        ? `Review rollback to v${previous?.number ?? '?'}…`
+                        : 'Roll back'}
                     </button>
                   )}
                   {automation.session && (
@@ -179,8 +176,12 @@ export function LivePanel(props: {
                 {(automation.transitions ?? [])
                   .filter((t) => t.status === 'pending')
                   .map((t) => (
-                    <div className="block" key={t.id} role="status">
-                      <p>Approved change pending · takes effect when this round finishes.</p>
+                    <div className="pending-transition" key={t.id} role="status">
+                      <span className="pill warn">Scheduled</span>
+                      <p>
+                        <b>{versionName(automation.versions, t.targetVersionId)}</b> takes over when
+                        this round ends. Everyone keeps their progress.
+                      </p>
                       <button
                         type="button"
                         className="button small ghost"
@@ -242,6 +243,16 @@ export function LivePanel(props: {
                           <span className="muted">
                             {version.origin === 'codex' ? 'Codex' : version.origin} ·{' '}
                             {ago(version.createdAt)}
+                            {automation.transitions?.some(
+                              (t) => t.status === 'applied' && t.targetVersionId === version.id,
+                            ) && (
+                              <span
+                                className="badge good kept"
+                                title="Activated without resetting the round"
+                              >
+                                kept progress
+                              </span>
+                            )}
                           </span>
                         </button>
                       </li>
@@ -257,6 +268,11 @@ export function LivePanel(props: {
     </section>
   );
 }
+
+const versionName = (versions: Version[], id: string) => {
+  const n = versions.find((v) => v.id === id)?.number;
+  return n === undefined ? 'The approved version' : `v${n}`;
+};
 
 function OverlaySetup(props: {
   connections: number;
