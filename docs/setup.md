@@ -69,7 +69,7 @@ The initial migration creates only `channels`; future product tables remain plan
 ./scripts/pnpm test:e2e
 ```
 
-Vitest runs trusted host tests only. Test folders and fixtures reserved for generated/hostile automation code are excluded; future generated tests must run in the restricted guest runner. QuickJS's current test evaluates a trusted constant and disposes its handles; it is an installation diagnostic.
+Vitest runs trusted host tests only. Test folders and fixtures reserved for generated/hostile automation code are excluded; future generated tests must run in the restricted guest runner. QuickJS tests now also exercise bounded private handlers, hostile probes, rolling quotas, replay isolation and atomic effect staging. Run `pnpm build:packages` before standalone runtime tests because the supervised worker runs compiled JavaScript.
 
 Source checking remains strict. `skipLibCheck` skips third-party declaration checking because Drizzle's declarations reference optional drivers and contain internal type errors. It does not disable checking of Riff source or runtime inputs. DOM declarations are limited to browser code and the trusted QuickJS host's WebAssembly types; the SDK has no ambient Node or DOM types.
 

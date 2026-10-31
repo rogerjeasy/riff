@@ -1,5 +1,5 @@
 # Public capability contract
 
-Dependency-free types and public policy constants. No executable capability implementation yet.
-
-See the root README for commands and docs/tech-stack.md for the complete architecture.
+Dependency-free versioned preview types, capability identifiers and policy constants.
+See [SDK.md](SDK.md) for executable semantics and examples. Generation and live
+activation are subsequent increments.

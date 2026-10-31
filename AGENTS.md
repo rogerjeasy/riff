@@ -17,8 +17,11 @@ existing baseline from supporting selections and conditional deployment tools.
 The development foundation now exists; see [README](README.md),
 [setup instructions](docs/setup.md), and [verified setup status](docs/setup-status.md).
 Contracts for the full product below remain requirements, not implemented features.
-The current host exposes only health and static UI; compilation and live integrations
-are unavailable, and no untrusted guest evaluator is exported.
+SDK 0.2.0 and the supervised QuickJS private execution engine now support reviewed
+projectile handlers, rolling host quotas, deduplication and deterministic replay.
+The HTTP host still exposes only health and static UI. Runtime compilation,
+approval/activation and live integrations remain unavailable. See
+[the preview contract](packages/sdk/SDK.md).
 
 When this file and your instincts disagree, this file wins. When this file and the
 official Twitch or OpenAI docs disagree, the docs win — then fix this file in the same
@@ -65,7 +68,7 @@ disk. Local development has no cloud dependency except Twitch and Codex.
 | Web | React 19 + Vite + Tailwind 4 | Console and overlay in one app |
 | DB | SQLite via `better-sqlite3` + Drizzle ORM + drizzle-kit migrations | Zero infra |
 | Validation | `zod` at every boundary: HTTP bodies, Twitch payloads, Codex output, env | Fail closed |
-| Sandbox | `quickjs-emscripten` | WASM isolate: no fs/net, memory + CPU limits, no native build |
+| Sandbox | `quickjs-emscripten`; TypeScript AST instrumentation | WASM isolate: no fs/net, memory + CPU limits, no native build |
 | Automation bundling | `esbuild` (IIFE, ES2020, `riff` external) | Deterministic and fast |
 | Compiler | `@openai/codex-sdk`; fallback `codex exec --json --output-schema` | Codex is the runtime compiler |
 | Tests | `vitest` for host code; in-sandbox runner for generated tests | Generated code is tested where it runs |
@@ -367,7 +370,7 @@ Current commands (use `./scripts/pnpm` for this checkout's local toolchain):
 ```text
 pnpm dev              server (:8787) and web (:5173)
 pnpm build            packages, server and three browser entries
-pnpm test             trusted host/runtime installation tests only
+pnpm test             trusted host, runtime and execution invariant tests
 pnpm test:tooling      workspace graph and source-boundary tests
 pnpm test:e2e          Chromium/axe checks; requires local sockets
 pnpm lint             ESLint plus architecture boundary enforcement
@@ -406,3 +409,19 @@ For release:
 - Every invariant in §2 has a passing named test.
 - README documents architecture, environment, commands, and how to run and record
   fixtures.
+
+## Current private preview increment
+
+`packages/sdk` 0.2.0 defines normalized chat events, manifests and the sole enabled
+capability `overlay` (projectile assets tomato/star). Manifest/event validation is
+currently in `packages/sandbox/src/contract.ts`; compiler schema integration and
+the three-way capability sync check ship with runtime authoring. No state/timer/chat
+capability is enabled. Unsupported manifests fail closed.
+
+`createPreviewEngine` runs fresh QuickJS workers with host-owned admission and no
+live sink. Calls/new expressions and escaping async faults are instrumented with
+reserved host observers; rejected or pending observed work quarantines the run.
+Limits additionally include 256 observed call results and 100 pending jobs per event.
+The existing pinned TypeScript dependency is also declared in the sandbox to parse
+and instrument guest source without regex rewriting. This is not the future
+generated-code lint/typecheck/bundling pipeline.

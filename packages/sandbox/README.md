@@ -1,5 +1,11 @@
 # Generated-code execution
 
-QuickJS dependency and installation diagnostic only; no public untrusted-code evaluator yet.
+The private preview engine validates manifests and ordered chat inputs, applies
+host-owned rolling admission rules, and runs each handler in a fresh supervised
+QuickJS worker. Effects are staged and validated atomically; no live adapter exists.
+See ../sdk/SDK.md for supported contracts and bounds. Run `pnpm build:packages`
+before tests because workers execute the compiled JavaScript artifact.
 
-See the root README for commands and docs/tech-stack.md for the complete architecture.
+This is a narrow preview boundary, not the production activation lifecycle. Durable
+state, shared channel budgets, generated-module lint/bundling and version approval
+are not implemented yet.

@@ -3,7 +3,8 @@
   "dependencies": {
     "quickjs-emscripten": "catalog:",
     "zod": "catalog:",
-    "@riff/sdk": "workspace:*"
+    "@riff/sdk": "workspace:*",
+    "typescript": "catalog:"
   },
   "devDependencies": {
     "fast-check": "catalog:"
