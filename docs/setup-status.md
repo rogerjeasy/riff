@@ -14,10 +14,10 @@ Recorded October 31, 2026. This describes the checked-out foundation, not comple
 | Runtime tooling      | QuickJS 0.32.0 loads WASM and disposes handles; compiler SDK and CLI 0.166.0 are present; CLI version probe passes                                                                                     |
 | Supporting libraries | Fastify plugins, OBS client, transcription SDK, metrics client, WebSocket libraries, MSW, fast-check, Testing Library, Playwright and axe are installed in their owning workspaces                     |
 | Source checks        | ESLint, package/source boundaries, strict types and formatting pass                                                                                                                                    |
-| Tests                | 14 host/runtime checks and 11 workspace/boundary tooling tests pass                                                                                                                                    |
+| Tests                | 15 host/runtime checks and 15 workspace/boundary tooling tests pass                                                                                                                                    |
 | Build                | Packages, server and three browser entries build; built overlay HTML has no scripts or console dependency                                                                                              |
 | Smoke                | Real SQLite and Fastify HTTP injection pass; no network socket required                                                                                                                                |
-| Secret scan          | Focused source scan and Gitleaks 8.30.1 scan of the tracked/unignored source snapshot pass                                                                                                             |
+| Secret scan          | Focused source scan and Gitleaks 8.30.1 scans of the source snapshot and committed history pass                                                                                                        |
 | Browser tooling      | Playwright 1.64.0 discovers four E2E tests; matching Chromium v1248 executable is already cached                                                                                                       |
 
 Installed Fastify plugins and client libraries are not all registered or invoked yet. The current HTTP surface is only `/api/health` and optional static files. UI elements describe the foundation; there are no functional approval or connection controls.
@@ -36,3 +36,11 @@ Installed Fastify plugins and client libraries are not all registered or invoked
 | CI / registry                     | A workflow with pinned action revisions exists. No remote repository, CI run, GHCR push or deployment has occurred.                                                          |
 
 The default development dependency setup is usable without those conditional operations tools. Full `setup:verify` remains pending until the browser environment permits execution. See [setup instructions](setup.md) for exact commands and [foundation decisions](decisions/0001-workspace-foundation.md) for tradeoffs and deprecated dependency follow-up.
+
+## Fresh review
+
+A fresh reviewer found two material setup defects. Both were reproduced before fixing: migration into a missing parent directory, and architecture checks missing TypeScript import types/network package subpaths. The migration command now shares the host's database opening/cleanup path; the checker inspects those import forms. Regression checks pass.
+
+One minor documentation clarification is deferred: Vite reads `RIFF_API_TARGET` from the shell environment, while the server reads root `.env`. For a custom port, export the proxy target in the shell used to start development; setting it only in root `.env` does not configure the Vite proxy. Default ports work without changes.
+
+The reviewer did not certify full product functionality, guest isolation, production packaging, browser/container execution, online advisories or live integrations. These remain the explicit implementation/environment gates above.

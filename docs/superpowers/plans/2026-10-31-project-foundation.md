@@ -76,7 +76,7 @@
 - [x] Document actual installation results, environment requirements, all directories, and exact startup commands.
 - [x] Reconcile relevant engineering-contract clarifications and update implementation status in both product documents.
 - [ ] Run lint, typecheck, tests, build, smoke, browser checks, and available security checks; record unavailable checks explicitly.
-- [ ] Obtain a fresh whole-change review, fix material findings, rerun affected/full checks, and commit focused delivery/documentation groups.
+- [x] Obtain a fresh whole-change review and fix its two material findings with failing-then-passing regression tests. Environment-limited checks remain open as recorded below.
 
 ## Execution notes
 
@@ -84,3 +84,5 @@
 
 - Delivery ruling: keep the coupled workspace/app build graph and associated tests in one runnable foundation commit, followed by separate operations and documentation commits. This avoids intermediate commits whose root build points at absent workspaces.
 - Environment limits: browser assertions, fresh online install/audit, Compose and container execution remain pending; see `docs/setup-status.md`. No full-product or security certification is implied.
+
+- Final review: fresh migration paths and type/network-subpath boundary checks corrected; custom-port proxy documentation clarification deferred. Review exclusions remain the future product and environment gates in setup status.
