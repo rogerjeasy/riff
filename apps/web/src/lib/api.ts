@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import { communitySchema } from '../community/schema.js';
+import {
+  proposalSchema,
+  proposalSnapshotSchema,
+  historySchema,
+  selectionSchema,
+  ballotSchema,
+  type Proposal,
+} from '../console/proposals/contracts.js';
 import { experienceDefinitionSchema, sessionSnapshotSchema } from '../sessions/schemas.js';
 import type {
   PreviewResult,
@@ -33,6 +42,8 @@ const transitionSummarySchema = z
 // Boundary validation: shape-check the envelope; nested evidence is rendered defensively.
 const studioSchema = z
   .object({
+    proposals: proposalSnapshotSchema.optional(),
+    community: communitySchema.nullable().optional(),
     panic: z.boolean(),
     automations: z.array(
       z
@@ -219,6 +230,86 @@ async function request<T>(
 }
 
 export const api = {
+  async proposals(
+    input: { state?: Proposal['state']; offset: number; limit: number },
+    signal?: AbortSignal,
+  ) {
+    const query = new URLSearchParams({ offset: String(input.offset), limit: String(input.limit) });
+    if (input.state) query.set('state', input.state);
+    return proposalSnapshotSchema.parse(
+      await request('GET', `/api/proposals?${query}`, undefined, signal),
+    );
+  },
+  async proposalHistory(id: string, offset: number, signal?: AbortSignal) {
+    return z
+      .object({ history: z.array(historySchema).max(50) })
+      .parse(
+        await request(
+          'GET',
+          `/api/proposals/${encodeURIComponent(id)}/history?offset=${offset}&limit=50`,
+          undefined,
+          signal,
+        ),
+      );
+  },
+  async moderateProposal(
+    id: string,
+    expectedRevision: number,
+    action: 'shortlist' | 'hide' | 'restore',
+  ) {
+    return z
+      .object({ proposal: proposalSchema })
+      .parse(
+        await request('POST', `/api/proposals/${encodeURIComponent(id)}/moderate`, {
+          expectedRevision,
+          action,
+        }),
+      );
+  },
+  proposalGrant: (accountId: string, enabled: boolean) =>
+    request<{ ok: true }>('POST', '/api/proposals/grants', { accountId, enabled }),
+  async createProposalBallot(
+    proposalIds: { id: string; revision: number }[],
+    durationSeconds: number,
+  ) {
+    return z
+      .object({ ballot: ballotSchema })
+      .parse(await request('POST', '/api/proposals/ballots', { proposalIds, durationSeconds }));
+  },
+  async closeProposalBallot(id: string, expectedRevision: number) {
+    return z
+      .object({ ballot: ballotSchema })
+      .parse(
+        await request('POST', `/api/proposals/ballots/${encodeURIComponent(id)}/close`, {
+          expectedRevision,
+        }),
+      );
+  },
+  async selectProposal(
+    id: string,
+    expectedRevision: number,
+    brief: string,
+    baseVersionId: string | null,
+  ) {
+    return z
+      .object({ selection: selectionSchema })
+      .parse(
+        await request('POST', `/api/proposals/${encodeURIComponent(id)}/select`, {
+          expectedRevision,
+          brief,
+          baseVersionId,
+        }),
+      );
+  },
+  async revokeSelection(id: string) {
+    return z
+      .object({ selection: selectionSchema })
+      .parse(
+        await request('POST', `/api/proposals/selections/${encodeURIComponent(id)}/revoke`, {}),
+      );
+  },
+  generateSelection: (id: string) =>
+    request<Run>('POST', `/api/proposals/selections/${encodeURIComponent(id)}/generate`, {}),
   async studio(signal?: AbortSignal) {
     return studioSchema.parse(
       await request('GET', '/api/studio', undefined, signal),

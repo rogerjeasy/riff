@@ -1,3 +1,5 @@
+import type { ProposalSnapshot } from '../console/proposals/contracts.js';
+import type { Community } from '../community/schema.js';
 /** Wire types mirrored from the server. Validated at the boundary in api.ts. */
 export type Role = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
 export type Asset = 'tomato' | 'star' | 'heart';
@@ -217,6 +219,7 @@ export interface Progress {
   at: number;
 }
 export interface Run {
+  selectionId?: string;
   id: string;
   intent: string;
   automationId: string | null;
@@ -248,6 +251,8 @@ export type TwitchStatus =
     }
   | { state: 'error'; login: string | null; message: string; configured: boolean };
 export interface Studio {
+  proposals?: ProposalSnapshot;
+  community?: Community | null;
   panic: boolean;
   panicAt: number | null;
   overlay: { connections: number };
