@@ -43,6 +43,43 @@ Tomato Toss compiled, verified and matched the intent in 39 s on the first attem
 the `!splat` / 30 s / subscribers-only edit in 63 s, also first attempt, with every
 stage and intent check passing.
 
+## Stateful experiences
+
+Choose **Tomato Battle** or **Community Goal** in Describe. Both pass through the
+same compiler, independent verification, private rehearsal, exact-version approval
+and live Twitch execution as Tomato Toss.
+
+- **Tomato Battle:** join Red with `!red` or Blue with `!blue`, then use `!throw`.
+  Each participant has three throws for the entire round. The overlay shows scores,
+  participation instructions, time remaining and the winner or tie at 120 seconds.
+- **Community Goal:** use `!grow` to contribute hearts. Participants join automatically;
+  each has three contributions. The session finishes when the community reaches five
+  points or its deadline expires.
+
+The SDK 0.4 definition declares participants, teams, resources, scoring and the
+objective. These rules run in the host; generated handlers read a frozen session
+snapshot and decide the cosmetic presentation. Gameplay continues even if the
+cosmetic effect budget is full. SDK 0.3 Tomato Toss artifacts remain supported.
+
+Session state, processed event identities and effect outbox entries commit together
+in SQLite. Concurrent inputs cannot overspend resources; duplicate Twitch events
+cannot award points twice, including after restart or reset. Cosmetic effects use
+at-most-once dispatch intent; reconnecting overlays receive authoritative state.
+
+A pause freezes remaining time. Deadlines continue through ordinary server downtime;
+startup finishes an expired round once. Emergency stop persists independently of
+session writes and stays stopped after restart. Explicit resume recovers the frozen
+clock from the panic timestamp if a session pause could not be saved.
+
+Visual-only edits preserve the session when its canonical rules are unchanged.
+Changing those rules, incompatible rollback, and starting a new round require explicit
+reset consent. Prior event identities remain protected. The studio exposes the
+current phase, resource evidence, score, deadline and reset controls; private rehearsal
+uses isolated synthetic participants and time advancement.
+
+See the [stateful design](docs/superpowers/specs/2026-10-31-stateful-experiences-design.md)
+for contracts and the [SDK guide](packages/sdk/SDK.md) for supported primitives.
+
 ## How it is built
 
 ```text

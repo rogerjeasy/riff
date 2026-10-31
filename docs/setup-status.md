@@ -62,3 +62,23 @@ DOM tests cover stopped late responses and recoverable server errors.
 Verification for this increment: 55 trusted host/runtime/DOM tests and 15 tooling
 tests pass; lint, type checks, formatting, production build, bundle isolation and
 Fastify/SQLite smoke checks pass. Browser execution remains blocked as described.
+
+## Stateful experience increment — October 31, 2026
+
+Implemented SDK 0.4 (0.3 compatible), canonical team-score and cooperative-goal rules,
+host-owned resources and phase transitions, SQLite session/event/outbox transactions,
+restart/deadline recovery, independent panic persistence, reset/version compatibility
+fences, private replay and shared live/preview HUD. Migration 0002 creates the three
+scoped session tables and durable identity indexes. No secrets or dependencies added.
+
+Reference prompts run through the offline compiler and actual verifier, approval and
+live host in integration tests. A real model compile was attempted in this session;
+it failed before producing a candidate with workspace routing discovery failure.
+No successful real-model stateful generation is claimed. Existing loopback restrictions
+still block the two socket-based integration tests and Playwright server startup.
+
+Stateful verification evidence: 201 available tests and 15 tooling checks pass;
+lint, types, formatting, build, bundle isolation, smoke and redacted secret scans
+pass. Full suite has the two previously documented socket-permission failures.
+Fresh review findings for panic durability, postcommit delivery and overlay rotation
+were reproduced with SQLite triggers/real services and fixed with regression tests.

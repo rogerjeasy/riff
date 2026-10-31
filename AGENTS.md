@@ -387,7 +387,8 @@ the UI, used by CI and e2e) or `codex` (Codex SDK at runtime). `.env.example` is
 configuration inventory; `apps/server/src/env.ts` validates it (loopback binding,
 explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optional
 EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
-Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`.
+Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
+`experience_sessions`, `session_events`, `session_outbox`.
 
 ---
 
@@ -443,3 +444,37 @@ expression checked by the TypeScript parser; dedupe and rate windows live in mem
 per process (a restart starts fresh windows); the compiler's filesystem boundary is
 Codex's read-only sandbox in a temp directory, not a separate OS isolate. `founder`
 badges count as subscribers (`packages/twitch/src/normalize.ts`, UNVERIFIED).
+
+## Stateful experiences — F31
+
+SDK 0.4.0 adds a canonical bounded `ExperienceDefinition` and the read-only `session`
+capability. SDK 0.3.0 projectile artifacts keep their bridge and artifact identity.
+The host owns teams, participant admission, lifetime round resources, points, phase
+and deadlines. Generated handlers read deeply frozen snapshots; no mutable guest
+state API is enabled. Both competitive highest-score rounds and cooperative collective
+goals use the same engine and independent host verification. Generated scenario data
+can assert state; strict model output supports phase/time assertions, while host and
+offline fixtures also assert scores and resource subsets.
+
+The server's scoped session repository atomically commits state, an immutable event
+identity and an outbox entry. Event identities stay protected across rounds/resets,
+versions and restart. Host ingress and ticks serialize per channel; revision/session/
+active-version fences prevent stale commits. Outbox intent is claimed before cosmetic
+dispatch; state remains accepted if postcommit presentation fails. No external
+exactly-once delivery guarantee is made. Preview has separate clocks/state and never
+uses the durable live repository or outbox.
+
+Host deadlines survive restart and count downtime; expired rounds finish on recovery.
+Pause freezes remaining time. Panic first fences memory, then persists the channel
+flag independently of session pause writes. Explicit resume uses persisted panicAt
+to recover a pause if an individual session write failed. Canonical definition
+changes require explicit reset consent; identical-definition edits preserve progress.
+F32 migration programs and generalized multi-round tournaments remain future work.
+
+New route: `POST /api/automations/:id/session/reset` requires `{confirm:true}` and the
+existing same-origin mutation guard. Approve and rollback accept optional explicit
+`resetSession` consent. Studio automation snapshots include `session`; overlay
+protocol adds `sessions` with validated canonical definition and snapshot. Rotation
+clears old clients but preserves authoritative projection cache for reconnection.
+The shared HUD uses safe DOM text, respects reduced motion and clears on lost liveness.
+No new environment variables or dependencies were added.
