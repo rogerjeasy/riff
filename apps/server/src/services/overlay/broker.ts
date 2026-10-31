@@ -1,3 +1,4 @@
+import type { CommunityProjection } from '../proposals/projection.js';
 import { randomUUID } from 'node:crypto';
 import type { ExecutionDecision, ExperienceDefinition, SessionSnapshot } from '@riff/sdk';
 
@@ -13,6 +14,7 @@ export type OverlayMessage =
   | { v: 1; type: 'instructions'; payload: { lines: string[] } }
   | { v: 1; type: 'clear'; payload: { reason: 'panic' | 'pause' | 'rotate' } }
   | { v: 1; type: 'sessions'; payload: { sessions: SessionProjection[] } }
+  | { v: 1; type: 'community'; payload: CommunityProjection | null }
   | { v: 1; type: 'test'; payload: { at: number } };
 
 export interface SessionProjection {
@@ -35,6 +37,8 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
   const sockets = new Set<OverlaySocket>();
   let instructions: string[] = [];
   let sessions: SessionProjection[] = [];
+  let community: CommunityProjection | null = null;
+  let stopped = false;
   const broadcast = (message: OverlayMessage) => {
     const data = JSON.stringify(message);
     for (const socket of sockets) {
@@ -66,6 +70,23 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       socket.send(
         JSON.stringify({ v: 1, type: 'sessions', payload: { sessions } } satisfies OverlayMessage),
       );
+      socket.send(
+        JSON.stringify({ v: 1, type: 'community', payload: community } satisfies OverlayMessage),
+      );
+    },
+    setCommunity(next: CommunityProjection) {
+      if (stopped) return;
+      if (JSON.stringify(community) === JSON.stringify(next)) return;
+      community = structuredClone(next);
+      broadcast({ v: 1, type: 'community', payload: community });
+    },
+    clearCommunity() {
+      if (community === null) return;
+      community = null;
+      broadcast({ v: 1, type: 'community', payload: null });
+    },
+    resumeCommunity() {
+      stopped = false;
     },
     setSessions(next: SessionProjection[]) {
       sessions = structuredClone(next);
@@ -93,7 +114,11 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       broadcast({ v: 1, type: 'instructions', payload: { lines: instructions } });
     },
     clear(reason: 'panic' | 'pause' | 'rotate') {
-      if (reason === 'panic') sessions = [];
+      if (reason === 'panic') {
+        sessions = [];
+        community = null;
+        stopped = true;
+      }
       broadcast({ v: 1, type: 'clear', payload: { reason } });
     },
     testFrame() {

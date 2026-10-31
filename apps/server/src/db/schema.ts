@@ -429,3 +429,20 @@ export const proposalSelections = sqliteTable(
   },
   (t) => [index('proposal_selection_channel').on(t.channelId, t.proposalId)],
 );
+
+/** Immutable claim: a selected audience brief can spend compiler quota only once. */
+export const proposalGenerationRuns = sqliteTable(
+  'proposal_generation_runs',
+  {
+    selectionId: text('selection_id')
+      .primaryKey()
+      .references(() => proposalSelections.id),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    runId: text('run_id')
+      .notNull()
+      .references(() => compileRuns.id),
+  },
+  (table) => [uniqueIndex('proposal_generation_run_identity').on(table.channelId, table.runId)],
+);

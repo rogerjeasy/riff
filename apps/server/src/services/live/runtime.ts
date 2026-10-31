@@ -1,3 +1,4 @@
+import { ProposalError, type ProposalService } from '../proposals/service.js';
 import {
   createSessionControl,
   experienceOf,
@@ -53,6 +54,8 @@ export function createLiveRuntime(deps: {
   hub: Hub;
   overlay: OverlayBroker;
   now?: () => number;
+  proposals?: ProposalService;
+  onProposalChange?: () => void;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -176,6 +179,19 @@ export function createLiveRuntime(deps: {
     if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
       if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
         api.panic(`!riff panic by ${message.viewerName}`);
+      return [];
+    }
+    const command = deps.proposals?.handleCommand(
+      {
+        kind: 'chat',
+        accountId: message.viewerId,
+        displayName: message.viewerName,
+        roles: message.roles,
+      },
+      { eventId: message.id, text: message.text },
+    );
+    if (command?.consumed) {
+      deps.onProposalChange?.();
       return [];
     }
     if (panic) return [];
@@ -440,6 +456,7 @@ export function createLiveRuntime(deps: {
     boot() {
       panic = repo.state().panic;
       if (panic) {
+        overlay.clear('panic');
         repo.invalidateTransitions();
         return;
       }
@@ -462,6 +479,7 @@ export function createLiveRuntime(deps: {
       refreshInstructions();
     },
     resumeAutomation(automationId: string, version: VersionRow) {
+      repo.assertVersionLineage(version.id);
       if (!panic) {
         sessions.resume(automationId);
         start(automationId, version);
@@ -520,6 +538,20 @@ export function createLiveRuntime(deps: {
         repo.invalidateTransitions();
         for (const automation of repo.automations()) {
           if (automation.status !== 'live') continue;
+          if (automation.activeVersionId) {
+            try {
+              repo.assertVersionLineage(automation.activeVersionId);
+            } catch (error) {
+              if (!(error instanceof ProposalError)) throw error;
+              // Explicit channel recovery must not reactivate removed content. Keep
+              // its progress paused so a reviewed clean rollback remains reachable.
+              const current = repo.session(automation.id);
+              if (current?.snapshot.phase === 'running' && panicAt !== null)
+                sessions.pause(automation.id, panicAt);
+              repo.updateAutomation(automation.id, { status: 'paused' });
+              continue;
+            }
+          }
           const current = repo.session(automation.id);
           if (current?.snapshot.phase === 'running' && panicAt !== null)
             sessions.pause(automation.id, panicAt);
@@ -528,6 +560,7 @@ export function createLiveRuntime(deps: {
         repo.updateState({ panic: false, panicAt: null });
       });
       panic = false;
+      overlay.resumeCommunity();
       publishActivity({
         at: Date.now(),
         kind: 'control',
@@ -536,7 +569,8 @@ export function createLiveRuntime(deps: {
         eventId: null,
         viewer: null,
         code: 'RESUME',
-        message: 'Channel resumed. Live automations are running again.',
+        message:
+          'Channel resumed. Removed audience versions remain paused; review a clean version to restore them.',
       });
       for (const automation of repo.automations()) {
         if (automation.status !== 'live' || !automation.activeVersionId) continue;
@@ -596,9 +630,11 @@ export function createLiveRuntime(deps: {
       generation++;
     },
     resetSession(automationId: string, version: VersionRow) {
+      repo.assertVersionLineage(version.id);
       generation++;
       stop(automationId);
       repo.atomic(() => {
+        repo.assertVersionLineage(version.id);
         repo.invalidateTransitions(automationId);
         sessions.reset(version);
       });

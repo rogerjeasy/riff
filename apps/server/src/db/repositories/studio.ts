@@ -1,3 +1,4 @@
+import { proposalLineageRepository } from './proposal-lineage.js';
 import { transitionRepository } from './transitions.js';
 import { admissionRepository } from './admission.js';
 import { sessionRepository } from './sessions.js';
@@ -22,6 +23,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
     ...sessionRepository(connection, channelId),
     ...transitionRepository(connection, channelId),
     ...admissionRepository(connection, channelId),
+    ...proposalLineageRepository(connection, channelId),
     ensure(displayName: string) {
       db.insert(channels)
         .values({ id: channelId, displayName, createdAt: new Date() })
@@ -137,6 +139,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
     /** Atomically make `versionId` the active version of its automation. */
     activate(automationId: string, versionId: string) {
       connection.client.transaction(() => {
+        proposalLineageRepository(connection, channelId).assertVersionLineage(versionId);
         transitionRepository(connection, channelId).invalidateTransitions(automationId);
         const current = db
           .select()

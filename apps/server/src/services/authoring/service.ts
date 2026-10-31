@@ -1,3 +1,4 @@
+import { ProposalError, type ProposalService } from '../proposals/service.js';
 import { randomUUID } from 'node:crypto';
 import {
   compile,
@@ -25,6 +26,7 @@ export class AuthoringError extends Error {
 }
 export interface RunSnapshot {
   id: string;
+  selectionId?: string;
   intent: string;
   automationId: string | null;
   baseVersionId: string | null;
@@ -53,9 +55,15 @@ export function createAuthoringService(deps: {
   hub: Hub;
   transport: CompilerTransport;
   queue?: ReturnType<typeof createCompileQueue>;
+  proposals?: ProposalService;
 }) {
   const { repo, hub, transport } = deps;
   const queue = deps.queue ?? createCompileQueue();
+  const authorizeSelection = (id: string) => {
+    if (!deps.proposals) throw new ProposalError('FORBIDDEN');
+    return deps.proposals.assertSelectionAuthorized(id);
+  };
+  repo.reconcileProposalRuns();
   const live = new Map<string, { snapshot: RunSnapshot; controller: AbortController }>();
   const publish = (snapshot: RunSnapshot) => hub.publish('run', snapshot);
 
@@ -71,7 +79,7 @@ export function createAuthoringService(deps: {
         attempts: result?.attempts ?? [],
         usage: result?.usage ?? null,
         durationMs: Date.now() - snapshot.startedAt,
-        error: result?.error ?? null,
+        error: result?.error ?? snapshot.result?.error ?? null,
         versionId,
       });
     } catch {
@@ -84,6 +92,8 @@ export function createAuthoringService(deps: {
     result: CompileResult<VerificationReport>,
     base: VersionRow | undefined,
   ) {
+    if (snapshot.selectionId) authorizeSelection(snapshot.selectionId);
+    if (base) repo.assertVersionLineage(base.id);
     const final = result.final;
     const output = final?.output;
     if (!final || !output || output.kind !== 'candidate' || !final.verification) return null;
@@ -119,14 +129,61 @@ export function createAuthoringService(deps: {
       return [...live.values()].map(({ snapshot }) => snapshot);
     },
     /** Start generation for a new interaction or an edit of `baseVersionId`. */
-    start(input: { intent: string; baseVersionId: string | null }): RunSnapshot {
+    start(input: {
+      intent: string;
+      baseVersionId: string | null;
+      selectionId?: string;
+    }): RunSnapshot {
+      if (input.selectionId) {
+        const previous = repo.generationForSelection(input.selectionId);
+        if (previous) {
+          const running = live.get(previous.runId);
+          if (running) return running.snapshot;
+          const row = repo.run(previous.runId);
+          if (!row) throw new AuthoringError('CONFLICT', 'Generation record is unavailable.');
+          const attempts = row.attempts as CompileResult<VerificationReport>['attempts'];
+          const output = attempts.at(-1)?.output;
+          return {
+            id: row.id,
+            selectionId: input.selectionId,
+            intent: row.intent,
+            automationId: row.automationId,
+            baseVersionId: row.baseVersionId,
+            stage: row.status as CompileStage,
+            attempt: Array.isArray(row.attempts) ? row.attempts.length : 0,
+            transport: row.transport as CompilerTransport['kind'],
+            model: row.model,
+            startedAt: row.createdAt,
+            progress: [],
+            result: {
+              status: row.status as CompileResult<VerificationReport>['status'],
+              versionId: row.versionId,
+              error: row.error,
+              question: output?.question ?? null,
+              choices: output?.choices ?? [],
+              unsupportedReason: output?.unsupportedReason ?? null,
+              alternative: output?.alternative ?? null,
+              threadId: row.threadId,
+              durationMs: row.durationMs ?? 0,
+            },
+          };
+        }
+        const selected = authorizeSelection(input.selectionId);
+        input = {
+          intent: selected.brief,
+          baseVersionId: selected.baseVersionId,
+          selectionId: selected.id,
+        };
+      }
       const base = input.baseVersionId ? repo.version(input.baseVersionId) : undefined;
       if (input.baseVersionId && !base)
         throw new AuthoringError('NOT_FOUND', 'That version no longer exists.');
+      if (base) repo.assertVersionLineage(base.id);
       if (queue.position(repo.channelId) >= 3)
         throw new AuthoringError('QUEUE_FULL', new QueueFullError().message);
       const snapshot: RunSnapshot = {
         id: randomUUID(),
+        ...(input.selectionId ? { selectionId: input.selectionId } : {}),
         intent: input.intent,
         automationId: base?.automationId ?? null,
         baseVersionId: base?.id ?? null,
@@ -139,23 +196,31 @@ export function createAuthoringService(deps: {
         result: null,
       };
       const controller = new AbortController();
-      live.set(snapshot.id, { snapshot, controller });
-      repo.insertRun({
-        id: snapshot.id,
-        automationId: snapshot.automationId,
-        baseVersionId: snapshot.baseVersionId,
-        intent: input.intent,
-        status: 'queued',
-        transport: transport.kind,
-        model: transport.model,
-        promptVersion: 'pending',
-        threadId: null,
-        attempts: [],
-        usage: null,
-        durationMs: null,
-        error: null,
-        versionId: null,
+      repo.atomic(() => {
+        if (input.selectionId && repo.generationForSelection(input.selectionId))
+          throw new AuthoringError(
+            'CONFLICT',
+            'A generation already exists for this selection. Refresh to see its result.',
+          );
+        repo.insertRun({
+          id: snapshot.id,
+          automationId: snapshot.automationId,
+          baseVersionId: snapshot.baseVersionId,
+          intent: input.intent,
+          status: 'queued',
+          transport: transport.kind,
+          model: transport.model,
+          promptVersion: 'pending',
+          threadId: null,
+          attempts: [],
+          usage: null,
+          durationMs: null,
+          error: null,
+          versionId: null,
+        });
+        if (input.selectionId) repo.linkSelectionRun(input.selectionId, snapshot.id);
       });
+      live.set(snapshot.id, { snapshot, controller });
       publish(snapshot);
       const request: CompileRequest = {
         intent: input.intent,
@@ -170,12 +235,16 @@ export function createAuthoringService(deps: {
           : null,
       };
       const job = async () => {
+        if (snapshot.selectionId) authorizeSelection(snapshot.selectionId);
+        if (base) repo.assertVersionLineage(base.id);
+        if (controller.signal.aborted) throw new ProposalError('REVOKED');
         const result = await compile(request, transport, {
           signal: controller.signal,
           verify: (candidate) => verifyAuthoredCandidate(candidate, base?.manifest),
           onStage(stage, attempt) {
             snapshot.stage = stage;
             snapshot.attempt = attempt;
+            repo.updateRun(snapshot.id, { status: stage });
             publish(snapshot);
           },
           onProgress(progress) {
@@ -184,7 +253,8 @@ export function createAuthoringService(deps: {
             hub.publish('run-progress', { id: snapshot.id, entry });
           },
         });
-        const version = storeCandidate(snapshot, result, base);
+        if (controller.signal.aborted) throw new ProposalError('REVOKED');
+        const version = repo.atomic(() => storeCandidate(snapshot, result, base));
         const output = result.final?.output;
         snapshot.stage = result.status;
         snapshot.automationId = version?.automationId ?? snapshot.automationId;
@@ -221,7 +291,9 @@ export function createAuthoringService(deps: {
             error: controller.signal.aborted
               ? 'Generation was cancelled.'
               : error instanceof Error
-                ? error.message
+                ? error instanceof ProposalError
+                  ? 'The audience selection is no longer authorized. Create a new selection.'
+                  : 'Generation failed.'
                 : 'Generation failed.',
             question: null,
             choices: [],
@@ -237,6 +309,19 @@ export function createAuthoringService(deps: {
           setTimeout(() => live.delete(snapshot.id), 60_000).unref();
         });
       return snapshot;
+    },
+    reconcileSelections() {
+      for (const { snapshot, controller } of live.values()) {
+        if (snapshot.result) continue;
+        try {
+          if (snapshot.selectionId) authorizeSelection(snapshot.selectionId);
+          if (snapshot.baseVersionId) repo.assertVersionLineage(snapshot.baseVersionId);
+        } catch (error) {
+          if (!(error instanceof ProposalError)) throw error;
+          controller.abort();
+        }
+      }
+      repo.invalidateUnauthorizedTransitions();
     },
     cancel(id: string) {
       const run = live.get(id);

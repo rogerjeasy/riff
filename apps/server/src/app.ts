@@ -1,3 +1,6 @@
+import { createProposalService } from './services/proposals/service.js';
+import { communityProjection } from './services/proposals/projection.js';
+import { registerProposalRoutes } from './routes/proposals.js';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import helmet from '@fastify/helmet';
@@ -54,6 +57,7 @@ export interface RiffServices {
   hub: ReturnType<typeof createHub>;
   studio: ReturnType<typeof createStudioService>;
   authoring: ReturnType<typeof createAuthoringService>;
+  proposals: ReturnType<typeof createProposalService>;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -72,10 +76,24 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
 
   const hub = createHub();
   const overlay = createOverlayBroker();
+  const proposals = createProposalService(
+    database,
+    HOME_CHANNEL,
+    dependencies.now ? { now: dependencies.now } : {},
+  );
+  const proposalChanged = () => {
+    try {
+      authoring.reconcileSelections();
+    } finally {
+      hub.publish('studio', null);
+    }
+  };
   const runtime = createLiveRuntime({
     repo,
     hub,
     overlay,
+    proposals,
+    onProposalChange: proposalChanged,
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   runtime.boot();
@@ -83,8 +101,23 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   const authoring = createAuthoringService({
     repo,
     hub,
+    proposals,
     transport: dependencies.transport ?? createOfflineTransport({ delayMs: 250 }),
   });
+  const publishCommunity = () => {
+    if (runtime.panicked) return;
+    try {
+      overlay.setCommunity(communityProjection(proposals, repo));
+    } catch {
+      overlay.clearCommunity();
+    }
+  };
+  const unsubscribeCommunity = hub.subscribe((message) => {
+    if (message.type === 'studio' || message.type === 'run') publishCommunity();
+  });
+  publishCommunity();
+  const communityTimer = setInterval(publishCommunity, 1000);
+  communityTimer.unref();
   const preview = createPreviewService();
   const sealer = dependencies.secret ? createSealer(dependencies.secret) : null;
   const twitch = createTwitchConnection({
@@ -115,7 +148,17 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     app,
     dependencies.checkDatabase ?? (() => Boolean(database.client.prepare('SELECT 1').get())),
   );
-  registerStudioRoutes(app, { studio, authoring, preview, repo, overlay, twitch, publicUrl });
+  registerStudioRoutes(app, {
+    studio,
+    authoring,
+    preview,
+    repo,
+    overlay,
+    twitch,
+    publicUrl,
+    proposals,
+  });
+  registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
   app.addHook('onReady', async () => {
@@ -129,6 +172,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       );
   });
   app.addHook('onClose', async () => {
+    clearInterval(communityTimer);
+    unsubscribeCommunity();
     authoring.close();
     preview.close();
     twitch.close();
@@ -139,6 +184,6 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   if (dependencies.webRoot) {
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
   }
-  const services: RiffServices = { repo, runtime, overlay, hub, studio, authoring };
+  const services: RiffServices = { repo, runtime, overlay, hub, studio, authoring, proposals };
   return Object.assign(app as FastifyInstance, { riff: services });
 }

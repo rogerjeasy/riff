@@ -1,3 +1,7 @@
+import type { ProposalService } from '../services/proposals/service.js';
+import { ProposalError } from '../services/proposals/service.js';
+import { communityProjection } from '../services/proposals/projection.js';
+import { proposalFailure } from './proposals.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { eventSchema } from '@riff/sandbox';
@@ -15,6 +19,7 @@ const replaySchema = z
   .strict();
 
 function fail(reply: FastifyReply, error: unknown) {
+  if (error instanceof ProposalError) return proposalFailure(reply, error);
   if (error instanceof StudioError || error instanceof AuthoringError) {
     const status = { NOT_FOUND: 404, STALE: 409, BLOCKED: 409, QUEUE_FULL: 429, CONFLICT: 409 }[
       error.code
@@ -35,6 +40,7 @@ export function registerStudioRoutes(
     overlay: OverlayBroker;
     twitch: TwitchConnection;
     publicUrl: string;
+    proposals: ProposalService;
   },
 ) {
   const { studio, authoring, preview, repo } = deps;
@@ -42,6 +48,8 @@ export function registerStudioRoutes(
     reply.header('Cache-Control', 'no-store');
     return {
       ...studio.snapshot(),
+      proposals: deps.proposals.snapshot(),
+      community: communityProjection(deps.proposals, repo),
       compiler: authoring.transport,
       runs: authoring.runs(),
       twitch: { ...deps.twitch.status, configured: deps.twitch.configured },
@@ -263,8 +271,12 @@ export function registerStudioRoutes(
         code: 'CONFIRM',
         message: 'Confirm that every approved interaction may run again.',
       });
-    studio.resume();
-    return { ok: true, panic: false };
+    try {
+      studio.resume();
+      return { ok: true, panic: false };
+    } catch (error) {
+      return fail(reply, error);
+    }
   });
   app.get('/api/overlay', async (_request, reply) => {
     reply.header('Cache-Control', 'no-store');

@@ -1,3 +1,4 @@
+import { ProposalError } from '../proposals/service.js';
 import {
   SessionAuditBusyError,
   SessionConfigurationError,
@@ -109,7 +110,18 @@ export function createStudioService(deps: {
           transitions: repo.transitionSummaries(automation.id),
           session:
             active && experienceOf(active) ? (repo.session(automation.id)?.snapshot ?? null) : null,
-          versions: versions.map((v) => versionView(v, active, runtime.panicked)),
+          versions: versions.map((v) => {
+            const view = versionView(v, active, runtime.panicked);
+            try {
+              repo.assertVersionLineage(v.id);
+            } catch (error) {
+              if (!(error instanceof ProposalError)) throw error;
+              view.blockers.push(
+                'The audience selection behind this version was removed or replaced. Review a clean version.',
+              );
+            }
+            return view;
+          }),
           canRollback: versions.some((v) => v.status === 'superseded' && v.approvedAt),
         };
       });
@@ -159,6 +171,7 @@ export function createStudioService(deps: {
           'BLOCKED',
           'There is no healthy approved version to resume. Roll back or approve a new version.',
         );
+      repo.assertVersionLineage(active.id);
       repo.updateAutomation(automation.id, { status: 'live' });
       runtime.resumeAutomation(automation.id, active);
       control(

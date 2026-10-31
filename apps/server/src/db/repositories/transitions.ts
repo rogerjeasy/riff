@@ -1,3 +1,5 @@
+import { proposalLineageRepository } from './proposal-lineage.js';
+import { ProposalError } from '../../services/proposals/service.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
@@ -172,6 +174,12 @@ export function transitionRepository(connection: DatabaseConnection, channelId: 
       return connection.client.transaction(() => {
         const t = transition(id);
         if (!t || !['review', 'pending'].includes(t.status)) return false;
+        try {
+          proposalLineageRepository(connection, channelId).assertVersionLineage(t.targetVersionId);
+        } catch (error) {
+          if (error instanceof ProposalError) return false;
+          throw error;
+        }
         const state = db
           .select()
           .from(channelState)
