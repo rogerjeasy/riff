@@ -593,3 +593,114 @@ it('returns the original successful run and candidate after restart without anot
   expect(calls).toBe(1);
   expect(f.app.riff.repo.versions()).toHaveLength(2);
 });
+
+it('refuses a new F32 review when its proposal was hidden before rehearsal', async () => {
+  const { app } = await setup(createOfflineTransport());
+  const f = await battle(app);
+  const before = app.riff.repo.session(f.automation.id);
+  expect(
+    (
+      await post(app, `/api/proposals/${f.proposalId}/moderate`, {
+        expectedRevision: f.selection.proposalRevision,
+        action: 'hide',
+      })
+    ).statusCode,
+  ).toBe(200);
+  const response = await post(app, `/api/versions/${f.next.id}/transition/preview`, {
+    boundary: 'round-end',
+  });
+  expect(response.statusCode, response.body).toBe(409);
+  expect(response.json().code).toBe('REVOKED');
+  expect(app.riff.repo.transitions(f.automation.id)).toEqual([]);
+  expect(app.riff.repo.session(f.automation.id)).toEqual(before);
+}, 30000);
+
+it('rechecks proposal ancestry atomically after asynchronous F32 rehearsal before storing a review', async () => {
+  const { app } = await setup(createOfflineTransport());
+  const f = await battle(app);
+  const before = app.riff.repo.session(f.automation.id);
+  let entered!: () => void;
+  const begun = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const original = app.riff.repo.session.bind(app.riff.repo);
+  const read = vi.spyOn(app.riff.repo, 'session').mockImplementation((id) => {
+    const row = original(id);
+    entered();
+    return row;
+  });
+  const request = post(app, `/api/versions/${f.next.id}/transition/preview`, {
+    boundary: 'round-end',
+  });
+  await begun;
+  read.mockRestore();
+  expect(
+    (
+      await post(app, `/api/proposals/${f.proposalId}/moderate`, {
+        expectedRevision: f.selection.proposalRevision,
+        action: 'hide',
+      })
+    ).statusCode,
+  ).toBe(200);
+  const response = await request;
+  expect(response.statusCode, response.body).toBe(409);
+  expect(response.json().code).toBe('REVOKED');
+  expect(app.riff.repo.transitions(f.automation.id)).toEqual([]);
+  expect(app.riff.repo.session(f.automation.id)).toEqual(before);
+}, 30000);
+
+it.each(['before approval', 'inside pending transaction'] as const)(
+  'refuses removed-ancestor F32 pending approval %s without relying on reconciliation',
+  async (boundary) => {
+    const { app } = await setup(createOfflineTransport());
+    const f = await battle(app);
+    // An ordinary descendant retains the selected candidate through its immutable parent.
+    const target = app.riff.repo.insertVersion({
+      ...f.next,
+      parentVersionId: f.next.id,
+      compileRunId: null,
+    });
+    const response = await post(app, `/api/versions/${target.id}/transition/preview`, {
+      boundary: 'round-end',
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const transition = response.json().transition;
+    const before = app.riff.repo.session(f.automation.id);
+    const hideWithoutReconciliation = () =>
+      app.riff.proposals.moderate(
+        { kind: 'creator' },
+        {
+          proposalId: f.proposalId,
+          expectedRevision: f.selection.proposalRevision,
+          action: 'hide',
+        },
+      );
+    let atomic: ReturnType<typeof vi.spyOn> | undefined;
+    if (boundary === 'before approval') hideWithoutReconciliation();
+    else {
+      const original = app.riff.repo.atomic.bind(app.riff.repo);
+      atomic = vi.spyOn(app.riff.repo, 'atomic').mockImplementationOnce((work) => {
+        hideWithoutReconciliation();
+        return original(work);
+      });
+    }
+    try {
+      const approval = await post(app, `/api/transitions/${transition.id}/approve`, {
+        evidenceId: transition.evidenceId,
+        artifactId: target.artifactId,
+        expectedActiveVersionId: f.base.id,
+        sessionId: transition.sourceSessionId,
+        boundary: 'round-end',
+      });
+      expect(approval.statusCode, approval.body).toBe(409);
+      expect(approval.json().code).toBe('REVOKED');
+      expect(app.riff.repo.transition(transition.id)!.status).toBe('review');
+      expect(app.riff.repo.pendingTransitions()).toEqual([]);
+      expect(app.riff.repo.session(f.automation.id)).toEqual(before);
+      expect(app.riff.repo.automation(f.automation.id)!.activeVersionId).toBe(f.base.id);
+    } finally {
+      atomic?.mockRestore();
+    }
+  },
+  30000,
+);

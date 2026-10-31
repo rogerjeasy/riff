@@ -26,6 +26,7 @@ import type { LiveRuntime } from '../live/runtime.js';
 import { experienceOf, SessionConfigurationError } from '../live/sessions.js';
 import { approvalBlockers, diffVersions } from './views.js';
 import { StudioError } from './errors.js';
+import { ProposalError } from '../proposals/service.js';
 let previews = 0;
 export interface TransitionApproval {
   evidenceId: string;
@@ -54,6 +55,7 @@ export function createTransitionService(
     return t;
   };
   function current(t: TransitionRow) {
+    repo.assertVersionLineage(t.targetVersionId);
     if (transitionEvidenceId(t.plan, t.migrationSource, t.evidence) !== t.evidenceId)
       throw new StudioError('STALE', 'The transition evidence changed. Review again.');
     const automation = repo.automation(t.automationId);
@@ -98,6 +100,7 @@ export function createTransitionService(
           'BLOCKED',
           'Another transition rehearsal is running. Try again shortly.',
         );
+      repo.assertVersionLineage(version.id);
       const blockers = approvalBlockers(version, runtime.panicked);
       if (blockers.length) throw new StudioError('BLOCKED', blockers.join(' '));
       const read = repo.atomic(() => {
@@ -241,25 +244,30 @@ export function createTransitionService(
               'BLOCKED',
               'The transition evidence exceeds the private rehearsal limit.',
             );
-          if (
-            repo.automation(version.automationId)?.activeVersionId !== source.id ||
-            repo.session(version.automationId)?.id !== session.id ||
-            repo.state().transitionEpoch !== read.epoch ||
-            runtime.panicked
-          )
-            throw new StudioError('STALE', 'The session changed during rehearsal. Review again.');
-          const row = repo.insertTransition({
-            automationId: version.automationId,
-            sourceVersionId: source.id,
-            targetVersionId: version.id,
-            sourceSessionId: session.id,
-            sourceRevision: session.revision,
-            sourceDigest: sessionDigest(session.snapshot),
-            epoch: read.epoch,
-            migrationSource: input.migrationSource,
-            plan,
-            evidence,
-            evidenceId: transitionEvidenceId(plan, input.migrationSource, evidence),
+          const row = repo.atomic(() => {
+            // Rehearsal is asynchronous: removal can happen after its initial read.
+            // Bind authorization and current-session checks to the evidence write.
+            repo.assertVersionLineage(version.id);
+            if (
+              repo.automation(version.automationId)?.activeVersionId !== source.id ||
+              repo.session(version.automationId)?.id !== session.id ||
+              repo.state().transitionEpoch !== read.epoch ||
+              runtime.panicked
+            )
+              throw new StudioError('STALE', 'The session changed during rehearsal. Review again.');
+            return repo.insertTransition({
+              automationId: version.automationId,
+              sourceVersionId: source.id,
+              targetVersionId: version.id,
+              sourceSessionId: session.id,
+              sourceRevision: session.revision,
+              sourceDigest: sessionDigest(session.snapshot),
+              epoch: read.epoch,
+              migrationSource: input.migrationSource,
+              plan,
+              evidence,
+              evidenceId: transitionEvidenceId(plan, input.migrationSource, evidence),
+            });
           });
           changed();
           return row;
@@ -268,7 +276,7 @@ export function createTransitionService(
           after.stop();
         }
       } catch (error) {
-        if (error instanceof StudioError) throw error;
+        if (error instanceof StudioError || error instanceof ProposalError) throw error;
         throw new StudioError(
           'BLOCKED',
           `${migrationFailureReason(error)} Current progress is unchanged.`,
