@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createSessionSnapshot } from '@riff/sandbox';
 import {
+  assessSessionTransition,
+  migrationFailureReason,
   classifySessionTransition,
   sessionDefinitionHash,
   migrationSourceHash,
@@ -184,4 +186,57 @@ describe('preserving transitions', () => {
         }),
       ).rejects.toThrow();
     });
+});
+
+describe('creator-facing transition explanations', () => {
+  it('names every reason progress cannot carry over, and none for compatible edits', () => {
+    expect(assessSessionTransition(old, next)).toEqual({ kind: 'migration-required', reasons: [] });
+    expect(assessSessionTransition(old, old)).toEqual({
+      kind: 'identical-definition',
+      reasons: [],
+    });
+    const { kind, reasons } = assessSessionTransition(old, {
+      ...old,
+      durationMs: 30000,
+      maxParticipants: 10,
+      resource: { ...old.resource, perParticipant: 2 },
+      contribution: { ...old.contribution, points: 2 },
+    });
+    expect(kind).toBe('reset-required');
+    expect(reasons).toEqual([
+      expect.stringContaining('from 1 to 2'),
+      expect.stringContaining('fewer throws (3 → 2)'),
+      'The round gets shorter.',
+      expect.stringContaining('20 → 10'),
+    ]);
+    expect(classifySessionTransition(old, { ...old, durationMs: 30000 })).toBe('reset-required');
+  });
+  it('maps host failures to fixed text and never echoes guest-controlled messages', () => {
+    expect(
+      migrationFailureReason(new Error('Migration violated preservation requirements')),
+    ).toMatch(/changed progress it must keep/);
+    expect(migrationFailureReason(new Error('Migration wall budget exceeded'))).toMatch(/budget/);
+    expect(migrationFailureReason(new Error('Migration trapped'))).toMatch(/threw/);
+    const guest = migrationFailureReason(new Error('<img src=x> attacker text'));
+    expect(guest).not.toContain('attacker');
+    expect(migrationFailureReason('not an error')).toMatch(/did not pass/);
+  });
+  it('rejects a guest that rewrites scores with the preservation reason', async () => {
+    const snapshot = createSessionSnapshot(old, 1000, 'r');
+    snapshot.participants.a = { teamId: null, contributions: 1, remaining: 2 };
+    snapshot.scores.community = 1;
+    const error = await runSessionMigration(
+      '(input)=>({...input.snapshot,scores:{community:50}})',
+      { oldDefinition: old, newDefinition: next, snapshot, at: 1000 },
+    ).catch((e: unknown) => e);
+    expect(migrationFailureReason(error)).toMatch(/does not fit the new rules/);
+    const kept = createSessionSnapshot(old, 1000, 'r2');
+    const moved = await runSessionMigration("(input)=>({...input.snapshot,id:'other-round'})", {
+      oldDefinition: old,
+      newDefinition: next,
+      snapshot: kept,
+      at: 1000,
+    }).catch((e: unknown) => e);
+    expect(migrationFailureReason(moved)).toMatch(/changed progress it must keep/);
+  });
 });

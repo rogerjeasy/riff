@@ -60,8 +60,11 @@ export {
   migrationSourceHash,
   transitionIdentity,
   classifySessionTransition,
+  assessSessionTransition,
+  migrationFailureReason,
   validatePreservingMigration,
   runSessionMigration,
   type SessionMigrationInput,
+  type SessionTransitionAssessment,
   type SessionTransitionClassification,
 } from './transition.js';

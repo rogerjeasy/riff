@@ -63,24 +63,74 @@ export function transitionIdentity(plan: SessionTransitionPlan): string {
 }
 export type SessionTransitionClassification =
   'identical-definition' | 'migration-required' | 'reset-required';
+export interface SessionTransitionAssessment {
+  kind: SessionTransitionClassification;
+  /** Plain-language reasons current progress cannot be kept; empty unless reset-required. */
+  reasons: string[];
+}
+/** Classify with creator-facing reasons. Example: assessSessionTransition(oldRules, newRules).reasons. */
+export function assessSessionTransition(
+  oldDefinition: ExperienceDefinition,
+  newDefinition: ExperienceDefinition,
+): SessionTransitionAssessment {
+  const a = sessionDefinitionSchema.parse(oldDefinition),
+    b = sessionDefinitionSchema.parse(newDefinition);
+  if (sessionDefinitionHash(a) === sessionDefinitionHash(b))
+    return { kind: 'identical-definition', reasons: [] };
+  const reasons: string[] = [];
+  if (a.contribution.points !== b.contribution.points)
+    reasons.push(
+      `Points per ${a.contribution.command} change from ${a.contribution.points} to ${b.contribution.points}, so existing scores would mean something different.`,
+    );
+  if (canonical(a.teams.map((t) => t.id).sort()) !== canonical(b.teams.map((t) => t.id).sort()))
+    reasons.push('The teams change, so current players cannot keep their team.');
+  if (canonical(a.objective) !== canonical(b.objective))
+    reasons.push('The way the round is won changes.');
+  if (b.resource.perParticipant < a.resource.perParticipant)
+    reasons.push(
+      `Each player would get fewer ${b.resource.name} (${a.resource.perParticipant} → ${b.resource.perParticipant}); Riff never takes away what players already have.`,
+    );
+  if (b.durationMs < a.durationMs) reasons.push('The round gets shorter.');
+  if (b.maxParticipants < a.maxParticipants)
+    reasons.push(
+      `Fewer players are allowed (${a.maxParticipants} → ${b.maxParticipants}), which could remove someone already playing.`,
+    );
+  return { kind: reasons.length ? 'reset-required' : 'migration-required', reasons };
+}
 /** Conservatively classify supported rule changes. Example: classifySessionTransition(oldRules, newRules). */
 export function classifySessionTransition(
   oldDefinition: ExperienceDefinition,
   newDefinition: ExperienceDefinition,
 ): SessionTransitionClassification {
-  const a = sessionDefinitionSchema.parse(oldDefinition),
-    b = sessionDefinitionSchema.parse(newDefinition);
-  if (sessionDefinitionHash(a) === sessionDefinitionHash(b)) return 'identical-definition';
-  if (
-    a.contribution.points !== b.contribution.points ||
-    canonical(a.teams.map((t) => t.id).sort()) !== canonical(b.teams.map((t) => t.id).sort()) ||
-    canonical(a.objective) !== canonical(b.objective) ||
-    b.resource.perParticipant < a.resource.perParticipant ||
-    b.durationMs < a.durationMs ||
-    b.maxParticipants < a.maxParticipants
-  )
-    return 'reset-required';
-  return 'migration-required';
+  return assessSessionTransition(oldDefinition, newDefinition).kind;
+}
+const FAILURE_REASONS: [RegExp, string][] = [
+  [
+    /preservation requirements/,
+    'The migration changed progress it must keep: players, teams, scores, contributions or the round clock.',
+  ],
+  [/explicit reset/, 'These rules cannot keep current progress; a fresh round is required.'],
+  [
+    /invalid snapshot/,
+    'The migration returned progress that does not fit the new rules, such as scores that no longer add up.',
+  ],
+  [/budget|did not settle|Async/, 'The migration ran past its time, memory or size budget.'],
+  [
+    /trapped|invalid JSON|failed or exceeded|Dynamic import/,
+    'The migration code threw or returned something other than progress.',
+  ],
+  [/worker/, 'The isolated migration worker could not run. Try again.'],
+];
+/**
+ * Creator-facing explanation for a host-raised migration failure. Only host-authored messages are
+ * matched; guest output never reaches this text. Example: migrationFailureReason(error).
+ */
+export function migrationFailureReason(error: unknown): string {
+  const message = error instanceof Error ? error.message : '';
+  return (
+    FAILURE_REASONS.find(([pattern]) => pattern.test(message))?.[1] ??
+    'The migration result did not pass the host’s progress checks.'
+  );
 }
 export interface SessionMigrationInput {
   oldDefinition: ExperienceDefinition;
@@ -98,7 +148,12 @@ export function validatePreservingMigration(
     throw new Error('Invalid migration timestamp');
   if (classifySessionTransition(input.oldDefinition, input.newDefinition) === 'reset-required')
     throw new Error('Transition requires explicit reset');
-  const candidate = validateSessionSnapshot(input.newDefinition, raw);
+  let candidate: SessionSnapshot;
+  try {
+    candidate = validateSessionSnapshot(input.newDefinition, raw);
+  } catch {
+    throw new Error('Migration returned an invalid snapshot');
+  }
   const expected = structuredClone(old),
     delta =
       input.newDefinition.resource.perParticipant - input.oldDefinition.resource.perParticipant;
