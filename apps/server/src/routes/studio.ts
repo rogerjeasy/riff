@@ -114,7 +114,7 @@ export function registerStudioRoutes(
     const p = params.safeParse(request.params);
     const body = z
       .object({
-        migrationSource: z.string().min(1).max(32768),
+        migrationSource: z.string().min(1).max(32768).optional(),
         boundary: z.enum(['immediate', 'round-end', 'stopped']),
         events: z.array(eventSchema).max(24).optional(),
         seed: z.number().int().min(1).max(0xffffffff).optional(),
@@ -122,13 +122,10 @@ export function registerStudioRoutes(
       .strict()
       .safeParse(request.body);
     if (!p.success || !body.success)
-      return reply
-        .code(400)
-        .send({
-          code: 'INVALID',
-          message:
-            'Provide a bounded migration source, boundary and at most 24 hypothetical events.',
-        });
+      return reply.code(400).send({
+        code: 'INVALID',
+        message: 'Provide a bounded migration source, boundary and at most 24 hypothetical events.',
+      });
     try {
       return { transition: await studio.previewTransition(p.data.id, body.data) };
     } catch (error) {
@@ -148,12 +145,10 @@ export function registerStudioRoutes(
       .strict()
       .safeParse(request.body);
     if (!p.success || !body.success)
-      return reply
-        .code(400)
-        .send({
-          code: 'INVALID',
-          message: 'Approval must bind exact transition evidence and source session.',
-        });
+      return reply.code(400).send({
+        code: 'INVALID',
+        message: 'Approval must bind exact transition evidence and source session.',
+      });
     try {
       return { transition: await studio.approveTransition(p.data.id, body.data) };
     } catch (error) {

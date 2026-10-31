@@ -1,0 +1,491 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/5"
+  },
+  "request": {
+    "intent": "Change the command to !splat, keep everyone’s teams and scores, and give each player two additional throws.",
+    "base": {
+      "title": "Tomato Battle",
+      "intent": "Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.",
+      "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+      "manifest": {
+        "sdkVersion": "0.4.0",
+        "capabilities": ["overlay", "session"],
+        "trigger": {
+          "command": "!throw",
+          "audience": ["viewer"],
+          "maxPerViewer": 3,
+          "windowMs": 120000
+        },
+        "limits": {
+          "effectsPerEvent": 1,
+          "effectsPerMinute": 120
+        },
+        "experience": {
+          "version": 1,
+          "title": "Tomato Battle",
+          "durationMs": 120000,
+          "maxParticipants": 256,
+          "teams": [
+            {
+              "id": "red",
+              "label": "Red",
+              "joinCommand": "!red"
+            },
+            {
+              "id": "blue",
+              "label": "Blue",
+              "joinCommand": "!blue"
+            }
+          ],
+          "resource": {
+            "name": "throws",
+            "perParticipant": 3
+          },
+          "contribution": {
+            "command": "!throw",
+            "points": 1
+          },
+          "objective": {
+            "kind": "highest-score",
+            "target": null
+          }
+        }
+      },
+      "tests": [
+        {
+          "name": "A contribution consumes one resource and adds points",
+          "kind": "happy",
+          "steps": [
+            {
+              "id": "join",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!red",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 0
+            },
+            {
+              "id": "first",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 1,
+              "expect": "ACCEPTED",
+              "effects": 1,
+              "session": {
+                "scores": {
+                  "red": 1
+                },
+                "participants": {
+                  "alice": {
+                    "remaining": 2,
+                    "contributions": 1
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ordinary chat does not contribute",
+          "kind": "negative",
+          "steps": [
+            {
+              "id": "unrelated",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "hello chat",
+              "at": 0,
+              "expect": "UNRELATED",
+              "effects": 0
+            }
+          ]
+        },
+        {
+          "name": "Redelivered contributions never score twice",
+          "kind": "duplicate",
+          "steps": [
+            {
+              "id": "join",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!red",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 0
+            },
+            {
+              "id": "same",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 1,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "same",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 2,
+              "expect": "DUPLICATE",
+              "effects": 0,
+              "session": {
+                "scores": {
+                  "red": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "The exact deadline ends the round",
+          "kind": "limit",
+          "steps": [
+            {
+              "id": "join",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!red",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 0
+            },
+            {
+              "id": "deadline",
+              "viewer": "bob",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 120000,
+              "expect": "SESSION_FINISHED",
+              "effects": 0,
+              "session": {
+                "phase": "finished"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resources never renew during a round",
+          "kind": "limit",
+          "steps": [
+            {
+              "id": "join",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!red",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 0
+            },
+            {
+              "id": "spend0",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 1,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "spend1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 2,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "spend2",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 3,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "over",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!throw",
+              "at": 4,
+              "expect": "RESOURCE_LIMIT",
+              "effects": 0,
+              "session": {
+                "participants": {
+                  "alice": {
+                    "remaining": 0,
+                    "contributions": 3
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "output": {
+    "question": null,
+    "choices": [],
+    "unsupportedReason": null,
+    "alternative": null,
+    "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+    "migrationSource": "(input) => ({\n  ...input.snapshot,\n  participants: Object.fromEntries(Object.entries(input.snapshot.participants).map(([id, participant]) => [id, {\n    ...participant,\n    remaining: participant.remaining + input.newDefinition.resource.perParticipant - input.oldDefinition.resource.perParticipant\n  }]))\n})",
+    "manifest": {
+      "sdkVersion": "0.4.0",
+      "capabilities": ["overlay", "session"],
+      "trigger": {
+        "command": "!splat",
+        "audience": ["viewer"],
+        "maxPerViewer": 5,
+        "windowMs": 120000
+      },
+      "limits": {
+        "effectsPerEvent": 1,
+        "effectsPerMinute": 120
+      },
+      "experience": {
+        "version": 1,
+        "title": "Tomato Battle",
+        "durationMs": 120000,
+        "maxParticipants": 256,
+        "teams": [
+          {
+            "id": "red",
+            "label": "Red",
+            "joinCommand": "!red"
+          },
+          {
+            "id": "blue",
+            "label": "Blue",
+            "joinCommand": "!blue"
+          }
+        ],
+        "resource": {
+          "name": "throws",
+          "perParticipant": 5
+        },
+        "contribution": {
+          "command": "!splat",
+          "points": 1
+        },
+        "objective": {
+          "kind": "highest-score",
+          "target": null
+        }
+      }
+    },
+    "tests": [
+      {
+        "name": "A contribution consumes one resource and adds points",
+        "kind": "happy",
+        "steps": [
+          {
+            "id": "join",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!red",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 0
+          },
+          {
+            "id": "first",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 1,
+            "expect": "ACCEPTED",
+            "effects": 1,
+            "session": {
+              "scores": {
+                "red": 1
+              },
+              "participants": {
+                "alice": {
+                  "remaining": 4,
+                  "contributions": 1
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "Ordinary chat does not contribute",
+        "kind": "negative",
+        "steps": [
+          {
+            "id": "unrelated",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "hello chat",
+            "at": 0,
+            "expect": "UNRELATED",
+            "effects": 0
+          }
+        ]
+      },
+      {
+        "name": "Redelivered contributions never score twice",
+        "kind": "duplicate",
+        "steps": [
+          {
+            "id": "join",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!red",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 0
+          },
+          {
+            "id": "same",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 1,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "same",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 2,
+            "expect": "DUPLICATE",
+            "effects": 0,
+            "session": {
+              "scores": {
+                "red": 1
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": "The exact deadline ends the round",
+        "kind": "limit",
+        "steps": [
+          {
+            "id": "join",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!red",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 0
+          },
+          {
+            "id": "deadline",
+            "viewer": "bob",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 120000,
+            "expect": "SESSION_FINISHED",
+            "effects": 0,
+            "session": {
+              "phase": "finished"
+            }
+          }
+        ]
+      },
+      {
+        "name": "Resources never renew during a round",
+        "kind": "limit",
+        "steps": [
+          {
+            "id": "join",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!red",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 0
+          },
+          {
+            "id": "spend0",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 1,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "spend1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 2,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "spend2",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 3,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "spend3",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 4,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "spend4",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 5,
+            "expect": "ACCEPTED",
+            "effects": 1
+          },
+          {
+            "id": "over",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!splat",
+            "at": 6,
+            "expect": "RESOURCE_LIMIT",
+            "effects": 0,
+            "session": {
+              "participants": {
+                "alice": {
+                  "remaining": 0,
+                  "contributions": 5
+                }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "behavior": {
+      "when": "Join Red with !red or Blue with !blue; contribute with !splat",
+      "what": "Team scores accumulate; the highest score wins at the deadline",
+      "who": "everyone; up to 256 participants",
+      "howMuch": "5 throws per participant per round; 2 min duration"
+    },
+    "assumptions": ["Offline template compiler; no model call."],
+    "kind": "candidate",
+    "title": "Tomato Battle",
+    "summary": "Join a team and use !splat to score during a timed battle."
+  }
+}

@@ -426,7 +426,12 @@ Implemented end to end, with Tomato Toss as the reference interaction:
 - **Compiler** (`packages/compiler`): strict JSON Schema output (candidate | question |
   unsupported), exact workspace files, prompt with fenced creator text, deterministic
   intent checks (match/mismatch/assumed/preserved/changed), one repair round, 180 s
-  timeout, queue (1 per channel, 4 global, 3 waiting). Transport is injected.
+  timeout, queue (1 per channel, 4 global, 3 waiting). Transport is injected. Stateful
+  edits can emit a separate optional `migrationSource` artifact; strict model output
+  requires the nullable field while legacy outputs may omit it. Offline additional
+  resources increment the old allowance. Authoring independently checks generated
+  migrations against empty, populated, exhausted, paused and finished snapshots
+  before storing exact source and check results with immutable candidate evidence.
 - **Server**: Codex transport (temp workspace + temp `CODEX_HOME` with only the login,
   read-only sandbox, no network, no web search, minimal env), authoring service,
   private replay (`POST /api/versions/:id/preview`), approval bound to artifact hash and
@@ -514,7 +519,9 @@ and commits state/version/status/journal/outbox fencing in one revision-checked
 transaction. Stopped transitions require an already-paused session and stay paused;
 round-end transitions survive restart and apply to the finished state once.
 
-`POST /api/versions/:id/transition/preview` accepts a bounded `migrationSource`,
+`POST /api/versions/:id/transition/preview` accepts an optional bounded `migrationSource`
+(resolved from immutable candidate evidence when omitted, or a host-provided preserving
+fallback for legacy versions),
 `boundary` (`immediate`, `round-end`, `stopped`), optional `seed` and up to 24
 hypothetical `events`. Its private comparison uses both real host engines with the
 same inputs/seed and synthetic provenance; it never dispatches live effects.

@@ -113,7 +113,7 @@ export function extractIntentHints(intent: string): IntentHints {
     audience = ['subscriber'];
   if (/\b(?:mods|moderators?)\b/i.test(text) && /\bonly\b/i.test(text))
     audience = audience ? [...audience, 'moderator'] : ['moderator'];
-  if (/\b(?:everyone|anyone|all viewers|any viewer|whole chat)\b/i.test(text))
+  if (/\b(?:everyone(?![’']s)|anyone|all viewers|any viewer|whole chat)\b/i.test(text))
     audience = ['viewer'];
   else if (!audience && /\bviewers?\b/i.test(text)) audience = ['viewer'];
 
@@ -154,6 +154,9 @@ export function checkIntent(
 ): IntentCheck[] {
   const hints = extractIntentHints(intent);
   const sessionHints = extractExperienceHints(intent);
+  if (sessionHints.additionalResources !== null && previous?.manifest.experience)
+    sessionHints.perParticipant =
+      previous.manifest.experience.resource.perParticipant + sessionHints.additionalResources;
   const experience = candidate.manifest.experience;
   const oldExperience = previous?.manifest.experience;
   const sessionRequest = sessionHints.requested || !!experience || !!oldExperience;

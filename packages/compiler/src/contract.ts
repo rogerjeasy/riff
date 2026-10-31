@@ -51,6 +51,7 @@ export const compileOutputSchema = z
     unsupportedReason: z.string().max(400).nullable(),
     alternative: z.string().max(400).nullable(),
     source: z.string().max(16_384).nullable(),
+    migrationSource: z.string().min(1).max(32768).nullable().optional(),
     manifest: z.unknown(),
     tests: z.array(z.unknown()).max(12),
     behavior: behaviorSchema,
@@ -83,6 +84,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
     'unsupportedReason',
     'alternative',
     'source',
+    'migrationSource',
     'manifest',
     'tests',
     'behavior',
@@ -97,6 +99,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
     unsupportedReason: nullableString(400),
     alternative: nullableString(400),
     source: nullableString(16_384),
+    migrationSource: nullableString(32768),
     manifest: {
       anyOf: [
         { type: 'null' },

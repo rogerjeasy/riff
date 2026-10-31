@@ -9,6 +9,7 @@ import { versionApprovalBlockers } from '../../db/version-health.js';
 export interface Evidence {
   verification: VerificationReport;
   intent: IntentCheck[];
+  migration?: { source: string; ok: boolean; snapshots: string[]; failure: string | null };
 }
 export interface Change {
   field: string;

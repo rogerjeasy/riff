@@ -7,7 +7,8 @@ import type { ChannelRepository, VersionRow } from '../../db/repositories/studio
 import type { Hub } from '../hub.js';
 import type { LiveRuntime } from '../live/runtime.js';
 import type { OverlayBroker } from '../overlay/broker.js';
-import { approvalBlockers, versionView } from './views.js';
+import { approvalBlockers, versionView, type Evidence } from './views.js';
+import { PRESERVING_MIGRATION_SOURCE } from '@riff/compiler';
 
 import { StudioError } from './errors.js';
 import { createTransitionService } from './transitions.js';
@@ -83,8 +84,18 @@ export function createStudioService(deps: {
   }
 
   return {
-    previewTransition(versionId: string, input: Parameters<typeof transitions.preview>[1]) {
-      return transitions.preview(mustVersion(versionId), input);
+    previewTransition(
+      versionId: string,
+      input: Omit<Parameters<typeof transitions.preview>[1], 'migrationSource'> & {
+        migrationSource?: string | undefined;
+      },
+    ) {
+      const version = mustVersion(versionId);
+      const generated = (version.evidence as Partial<Evidence>).migration;
+      return transitions.preview(version, {
+        ...input,
+        migrationSource: input.migrationSource ?? generated?.source ?? PRESERVING_MIGRATION_SOURCE,
+      });
     },
     approveTransition: transitions.approve,
     cancelTransition: transitions.cancel,

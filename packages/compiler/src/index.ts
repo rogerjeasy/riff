@@ -34,3 +34,5 @@ export type {
   CompilerUsage,
 } from './transport.js';
 export { buildPrompt, buildRepairPrompt, buildWorkspace, PROMPT_VERSION } from './workspace.js';
+
+export { PRESERVING_MIGRATION_SOURCE } from './experience-output.js';

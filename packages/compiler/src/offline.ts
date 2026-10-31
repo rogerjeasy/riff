@@ -117,6 +117,7 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     unsupportedReason: null,
     alternative: null,
     source: null,
+    migrationSource: null,
     manifest: null,
     tests: [],
     behavior: { when: '', what: '', who: '', howMuch: '' },

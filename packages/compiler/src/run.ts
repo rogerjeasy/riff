@@ -55,7 +55,12 @@ export interface CompileHooks<V extends VerificationLike> {
   onStage?: (stage: CompileStage, attempt: number) => void;
   onProgress?: (progress: CompilerProgress) => void;
   /** Host verification (sandbox pipeline), injected by the server. */
-  verify: (candidate: { source: string; manifest: unknown; tests: unknown }) => Promise<V>;
+  verify: (candidate: {
+    source: string;
+    manifest: unknown;
+    tests: unknown;
+    migrationSource?: string;
+  }) => Promise<V>;
 }
 
 const sumUsage = (a: CompilerUsage | null, b: CompilerUsage | null): CompilerUsage | null =>
@@ -164,6 +169,7 @@ export async function compile<V extends VerificationLike>(
         source: output.source ?? '',
         manifest: output.manifest,
         tests: output.tests,
+        ...(output.migrationSource ? { migrationSource: output.migrationSource } : {}),
       });
       try {
         record.intent = checkIntent(

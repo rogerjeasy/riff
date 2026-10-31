@@ -7,6 +7,7 @@ import {
   compileOutputSchema,
   COMPILE_OUTPUT_JSON_SCHEMA,
   createOfflineTransport,
+  type CompileRequest,
   type ManifestView,
 } from '@riff/compiler';
 
@@ -21,6 +22,66 @@ function candidate(intent: string) {
 }
 
 describe('stateful experience compilation', () => {
+  it('preserves a restricted audience and scoring on the additional-resource reference edit', () => {
+    const base = compileOffline({ intent: BATTLE, base: null });
+    const manifest = structuredClone(base.manifest) as ManifestView;
+    manifest.trigger.audience = ['subscriber'];
+    manifest.experience!.contribution.points = 3;
+    const intent =
+      'Change the command to !splat, keep everyone’s teams and scores, and give each player two additional throws.';
+    const edited = compileOffline({
+      intent,
+      base: {
+        title: base.title,
+        intent: BATTLE,
+        source: base.source!,
+        manifest,
+        tests: base.tests,
+      },
+    });
+    expect(edited.manifest).toMatchObject({
+      trigger: { audience: ['subscriber'] },
+      experience: { contribution: { points: 3 } },
+    });
+  });
+  it('adds additional throws to the old allowance and emits a separate migration', () => {
+    const base = compileOffline({ intent: BATTLE, base: null });
+    const intent =
+      'Change the command to !splat, keep everyone’s teams and scores, and give each player two additional throws.';
+    const output = compileOffline({
+      intent,
+      base: {
+        title: base.title,
+        intent: BATTLE,
+        source: base.source!,
+        manifest: base.manifest,
+        tests: base.tests,
+      },
+    });
+    expect(output.manifest).toMatchObject({
+      experience: {
+        resource: { perParticipant: 5 },
+        contribution: { command: '!splat', points: 1 },
+        teams: [{ id: 'red' }, { id: 'blue' }],
+      },
+    });
+    expect(output).toHaveProperty('migrationSource', expect.any(String));
+    expect(
+      checkIntent(
+        intent,
+        { source: output.source!, manifest: output.manifest as ManifestView },
+        candidate(BATTLE),
+      ).filter((c) => c.status === 'mismatch'),
+    ).toEqual([]);
+    const wrong = structuredClone(output.manifest) as ManifestView;
+    wrong.experience!.resource.perParticipant = 2;
+    expect(
+      checkIntent(intent, { source: output.source!, manifest: wrong }, candidate(BATTLE)).find(
+        (c) => c.aspect === 'resource',
+      )?.status,
+    ).toBe('mismatch');
+    expect(COMPILE_OUTPUT_JSON_SCHEMA.required).toContain('migrationSource');
+  });
   it('generates team battle primitives and semantic generated scenarios', async () => {
     const result = await compile({ intent: BATTLE, base: null }, createOfflineTransport(), {
       verify: async () => ({ ok: true, failureReport: null }),
@@ -298,6 +359,14 @@ describe('stateful experience compilation', () => {
 });
 
 describe('recorded stateful responses', () => {
+  it('replays the live evolution prompt-pack recording without dropping the migration artifact', () => {
+    const fixture = JSON.parse(
+      readFileSync(new URL('../fixtures/live-evolution.json', import.meta.url), 'utf8'),
+    ) as { request: CompileRequest; output: unknown };
+    const output = compileOutputSchema.parse(fixture.output);
+    expect(output).toEqual(compileOffline(fixture.request));
+    expect(output.migrationSource).toContain('participant.remaining +');
+  });
   it('replays offline recordings with truthful provenance through the compiler contract', () => {
     const fixture = JSON.parse(
       readFileSync(new URL('../fixtures/stateful-experiences.json', import.meta.url), 'utf8'),

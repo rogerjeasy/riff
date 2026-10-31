@@ -32,6 +32,7 @@ export interface ExperienceHints {
   durationMs: number | null;
   resourceName: string | null;
   perParticipant: number | null;
+  additionalResources: number | null;
   teams: ExperienceDefinition['teams'] | null;
   /** Team names stated without join commands, e.g. "join red or blue". */
   teamNames: string[] | null;
@@ -100,6 +101,10 @@ export function extractExperienceHints(intent: string): ExperienceHints {
       break;
     }
   }
+  const additional = text.match(
+    new RegExp(`${NUMBER}\\s+(?:additional|more|extra)\\s+${NOUN}`, 'i'),
+  );
+  const additionalResources = numberOf(additional?.[1]);
   const trailing = text.match(
     new RegExp(`${NOUN}\\s*,?\\s+${NUMBER}\\s+(?:each|apiece|per\\s+${WHO})`, 'i'),
   );
@@ -118,7 +123,8 @@ export function extractExperienceHints(intent: string): ExperienceHints {
     command,
     durationMs: hints.windowMs,
     resourceName: resourceName ? resourceName.toLowerCase().replace(/s?$/, 's') : null,
-    perParticipant: perParticipant ?? hints.maxPerViewer,
+    perParticipant: additionalResources === null ? (perParticipant ?? hints.maxPerViewer) : null,
+    additionalResources,
     teams: teams.length ? teams : cooperative ? [] : null,
     teamNames,
     teamCount: numberOf(countMatch?.[1]),

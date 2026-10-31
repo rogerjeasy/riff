@@ -7,3 +7,7 @@ Goal outputs for prompt pack `riff-compiler/4`. These are template responses, no
 claims of live model generation. Both outputs pass the same sandbox verifier as
 model responses. The test suite replays their compiler contract and explicit intent
 checks without credentials or a model call.
+
+`live-evolution.json` records the offline F32 edit and its separate migration source
+for prompt pack 5. It preserves the old team/scoring rules and adds two throws to
+the existing allowance; it is an offline recording, not a model execution.

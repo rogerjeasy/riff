@@ -25,6 +25,7 @@ const empty = {
   unsupportedReason: null,
   alternative: null,
   source: null,
+  migrationSource: null,
   manifest: null,
   tests: [],
   behavior: { when: '', what: '', who: '', howMuch: '' },
@@ -117,7 +118,9 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
         previous?.resource.name ??
         (kind === 'highest-score' ? 'throws' : 'contributions'),
       perParticipant: pick(
-        hints.perParticipant,
+        hints.additionalResources !== null && previous
+          ? previous.resource.perParticipant + hints.additionalResources
+          : hints.perParticipant,
         previous?.resource.perParticipant,
         3,
         'Each participant gets 3 actions per round.',
@@ -150,6 +153,17 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
   return {
     ...empty,
     kind: 'candidate',
+    migrationSource:
+      previous &&
+      JSON.stringify(previous) !== JSON.stringify(definition) &&
+      JSON.stringify(previous.objective) === JSON.stringify(definition.objective) &&
+      JSON.stringify(previous.teams.map((team) => team.id).sort()) ===
+        JSON.stringify(definition.teams.map((team) => team.id).sort()) &&
+      definition.resource.perParticipant >= previous.resource.perParticipant &&
+      definition.durationMs >= previous.durationMs &&
+      definition.maxParticipants >= previous.maxParticipants
+        ? PRESERVING_MIGRATION_SOURCE
+        : null,
     title: definition.title,
     summary:
       kind === 'highest-score'
@@ -295,3 +309,12 @@ function experienceScenarios(
   }
   return list;
 }
+
+/** Separate effect-free artifact; the host independently checks every preserved field. */
+export const PRESERVING_MIGRATION_SOURCE = `(input) => ({
+  ...input.snapshot,
+  participants: Object.fromEntries(Object.entries(input.snapshot.participants).map(([id, participant]) => [id, {
+    ...participant,
+    remaining: participant.remaining + input.newDefinition.resource.perParticipant - input.oldDefinition.resource.perParticipant
+  }]))
+})`;

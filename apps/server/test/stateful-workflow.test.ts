@@ -298,6 +298,68 @@ const BATTLE =
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.';
 const GOAL =
   'Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.';
+it('authors a preserving edit, reviews private comparisons, retains chat during review and audits new command play', async () => {
+  const app = await createApp({ logger: false, now: () => 1000 });
+  apps.push(app);
+  const first = await generated(app, BATTLE);
+  const post = (url: string, payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url, headers: { 'x-riff-request': '1' }, payload });
+  expect(
+    (
+      await post(`/api/versions/${first.id}/approve`, {
+        artifactId: first.artifactId,
+        expectedActiveVersionId: null,
+      })
+    ).statusCode,
+  ).toBe(200);
+  await app.riff.runtime.handleChat(chat('join', 'alice', '!red'));
+  await app.riff.runtime.handleChat(chat('one', 'alice', '!throw'));
+  const edited = await generated(
+    app,
+    'Change the command to !splat, keep everyone’s teams and scores, and give each player two additional throws.',
+    first.id,
+  );
+  expect(edited.evidence).toMatchObject({
+    migration: {
+      source: expect.any(String),
+      ok: true,
+      snapshots: ['empty', 'populated', 'exhausted', 'paused', 'finished'],
+    },
+  });
+  const preview = await post(`/api/versions/${edited.id}/transition/preview`, {
+    boundary: 'immediate',
+  });
+  expect(preview.statusCode).toBe(200);
+  const t = preview.json().transition;
+  expect(t.evidence.comparison.provenance).toBe('synthetic');
+  expect(t.evidence.migration.after).toMatchObject({
+    scores: { red: 1 },
+    participants: { alice: { remaining: 4, teamId: 'red' } },
+  });
+  await app.riff.runtime.handleChat(chat('during-review', 'alice', '!throw'));
+  expect(
+    (
+      await post(`/api/transitions/${t.id}/approve`, {
+        evidenceId: t.evidenceId,
+        artifactId: t.plan.targetArtifactId,
+        expectedActiveVersionId: t.sourceVersionId,
+        sessionId: t.sourceSessionId,
+        boundary: 'immediate',
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(app.riff.repo.session(first.automationId)?.snapshot).toMatchObject({
+    scores: { red: 2 },
+    participants: { alice: { remaining: 3, contributions: 2, teamId: 'red' } },
+  });
+  expect((await app.riff.runtime.handleChat(chat('old', 'alice', '!throw')))[0]?.code).toBe(
+    'UNRELATED',
+  );
+  expect((await app.riff.runtime.handleChat(chat('new', 'alice', '!splat')))[0]?.code).toBe(
+    'ACCEPTED',
+  );
+  expect((await app.riff.studio.auditSession(first.automationId)).status).toBe('verified');
+});
 async function generated(app: RiffApp, intent: string, baseVersionId: string | null = null) {
   const response = await app.inject({
     method: 'POST',

@@ -9,7 +9,8 @@ import {
   type CompilerProgress,
   type CompilerTransport,
 } from '@riff/compiler';
-import { verifyCandidate, type VerificationReport } from '@riff/sandbox';
+import { type VerificationReport } from '@riff/sandbox';
+import { verifyAuthoredCandidate, type AuthoringVerification } from './verify-migration.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { Evidence } from '../automations/views.js';
@@ -87,7 +88,12 @@ export function createAuthoringService(deps: {
     const output = final?.output;
     if (!final || !output || output.kind !== 'candidate' || !final.verification) return null;
     const automationId = base?.automationId ?? repo.createAutomation(output.title).id;
-    const evidence: Evidence = { verification: final.verification, intent: final.intent };
+    const migration = (final.verification as AuthoringVerification).migration;
+    const evidence: Evidence = {
+      verification: final.verification,
+      intent: final.intent,
+      ...(migration ? { migration } : {}),
+    };
     const version = repo.insertVersion({
       automationId,
       parentVersionId: base?.id ?? null,
@@ -166,7 +172,7 @@ export function createAuthoringService(deps: {
       const job = async () => {
         const result = await compile(request, transport, {
           signal: controller.signal,
-          verify: verifyCandidate,
+          verify: (candidate) => verifyAuthoredCandidate(candidate, base?.manifest),
           onStage(stage, attempt) {
             snapshot.stage = stage;
             snapshot.attempt = attempt;

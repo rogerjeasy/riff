@@ -3,7 +3,7 @@ import { compileExperienceOffline } from './experience-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/4';
+export const PROMPT_VERSION = 'riff-compiler/5';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -73,6 +73,17 @@ Rules for candidates:
   who ("Everyone in chat"), howMuch ("Up to 3 per viewer in any 60 seconds").
   For sessions state join/contribution commands, the winning/collective goal, resources
   per participant per round, and total round duration. Never describe them as rolling.
+- migrationSource is null for new interactions, ordinary edits, and unchanged session definitions.
+  For changed session rules emit a SEPARATE effect-free function expression (input) => snapshot.
+  input contains deeply frozen oldDefinition, newDefinition, snapshot and at. Return a JSON
+  snapshot preserving identity, participants, teams, scores, contributions, phase, time,
+  outcome, winner and revision exactly. Increase each participant.remaining by
+  newDefinition.resource.perParticipant - oldDefinition.resource.perParticipant.
+  “Two additional throws” increases the OLD allowance by two; it never replaces it with two.
+  No riff bridge, effects, clock, random, network, filesystem, eval or mutable live-state API
+  is available. The host independently validates empty, populated, exhausted, paused and
+  finished states, and later revalidates current live progress at exact approval.
+  Incompatible score/team/objective changes require explicit full reset, never rewrite scores.
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {
