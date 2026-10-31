@@ -532,3 +532,12 @@ versions use the same preview/approval path for preserving rollback; incompatibl
 reductions require explicit full reset. Studio automation snapshots expose scoped
 `transitions`. Journals record original definitions plus migration source/version,
 plan and resulting digest; audit uses the same session/event seeds as live play.
+
+The console reviews preserved/changed/reset fields, before/after rules, scores and
+resources, exact migration source and private synthetic decision comparisons. Changing
+version, session, source or boundary invalidates local proof; acceptance of new chat
+does not. Existing wider-authority consent and verification blockers gate transition
+approval. Live controls expose pending round-end cancellation and review previously
+approved healthy rollback targets from current progress, with an explicit full-reset
+fallback when preservation cannot pass. Panic blocks approvals; stopped timing requires
+an already-paused session and remains paused.

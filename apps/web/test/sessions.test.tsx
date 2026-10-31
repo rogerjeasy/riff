@@ -7,11 +7,15 @@ import { Evidence } from '../src/console/review/evidence.js';
 import { LivePanel } from '../src/console/live/live-panel.js';
 import { Rehearsal } from '../src/console/rehearsal/stage.js';
 import { api } from '../src/lib/api.js';
+import { ApiError } from '../src/lib/api.js';
+import { TransitionReview } from '../src/console/review/transition-review.js';
+import type { Transition } from '../src/lib/types.js';
 import type { ExperienceDefinition, SessionSnapshot, Studio, Version } from '../src/lib/types.js';
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
 const definition: ExperienceDefinition = {
@@ -93,6 +97,292 @@ const automation = {
   canRollback: false,
   session: snapshot,
 };
+
+it('offers a reviewed preserving change with boundary choice and keeps authority consent', async () => {
+  const edited: Version = {
+    ...version,
+    id: 'v2',
+    number: 2,
+    status: 'candidate',
+    manifest: {
+      ...version.manifest,
+      experience: {
+        ...definition,
+        resource: { name: 'throws', perParticipant: 5 },
+        contribution: { command: '!splat', points: 1 },
+      },
+    },
+    changes: [{ field: 'maxPerViewer', label: 'Allowance', from: '3', to: '5', authority: 'more' }],
+  };
+  render(
+    <Evidence
+      version={edited}
+      automation={automation}
+      panic={false}
+      previewed
+      onApprove={async () => undefined}
+      onDiscard={async () => undefined}
+    />,
+  );
+  expect(screen.getByLabelText('When this change takes effect')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Preview keeping progress' })).toBeTruthy();
+  expect(screen.getByText(/leaves it paused/)).toBeTruthy();
+});
+
+const editedVersion: Version = {
+  ...version,
+  id: 'v2',
+  number: 2,
+  status: 'candidate',
+  approvedAt: null,
+  manifest: {
+    ...version.manifest,
+    experience: {
+      ...definition,
+      resource: { name: 'throws', perParticipant: 5 },
+      contribution: { command: '!splat', points: 1 },
+    },
+  },
+  changes: [{ field: 'maxPerViewer', label: 'Allowance', from: '3', to: '5', authority: 'more' }],
+};
+const transition = (): Transition => ({
+  id: 't1',
+  sourceVersionId: 'v1',
+  targetVersionId: 'v2',
+  sourceSessionId: snapshot.id,
+  migrationSource: '(input) => input.snapshot',
+  evidenceId: 'e'.repeat(64),
+  status: 'review',
+  plan: { targetArtifactId: editedVersion.artifactId!, boundary: 'immediate' },
+  evidence: {
+    preserved: ['teams', 'scores', 'contributions', 'time'],
+    changed: editedVersion.changes,
+    reset: [],
+    takesEffect: 'immediate',
+    beforeRules: { definition, audience: ['viewer'] },
+    afterRules: { definition: editedVersion.manifest.experience!, audience: ['viewer'] },
+    migration: {
+      before: snapshot,
+      after: {
+        ...snapshot,
+        participants: { alice: { teamId: 'red', remaining: 4, contributions: 1 } },
+      },
+    },
+    comparison: {
+      provenance: 'synthetic',
+      label: 'Host-generated hypothetical future inputs',
+      events: [{ id: 'event1', text: '!splat' }],
+      steps: [
+        {
+          eventId: 'event1',
+          before: { code: 'UNRELATED', reason: 'Old command', effects: [] },
+          after: { code: 'ACCEPTED', reason: 'New command', effects: [] },
+        },
+      ],
+      before: snapshot,
+      after: snapshot,
+    },
+  },
+});
+
+it('validates transition wire evidence and sends exact approval identities', async () => {
+  const t = transition();
+  const fetcher = vi.fn(async (): Promise<{ ok: boolean; json: () => Promise<unknown> }> => ({
+    ok: true,
+    json: async () => ({ transition: t }),
+  }));
+  vi.stubGlobal('fetch', fetcher);
+  const reviewed = await api.previewTransition('v2', 'immediate');
+  expect(reviewed.migrationSource).toBe(t.migrationSource);
+  await api.approveTransition(reviewed);
+  expect(fetcher).toHaveBeenLastCalledWith(
+    '/api/transitions/t1/approve',
+    expect.objectContaining({
+      body: JSON.stringify({
+        evidenceId: t.evidenceId,
+        artifactId: t.plan.targetArtifactId,
+        expectedActiveVersionId: 'v1',
+        sessionId: snapshot.id,
+        boundary: 'immediate',
+      }),
+    }),
+  );
+  fetcher.mockResolvedValue({
+    ok: true,
+    json: async () => ({ transition: { ...t, evidence: {} } }),
+  });
+  await expect(api.previewTransition('v2', 'immediate')).rejects.toThrow();
+});
+
+it('shows actual transition comparisons and requires existing authority consent before exact approval', async () => {
+  const t = transition();
+  vi.spyOn(api, 'previewTransition').mockResolvedValue(t);
+  const approve = vi.spyOn(api, 'approveTransition').mockResolvedValue({ ...t, status: 'applied' });
+  render(
+    <Evidence
+      version={editedVersion}
+      automation={automation}
+      panic={false}
+      previewed
+      onApprove={async () => undefined}
+      onDiscard={async () => undefined}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+  const button = await screen.findByRole('button', { name: 'Approve reviewed change' });
+  expect(button.hasAttribute('disabled')).toBe(true);
+  expect(screen.getByText(/UNRELATED: Old command/)).toBeTruthy();
+  expect(screen.getByText(/ACCEPTED: New command/)).toBeTruthy();
+  expect(screen.getByText('2 → 4')).toBeTruthy();
+  expect(screen.getByText(/Synthetic inputs/)).toBeTruthy();
+  fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+  expect(button.hasAttribute('disabled')).toBe(false);
+  fireEvent.click(button);
+  await waitFor(() => expect(approve).toHaveBeenCalledWith(t));
+});
+
+it.each(['boundary', 'source', 'version', 'session'] as const)(
+  'rejects a delayed preview after the %s changes',
+  async (change) => {
+    let resolve!: (t: Transition) => void;
+    vi.spyOn(api, 'previewTransition').mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    const { rerender } = render(
+      <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+    if (change === 'boundary')
+      fireEvent.change(screen.getByLabelText('When this change takes effect'), {
+        target: { value: 'round-end' },
+      });
+    if (change === 'source')
+      fireEvent.change(screen.getByLabelText('Migration source (optional)'), {
+        target: { value: '(input) => ({...input.snapshot})' },
+      });
+    if (change === 'version')
+      rerender(
+        <TransitionReview
+          version={{ ...editedVersion, id: 'v3' }}
+          automation={automation}
+          panic={false}
+          allowed
+        />,
+      );
+    if (change === 'session')
+      rerender(
+        <TransitionReview
+          version={editedVersion}
+          automation={{ ...automation, session: { ...snapshot, id: 'new-round' } }}
+          panic={false}
+          allowed
+        />,
+      );
+    resolve(transition());
+    await screen.findByText(/changed during preview/);
+    expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  },
+);
+
+it('invalidates reviewed source changes and shows stale approval errors without retaining proof', async () => {
+  vi.spyOn(api, 'previewTransition').mockResolvedValue(transition());
+  vi.spyOn(api, 'approveTransition').mockRejectedValue(
+    new ApiError('The live version changed. Review again.', 409, 'STALE'),
+  );
+  render(
+    <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Approve reviewed change' }));
+  await screen.findByText('The live version changed. Review again.');
+  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+  await screen.findByRole('button', { name: 'Approve reviewed change' });
+  fireEvent.change(screen.getByLabelText('Migration source (optional)'), {
+    target: { value: 'changed source' },
+  });
+  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain('Preview again');
+  fireEvent.change(screen.getByLabelText('Migration source (optional)'), { target: { value: '' } });
+  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+});
+
+it('explains stopped timing and prevents panic approval', async () => {
+  const t = transition();
+  t.plan.boundary = 'stopped';
+  t.evidence.takesEffect = 'stopped';
+  vi.spyOn(api, 'previewTransition').mockResolvedValue(t);
+  const { rerender } = render(
+    <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
+  );
+  fireEvent.change(screen.getByLabelText('When this change takes effect'), {
+    target: { value: 'stopped' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+  expect(
+    (await screen.findByRole('button', { name: 'Approve reviewed change' })).hasAttribute(
+      'disabled',
+    ),
+  ).toBe(true);
+  expect(screen.getByText('Pause this interaction before approving this timing.')).toBeTruthy();
+  rerender(<TransitionReview version={editedVersion} automation={automation} panic allowed />);
+  expect(
+    screen.getByRole('button', { name: 'Preview keeping progress' }).hasAttribute('disabled'),
+  ).toBe(true);
+  expect(screen.queryByRole('button', { name: 'Approve reviewed change' })).toBeNull();
+});
+
+it('shows pending cancellation and routes stateful rollback to review of a healthy approved target', async () => {
+  const pending = { ...transition(), status: 'pending' as const };
+  const cancel = vi
+    .spyOn(api, 'cancelTransition')
+    .mockResolvedValue({ ...pending, status: 'cancelled' });
+  const select = vi.fn();
+  const approveReset = vi.spyOn(api, 'approve').mockResolvedValue({});
+  const studio = {
+    automations: [
+      {
+        ...automation,
+        versions: [
+          version,
+          {
+            ...editedVersion,
+            id: 'unhealthy',
+            status: 'superseded',
+            approvedAt: 2,
+            blockers: ['Verification did not pass.'],
+          },
+          { ...editedVersion, id: 'older', status: 'superseded', approvedAt: 1 },
+        ],
+        canRollback: true,
+        transitions: [pending],
+      },
+    ],
+    overlay: { connections: 0 },
+    twitch: { state: 'unconfigured', configured: false },
+    panic: false,
+  } as Studio;
+  vi.spyOn(api, 'overlay').mockResolvedValue({ url: 'http://localhost/overlay', connections: 0 });
+  render(
+    <LivePanel
+      studio={studio}
+      selectedVersionId={null}
+      onSelect={select}
+      onEdit={() => undefined}
+      notify={() => undefined}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel pending change' }));
+  expect(cancel).toHaveBeenCalledWith('t1');
+  fireEvent.click(screen.getByRole('button', { name: 'Roll back' }));
+  expect(select).toHaveBeenCalledWith(expect.objectContaining({ id: 'older' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Reset progress and roll back…' }));
+  expect(select).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'older' }));
+  expect(approveReset).not.toHaveBeenCalled();
+});
 
 describe('canonical session presentation', () => {
   it('presents score, countdown, participant resource and late-arrival rules as safe text', () => {

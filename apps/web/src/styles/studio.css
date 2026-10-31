@@ -674,6 +674,30 @@ table.steps thead th {
 .intent-table tbody th {
   font-weight: 600;
 }
+.transition-review textarea,
+.transition-review select {
+  max-width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.transition-review textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.transition-review table {
+  table-layout: fixed;
+}
+.transition-review td,
+.transition-review th,
+.transition-review p {
+  overflow-wrap: anywhere;
+}
 .changes {
   list-style: none;
   padding: 0;

@@ -274,6 +274,7 @@ export function App() {
                 automation={automation}
                 panic={studio.panic}
                 previewed={previewed.has(selected.id)}
+                onTransitioned={refresh}
                 onApprove={async (version, resetSession) => {
                   try {
                     await api.approve(
@@ -321,7 +322,9 @@ export function App() {
               onEdit={(v) => {
                 setSelectedId(v.id);
                 setDraft(
-                  'Change the command to !splat, allow two throws per 30 seconds, subscribers only.',
+                  v.manifest.experience
+                    ? 'Change the command to !splat, keep everyone’s teams and scores, and give each player two additional throws.'
+                    : 'Change the command to !splat, allow two throws per 30 seconds, subscribers only.',
                 );
                 document.getElementById('intent')?.focus();
               }}

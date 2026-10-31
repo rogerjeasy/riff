@@ -1,3 +1,4 @@
+import { TransitionReview } from './transition-review.js';
 import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
@@ -18,6 +19,7 @@ export function Evidence(props: {
   onApprove: (version: Version, resetSession?: boolean) => Promise<void>;
   onDiscard: (version: Version) => Promise<void>;
   previewed: boolean;
+  onTransitioned?: (() => Promise<void>) | undefined;
 }) {
   const { version } = props;
   const verification = version.evidence.verification;
@@ -35,6 +37,7 @@ export function Evidence(props: {
     !sameDefinition(active?.manifest.experience, version.manifest.experience),
   );
   const approvable =
+    !props.panic &&
     (!needsReset || resetConsent) &&
     version.blockers.length === 0 &&
     (widening.length === 0 || accepted);
@@ -241,6 +244,23 @@ export function Evidence(props: {
                 {widening.map((c) => c.label.toLowerCase()).join(', ')}.
               </label>
             )}
+            {props.automation?.session &&
+              active?.manifest.experience &&
+              version.manifest.experience &&
+              active.id !== version.id && (
+                <TransitionReview
+                  key={`${version.id}:${active.id}:${props.automation.session.id}`}
+                  version={version}
+                  automation={props.automation}
+                  panic={props.panic}
+                  allowed={
+                    !props.panic &&
+                    version.blockers.length === 0 &&
+                    (widening.length === 0 || accepted)
+                  }
+                  onChanged={props.onTransitioned}
+                />
+              )}
             {needsReset && (
               <label className="confirm">
                 <input
@@ -248,8 +268,8 @@ export function Evidence(props: {
                   checked={resetConsent}
                   onChange={(e) => setResetConsent(e.target.checked)}
                 />
-                I agree to reset session progress, scores and resources because this version changes
-                the round rules.
+                I agree to reset session progress, teams, scores, contributions, resources and
+                remaining time. A new round starts with this version’s rules.
               </label>
             )}
             {!props.previewed && version.blockers.length === 0 && (

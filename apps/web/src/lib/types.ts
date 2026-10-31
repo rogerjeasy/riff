@@ -161,7 +161,11 @@ export interface Version {
   tests: unknown[];
   behavior: { when: string; what: string; who: string; howMuch: string };
   assumptions: string[];
-  evidence: { verification: Verification; intent: IntentCheck[] };
+  evidence: {
+    verification: Verification;
+    intent: IntentCheck[];
+    migration?: { source: string; ok: boolean; snapshots: string[]; failure: string | null };
+  };
   origin: 'codex' | 'offline' | 'manual' | 'reference';
   compileRunId: string | null;
   status: VersionStatus;
@@ -182,6 +186,7 @@ export interface Automation {
   versions: Version[];
   canRollback: boolean;
   session: SessionSnapshot | null;
+  transitions?: Transition[];
 }
 export interface Activity {
   id: number;
@@ -273,4 +278,37 @@ export interface SessionAudit {
   controls: number;
   durationMs: number;
   divergence: { seq: number; kind: string; expected: string; actual: string } | null;
+}
+
+export type TransitionBoundary = 'immediate' | 'round-end' | 'stopped';
+export interface Transition {
+  id: string;
+  sourceVersionId: string;
+  targetVersionId: string;
+  sourceSessionId: string;
+  migrationSource: string;
+  evidenceId: string;
+  status: 'review' | 'pending' | 'applied' | 'cancelled';
+  plan: { targetArtifactId: string; boundary: TransitionBoundary };
+  evidence: {
+    preserved: string[];
+    changed: Change[];
+    reset: string[];
+    takesEffect: TransitionBoundary;
+    beforeRules: { definition: ExperienceDefinition; audience: Role[] };
+    afterRules: { definition: ExperienceDefinition; audience: Role[] };
+    migration: { before: SessionSnapshot; after: SessionSnapshot };
+    comparison: {
+      provenance: 'synthetic';
+      label: string;
+      events: { id: string; text: string }[];
+      steps: {
+        eventId: string;
+        before: { code: string; reason: string; effects: unknown[] };
+        after: { code: string; reason: string; effects: unknown[] };
+      }[];
+      before: SessionSnapshot;
+      after: SessionSnapshot;
+    };
+  };
 }

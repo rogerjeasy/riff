@@ -3,7 +3,6 @@ import { api, ApiError } from '../../lib/api.js';
 import type { Activity, Automation, Studio, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import { RoundAudit } from '../sessions/round-audit.js';
-import { sameDefinition } from '../../sessions/presentation.js';
 import { ago, audienceLabel, formatWindow, tone } from '../format.js';
 
 const STATUS_LABEL: Record<Automation['status'], string> = {
@@ -21,7 +20,6 @@ export function LivePanel(props: {
 }) {
   const { studio } = props;
   const [confirmReset, setConfirmReset] = useState<string | null>(null);
-  const [confirmRollback, setConfirmRollback] = useState<string | null>(null);
   const act = async (fn: () => Promise<unknown>, success: string) => {
     try {
       await fn();
@@ -57,12 +55,10 @@ export function LivePanel(props: {
               (v) =>
                 v.id !== active?.id &&
                 v.approvedAt !== null &&
+                v.evidence.verification.ok &&
+                !v.incident &&
+                v.blockers.length === 0 &&
                 (v.status === 'superseded' || v.status === 'approved'),
-            );
-            const rollbackNeedsReset = Boolean(
-              automation.session &&
-              previous &&
-              !sameDefinition(active?.manifest.experience, previous.manifest.experience),
             );
             const quarantined = active?.status === 'quarantined';
             return (
@@ -137,8 +133,9 @@ export function LivePanel(props: {
                     <button
                       type="button"
                       className="button small ghost"
+                      disabled={studio.panic || Boolean(automation.session && !previous)}
                       onClick={() => {
-                        if (rollbackNeedsReset) setConfirmRollback(automation.id);
+                        if (automation.session && previous) props.onSelect(previous);
                         else
                           void act(
                             () => api.automation(automation.id, 'rollback'),
@@ -147,6 +144,16 @@ export function LivePanel(props: {
                       }}
                     >
                       Roll back
+                    </button>
+                  )}
+                  {automation.session && previous && (
+                    <button
+                      type="button"
+                      className="button small ghost"
+                      disabled={studio.panic}
+                      onClick={() => props.onSelect(previous)}
+                    >
+                      Reset progress and roll back…
                     </button>
                   )}
                   {automation.session && (
@@ -169,6 +176,22 @@ export function LivePanel(props: {
                     </button>
                   )}
                 </div>
+                {(automation.transitions ?? [])
+                  .filter((t) => t.status === 'pending')
+                  .map((t) => (
+                    <div className="block" key={t.id} role="status">
+                      <p>Approved change pending · takes effect when this round finishes.</p>
+                      <button
+                        type="button"
+                        className="button small ghost"
+                        onClick={() =>
+                          void act(() => api.cancelTransition(t.id), 'Pending change cancelled.')
+                        }
+                      >
+                        Cancel pending change
+                      </button>
+                    </div>
+                  ))}
                 {confirmReset === automation.id && (
                   <div
                     className="session-reset-confirm"
@@ -182,6 +205,7 @@ export function LivePanel(props: {
                     <button
                       type="button"
                       className="button small"
+                      disabled={studio.panic}
                       onClick={() => {
                         setConfirmReset(null);
                         void act(
@@ -198,38 +222,6 @@ export function LivePanel(props: {
                       onClick={() => setConfirmReset(null)}
                     >
                       Cancel reset
-                    </button>
-                  </div>
-                )}
-                {confirmRollback === automation.id && (
-                  <div
-                    className="session-reset-confirm"
-                    role="group"
-                    aria-label="Confirm rollback reset"
-                  >
-                    <p>
-                      The previous version has different round rules. Rolling back requires
-                      resetting current progress, scores and resources.
-                    </p>
-                    <button
-                      type="button"
-                      className="button small"
-                      onClick={() => {
-                        setConfirmRollback(null);
-                        void act(
-                          () => api.automation(automation.id, 'rollback', true),
-                          'Rolled back and reset session progress.',
-                        );
-                      }}
-                    >
-                      Reset progress and roll back
-                    </button>
-                    <button
-                      type="button"
-                      className="button small ghost"
-                      onClick={() => setConfirmRollback(null)}
-                    >
-                      Cancel rollback
                     </button>
                   </div>
                 )}

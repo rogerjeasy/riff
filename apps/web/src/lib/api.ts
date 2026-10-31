@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { experienceDefinitionSchema, sessionSnapshotSchema } from '../sessions/schemas.js';
-import type { PreviewResult, Run, SessionAudit, Studio } from './types.js';
+import type {
+  PreviewResult,
+  Run,
+  SessionAudit,
+  Studio,
+  Transition,
+  TransitionBoundary,
+} from './types.js';
 
 /** Thrown with a user-safe message; never contains stack traces. */
 export class ApiError extends Error {
@@ -22,6 +29,7 @@ const studioSchema = z
         .object({
           id: z.string(),
           session: sessionSnapshotSchema.nullable().default(null),
+          transitions: z.array(z.lazy(() => transitionSchema)).default([]),
           versions: z.array(
             z
               .object({
@@ -89,6 +97,82 @@ const previewSchema = z.object({
     .max(120),
 });
 
+const transitionDecision = z
+  .object({
+    code: z.string().max(50),
+    reason: z.string().max(256),
+    effects: z.array(z.unknown()).max(4),
+  })
+  .passthrough();
+const transitionSchema = z
+  .object({
+    id: z.string(),
+    sourceVersionId: z.string(),
+    targetVersionId: z.string(),
+    sourceSessionId: z.string(),
+    migrationSource: z.string().max(32768),
+    evidenceId: z.string().regex(/^[a-f0-9]{64}$/),
+    status: z.enum(['review', 'pending', 'applied', 'cancelled']),
+    plan: z
+      .object({
+        targetArtifactId: z.string().regex(/^[a-f0-9]{64}$/),
+        boundary: z.enum(['immediate', 'round-end', 'stopped']),
+      })
+      .passthrough(),
+    evidence: z
+      .object({
+        preserved: z.array(z.string()),
+        changed: z.array(
+          z.object({
+            field: z.string(),
+            label: z.string(),
+            from: z.string(),
+            to: z.string(),
+            authority: z.enum(['more', 'less', 'same']),
+          }),
+        ),
+        reset: z.array(z.string()),
+        takesEffect: z.enum(['immediate', 'round-end', 'stopped']),
+        beforeRules: z.object({
+          definition: experienceDefinitionSchema,
+          audience: z.array(z.string()),
+        }),
+        afterRules: z.object({
+          definition: experienceDefinitionSchema,
+          audience: z.array(z.string()),
+        }),
+        migration: z
+          .object({ before: sessionSnapshotSchema, after: sessionSnapshotSchema })
+          .passthrough(),
+        comparison: z
+          .object({
+            provenance: z.literal('synthetic'),
+            label: z.string(),
+            events: z
+              .array(z.object({ id: z.string(), text: z.string().max(500) }).passthrough())
+              .max(24),
+            steps: z
+              .array(
+                z.object({
+                  eventId: z.string(),
+                  before: transitionDecision,
+                  after: transitionDecision,
+                }),
+              )
+              .max(24),
+            before: sessionSnapshotSchema,
+            after: sessionSnapshotSchema,
+          })
+          .passthrough(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+async function transitionRequest(url: string, body: unknown): Promise<Transition> {
+  return z.object({ transition: transitionSchema }).parse(await request('POST', url, body))
+    .transition as unknown as Transition;
+}
+
 async function request<T>(
   method: 'GET' | 'POST',
   url: string,
@@ -138,6 +222,20 @@ export const api = {
       await request('POST', `/api/versions/${versionId}/preview`, { seed, events }, signal),
     ) as unknown as PreviewResult;
   },
+  previewTransition: (versionId: string, boundary: TransitionBoundary, migrationSource?: string) =>
+    transitionRequest(`/api/versions/${versionId}/transition/preview`, {
+      boundary,
+      ...(migrationSource ? { migrationSource } : {}),
+    }),
+  approveTransition: (t: Transition) =>
+    transitionRequest(`/api/transitions/${t.id}/approve`, {
+      evidenceId: t.evidenceId,
+      artifactId: t.plan.targetArtifactId,
+      expectedActiveVersionId: t.sourceVersionId,
+      sessionId: t.sourceSessionId,
+      boundary: t.plan.boundary,
+    }),
+  cancelTransition: (id: string) => transitionRequest(`/api/transitions/${id}/cancel`, {}),
   approve: (
     versionId: string,
     artifactId: string,
