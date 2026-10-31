@@ -364,7 +364,10 @@ export function createLiveRuntime(deps: {
       { seed: sessionSeed(snapshot.id), mode: 'live', session: snapshot, channelBudget },
     );
     try {
-      await prepared.warm();
+      if (!(await prepared.warm().catch(() => false)))
+        throw new SessionConfigurationError(
+          'The target worker could not start. Current progress was kept; try reviewing again.',
+        );
       if (fence !== generation || panic || closed)
         throw new SessionConfigurationError('Activation was stopped. Review and approve again.');
       const currentTarget = repo.version(version.id);

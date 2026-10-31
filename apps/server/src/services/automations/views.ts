@@ -1,9 +1,10 @@
 import type { PermissionManifest } from '@riff/sdk';
 import type { IntentCheck } from '@riff/compiler';
 import type { VerificationReport } from '@riff/sandbox';
-import { artifactIdentity, classifySessionTransition } from '@riff/sandbox';
+import { classifySessionTransition } from '@riff/sandbox';
 import { describeAudience, describeWindow } from '@riff/compiler';
 import type { VersionRow } from '../../db/repositories/studio.js';
+import { versionApprovalBlockers } from '../../db/version-health.js';
 
 export interface Evidence {
   verification: VerificationReport;
@@ -115,31 +116,7 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
 }
 
 /** Why a version cannot be approved right now; empty means it can. */
-export function approvalBlockers(row: VersionRow, panic: boolean): string[] {
-  const blockers: string[] = [];
-  const evidence = row.evidence as Evidence;
-  if (!['candidate', 'approved', 'superseded'].includes(row.status))
-    blockers.push(`This version is ${row.status}.`);
-  if (['approved', 'superseded'].includes(row.status) && row.approvedAt === null)
-    blockers.push('This version has no recorded prior approval.');
-  if (!evidence?.verification?.ok) blockers.push('Verification did not pass.');
-  if (
-    !Array.isArray(evidence?.intent) ||
-    evidence.intent.some((check) => check.status === 'mismatch')
-  )
-    blockers.push('The candidate does not match what you asked for.');
-  try {
-    if (
-      !row.artifactId ||
-      artifactIdentity({ source: row.source, manifest: row.manifest }) !== row.artifactId
-    )
-      blockers.push('The evidence no longer matches this exact artifact.');
-  } catch {
-    blockers.push('The artifact no longer validates under the current host policy.');
-  }
-  if (panic) blockers.push('Everything is stopped. Resume the channel first.');
-  return blockers;
-}
+export const approvalBlockers = versionApprovalBlockers;
 
 export function versionView(row: VersionRow, active: VersionRow | undefined, panic: boolean) {
   return {

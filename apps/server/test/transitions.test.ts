@@ -615,3 +615,144 @@ it('atomically journals boundary clock normalization before migration and audits
   ]);
   expect((await f.app.riff.studio.auditSession(f.automation.id)).status).toBe('verified');
 });
+
+it.each(['false', 'reject'] as const)(
+  'keeps the source usable when target preparation returns %s',
+  async (outcome) => {
+    const host = await import('@riff/sandbox');
+    const original = host.createEngine;
+    const f = await setup();
+    const t = await f.preview();
+    const before = f.repo.session(f.automation.id);
+    const journal = f.repo.sessionJournal(t.sourceSessionId);
+    f.setAt(5000);
+    const factory = vi.spyOn(host, 'createEngine').mockImplementation((candidate, options) => {
+      const engine = original(candidate, options);
+      if (options.mode === 'live' && host.artifactIdentity(candidate) === f.next.artifactId) {
+        if (outcome === 'false') vi.spyOn(engine, 'warm').mockResolvedValueOnce(false);
+        else vi.spyOn(engine, 'warm').mockRejectedValueOnce(new Error('worker startup failed'));
+      }
+      return engine;
+    });
+    const response = await f.approve(t);
+    factory.mockRestore();
+    expect(response.statusCode).toBe(409);
+    expect(f.repo.session(f.automation.id)).toEqual(before);
+    expect(f.repo.sessionJournal(t.sourceSessionId)).toEqual(journal);
+    expect(f.repo.automation(f.automation.id)?.activeVersionId).toBe(f.old.id);
+    expect((await f.chat('usable-after-warm-failure', '!throw'))[0]?.code).toBe('ACCEPTED');
+  },
+);
+it('does not apply a pending transition when target preparation reports false', async () => {
+  const host = await import('@riff/sandbox');
+  const original = host.createEngine;
+  const f = await setup();
+  const t = await f.preview('round-end');
+  await f.approve(t);
+  const factory = vi.spyOn(host, 'createEngine').mockImplementation((candidate, options) => {
+    const engine = original(candidate, options);
+    if (options.mode === 'live' && host.artifactIdentity(candidate) === f.next.artifactId)
+      vi.spyOn(engine, 'warm').mockResolvedValueOnce(false);
+    return engine;
+  });
+  f.setAt(121000);
+  await f.app.riff.runtime.tick();
+  factory.mockRestore();
+  expect(f.repo.automation(f.automation.id)?.activeVersionId).toBe(f.old.id);
+  expect(f.repo.session(f.automation.id)?.snapshot).toMatchObject({
+    phase: 'finished',
+    revision: 3,
+    updatedAt: 121000,
+  });
+  expect(f.repo.sessionJournal(t.sourceSessionId).map((e) => e.kind)).toEqual([
+    'start',
+    'chat',
+    'chat',
+    'advance',
+  ]);
+  expect(f.repo.transition(t.id)?.status).toBe('cancelled');
+  expect((await f.chat('finished-after-warm-failure', '!throw'))[0]?.code).toBe('SESSION_FINISHED');
+});
+
+it.each([
+  { verification: { ok: false }, intent: [] },
+  { verification: { ok: true }, intent: [{ status: 'mismatch' }] },
+])(
+  'CAS rejects changed target verification or intent without any transition writes: %j',
+  async (evidence) => {
+    const database = openDatabase(':memory:');
+    migrateConnection(database);
+    try {
+      const f = await setup(database);
+      const t = await f.preview();
+      const before = f.repo.session(f.automation.id);
+      const journal = f.repo.sessionJournal(t.sourceSessionId);
+      const outbox = f.repo.sessionOutbox(f.automation.id);
+      f.setAt(5000);
+      const original = f.repo.commitTransition.bind(f.repo);
+      const commit = vi.spyOn(f.repo, 'commitTransition').mockImplementationOnce((...args) => {
+        database.db.update(versions).set({ evidence }).where(eq(versions.id, f.next.id)).run();
+        return original(...args);
+      });
+      expect((await f.approve(t)).statusCode).toBe(409);
+      commit.mockRestore();
+      expect(f.repo.session(f.automation.id)).toEqual(before);
+      expect(f.repo.sessionJournal(t.sourceSessionId)).toEqual(journal);
+      expect(f.repo.sessionOutbox(f.automation.id)).toEqual(outbox);
+      expect(f.repo.transition(t.id)?.status).toBe('review');
+      expect(f.repo.version(f.old.id)?.status).toBe('active');
+      expect(f.repo.version(f.next.id)?.status).toBe('candidate');
+    } finally {
+      await Promise.all(apps.splice(0).map((a) => a.close()));
+      database.close();
+    }
+  },
+);
+it('CAS rejects a rollback target whose previous approval was removed after preparation', async () => {
+  const database = openDatabase(':memory:');
+  migrateConnection(database);
+  try {
+    const f = await setup(database);
+    const rename = f.version(
+      { ...definition, contribution: { command: '!splat', points: 1 } },
+      f.old.id,
+    );
+    const forward = await f.preview('immediate', migration, rename);
+    await f.app.riff.studio.approveTransition(forward.id, {
+      evidenceId: forward.evidenceId,
+      artifactId: rename.artifactId!,
+      expectedActiveVersionId: f.old.id,
+      sessionId: forward.sourceSessionId,
+      boundary: 'immediate',
+    });
+    const t = await f.preview('immediate', migration, f.repo.version(f.old.id)!);
+    const before = f.repo.session(f.automation.id);
+    const journal = f.repo.sessionJournal(t.sourceSessionId);
+    const outbox = f.repo.sessionOutbox(f.automation.id);
+    const original = f.repo.commitTransition.bind(f.repo);
+    const commit = vi.spyOn(f.repo, 'commitTransition').mockImplementationOnce((...args) => {
+      database.db.update(versions).set({ approvedAt: null }).where(eq(versions.id, f.old.id)).run();
+      return original(...args);
+    });
+    await expect(
+      f.app.riff.studio.approveTransition(t.id, {
+        evidenceId: t.evidenceId,
+        artifactId: f.old.artifactId!,
+        expectedActiveVersionId: rename.id,
+        sessionId: t.sourceSessionId,
+        boundary: 'immediate',
+      }),
+    ).rejects.toThrow();
+    commit.mockRestore();
+    expect(f.repo.session(f.automation.id)).toEqual(before);
+    expect(f.repo.sessionJournal(t.sourceSessionId)).toEqual(journal);
+    expect(f.repo.sessionOutbox(f.automation.id)).toEqual(outbox);
+    expect(f.repo.transition(t.id)?.status).toBe('review');
+    expect(f.repo.version(rename.id)?.status).toBe('active');
+    expect(f.repo.version(f.old.id)?.status).toBe('superseded');
+  } finally {
+    await Promise.all(apps.splice(0).map((a) => a.close()));
+    database.close();
+  }
+});
+

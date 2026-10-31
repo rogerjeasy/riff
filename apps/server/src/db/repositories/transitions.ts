@@ -11,6 +11,7 @@ import {
 } from '@riff/sandbox';
 import type { ExperienceDefinition, SessionSnapshot, SessionTransitionPlan } from '@riff/sdk';
 import type { DatabaseConnection } from '../client.js';
+import { versionApprovalBlockers } from '../version-health.js';
 import {
   automations,
   channelState,
@@ -165,7 +166,7 @@ export function transitionRepository(connection: DatabaseConnection, channelId: 
           !source ||
           target.automationId !== t.automationId ||
           source.automationId !== t.automationId ||
-          !['candidate', 'approved', 'superseded'].includes(target.status) ||
+          versionApprovalBlockers(target, state.panic).length > 0 ||
           transitionEvidenceId(t.plan, t.migrationSource, t.evidence) !== t.evidenceId ||
           artifactIdentity({ source: source.source, manifest: source.manifest }) !==
             t.plan.sourceArtifactId ||
