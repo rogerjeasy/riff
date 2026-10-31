@@ -88,3 +88,24 @@
     animation: none;
   }
 }
+.round-audit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  margin: 10px 0 2px;
+}
+.round-audit .audit-result {
+  flex: 1 1 220px;
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted, #a39eb6);
+}
+.round-audit .audit-result[data-status='verified'] b {
+  color: var(--good, #4fd394);
+}
+.round-audit .audit-result[data-status='diverged'],
+.round-audit .audit-result[data-status='error'] {
+  color: var(--bad, #ff5f5f);
+}

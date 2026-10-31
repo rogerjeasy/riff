@@ -127,6 +127,11 @@ test('offline stateful examples rehearse shared scores, resources, deadline and 
   await expect(interaction.locator('.session-hud')).toContainText('Paused');
   await interaction.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(interaction.locator('.session-hud')).toContainText('Running');
+  // The round journal replays privately and proves the live scoreboard.
+  await interaction.getByRole('button', { name: 'Verify round' }).click();
+  await expect(interaction.getByText('✓ Score verified.')).toBeVisible();
+  await expect(interaction.locator('.audit-result')).toContainText(/\d+ clock changes/);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   await interaction.getByRole('button', { name: 'Reset session…' }).click();
   await expect(interaction.getByRole('group', { name: 'Confirm session reset' })).toBeVisible();
   await interaction.getByRole('button', { name: 'Confirm reset session' }).click();

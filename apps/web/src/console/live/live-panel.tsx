@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import type { Activity, Automation, Studio, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
+import { RoundAudit } from '../sessions/round-audit.js';
 import { sameDefinition } from '../../sessions/presentation.js';
 import { ago, audienceLabel, formatWindow, tone } from '../format.js';
 
@@ -90,10 +91,18 @@ export function LivePanel(props: {
                   </p>
                 )}
                 {automation.session && active?.manifest.experience && (
-                  <SessionHud
-                    definition={active.manifest.experience}
-                    snapshot={automation.session}
-                  />
+                  <>
+                    <SessionHud
+                      definition={active.manifest.experience}
+                      snapshot={automation.session}
+                      label={`${automation.title} live session`}
+                    />
+                    <RoundAudit
+                      automationId={automation.id}
+                      definition={active.manifest.experience}
+                      session={automation.session}
+                    />
+                  </>
                 )}
                 <div className="row-actions">
                   {automation.status === 'live' && (

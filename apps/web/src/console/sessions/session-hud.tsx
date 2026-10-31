@@ -8,6 +8,7 @@ export function SessionHud(props: {
   snapshot: SessionSnapshot;
   now?: number;
   viewerId?: string;
+  label?: string;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
@@ -21,8 +22,9 @@ export function SessionHud(props: {
       createSessionHud(props.definition, props.snapshot, {
         now: props.now ?? now,
         ...(props.viewerId ? { viewerId: props.viewerId } : {}),
+        ...(props.label ? { label: props.label } : {}),
       }),
     );
-  }, [props.definition, props.snapshot, props.now, props.viewerId, now]);
+  }, [props.definition, props.snapshot, props.now, props.viewerId, props.label, now]);
   return <div ref={root} className="session-preview" />;
 }

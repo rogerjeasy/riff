@@ -68,6 +68,8 @@ export function Rehearsal(props: {
     reset();
     setText(command);
   }, [version?.id, command, reset]);
+  // A different interaction is a fresh rehearsal: start again as the default viewer.
+  useEffect(() => setPersona(ALICE), [version?.id]);
   useEffect(() => () => request.current?.abort(), []);
 
   const replay = useCallback(
@@ -257,7 +259,13 @@ export function Rehearsal(props: {
       </div>
 
       {definition && session && (
-        <SessionHud definition={definition} snapshot={session} now={clock} viewerId={persona.id} />
+        <SessionHud
+          definition={definition}
+          snapshot={session}
+          now={clock}
+          viewerId={persona.id}
+          label={`${definition.title} rehearsal session`}
+        />
       )}
       {definition && (
         <div className="rehearsal-actions" role="group" aria-label="Session participation">

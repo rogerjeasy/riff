@@ -260,3 +260,17 @@ export interface PreviewResult {
   session?: SessionSnapshot;
   durationMs: number;
 }
+
+/** Result of replaying a live round's journal privately (POST /api/automations/:id/session/audit). */
+export interface SessionAudit {
+  status: 'verified' | 'diverged' | 'unavailable';
+  sessionId: string;
+  summary: string;
+  entries: number;
+  joins: number;
+  contributions: number;
+  rejections: number;
+  controls: number;
+  durationMs: number;
+  divergence: { seq: number; kind: string; expected: string; actual: string } | null;
+}

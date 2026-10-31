@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { experienceDefinitionSchema, sessionSnapshotSchema } from '../sessions/schemas.js';
-import type { PreviewResult, Run, Studio } from './types.js';
+import type { PreviewResult, Run, SessionAudit, Studio } from './types.js';
 
 /** Thrown with a user-safe message; never contains stack traces. */
 export class ApiError extends Error {
@@ -42,6 +42,30 @@ const studioSchema = z
     twitch: z.object({ state: z.string() }).passthrough(),
   })
   .passthrough();
+const count = z.number().int().nonnegative();
+const auditSchema = z.object({
+  audit: z
+    .object({
+      status: z.enum(['verified', 'diverged', 'unavailable']),
+      sessionId: z.string().max(100),
+      summary: z.string().max(400),
+      entries: count,
+      joins: count,
+      contributions: count,
+      rejections: count,
+      controls: count,
+      durationMs: count,
+      divergence: z
+        .object({
+          seq: count,
+          kind: z.string().max(20),
+          expected: z.string().max(100),
+          actual: z.string().max(100),
+        })
+        .nullable(),
+    })
+    .passthrough(),
+});
 const previewSchema = z.object({
   provenance: z.literal('synthetic'),
   session: sessionSnapshotSchema.optional(),
@@ -130,6 +154,9 @@ export const api = {
     request('POST', `/api/automations/${id}/${action}`, resetSession ? { resetSession: true } : {}),
   resetSession: (id: string) =>
     request('POST', `/api/automations/${id}/session/reset`, { confirm: true }),
+  auditSession: async (id: string): Promise<SessionAudit> =>
+    auditSchema.parse(await request('POST', `/api/automations/${id}/session/audit`, {}))
+      .audit as SessionAudit,
   panic: () => request('POST', '/api/channel/panic', {}),
   resume: () => request('POST', '/api/channel/resume', { confirm: true }),
   overlay: () => request<{ url: string; connections: number }>('GET', '/api/overlay'),

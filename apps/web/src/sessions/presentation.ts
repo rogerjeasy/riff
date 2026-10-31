@@ -34,10 +34,11 @@ function element(tag: 'section' | 'h3' | 'p' | 'span' | 'div', className: string
 export function createSessionHud(
   definition: ExperienceDefinition,
   snapshot: SessionSnapshot,
-  options: { now?: number; viewerId?: string } = {},
+  options: { now?: number; viewerId?: string; label?: string } = {},
 ): HTMLElement {
   const hud = element('section', 'session-hud');
-  hud.setAttribute('aria-label', `${definition.title} session`);
+  // Distinct names keep landmarks unique when a rehearsal and a live round are both shown.
+  hud.setAttribute('aria-label', options.label ?? `${definition.title} session`);
   hud.dataset.phase = snapshot.phase;
   const remaining =
     snapshot.phase === 'running' && snapshot.deadlineAt !== null

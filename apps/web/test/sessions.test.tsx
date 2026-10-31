@@ -274,6 +274,65 @@ describe('session controls', () => {
       expect.stringContaining('"red": 1'),
     );
   });
+  it('verifies the live round from its journal and explains a mismatch', async () => {
+    const base = {
+      sessionId: 'session-1',
+      entries: 9,
+      joins: 2,
+      contributions: 4,
+      rejections: 1,
+      controls: 2,
+      durationMs: 12,
+    };
+    const audit = vi
+      .spyOn(api, 'auditSession')
+      .mockResolvedValueOnce({
+        ...base,
+        status: 'verified',
+        summary: 'Every recorded decision and transition reproduced exactly.',
+        divergence: null,
+      })
+      .mockResolvedValueOnce({
+        ...base,
+        status: 'diverged',
+        summary:
+          'Entry 4 (chat) does not reproduce: expected RESOURCE_LIMIT, replay produced ACCEPTED.',
+        divergence: { seq: 4, kind: 'chat', expected: 'RESOURCE_LIMIT', actual: 'ACCEPTED' },
+      });
+    render(
+      <LivePanel
+        studio={
+          {
+            automations: [automation],
+            panic: true, // auditing is read-only, so it stays available while stopped
+            overlay: { connections: 0 },
+            activity: [],
+            twitch: { state: 'unconfigured', configured: false },
+          } as unknown as Studio
+        }
+        selectedVersionId={null}
+        onSelect={() => undefined}
+        onEdit={() => undefined}
+        notify={() => undefined}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Verify round' }));
+    await waitFor(() => expect(audit).toHaveBeenCalledWith('a1'));
+    expect(await screen.findByText('✓ Score verified.')).toBeTruthy();
+    expect(document.body.textContent).toContain('4 throws, 1 blocked attempt and 2 clock changes');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify again' }));
+    expect(await screen.findByText('⚠ The stored round does not match its journal.')).toBeTruthy();
+    expect(document.body.textContent).toContain('expected RESOURCE_LIMIT');
+  });
+
+  it('starts each new interaction rehearsal as the default viewer', () => {
+    const { rerender } = render(<Rehearsal version={version} onPreviewed={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }));
+    expect(screen.getByRole('button', { name: /Bob/ }).getAttribute('aria-pressed')).toBe('true');
+    rerender(<Rehearsal version={{ ...version, id: 'v2' }} onPreviewed={() => undefined} />);
+    expect(screen.getByRole('button', { name: /Alice/ }).getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('confirms reset before sending the explicitly authorized mutation', async () => {
     const reset = vi.spyOn(api, 'resetSession').mockResolvedValue({});
     render(
