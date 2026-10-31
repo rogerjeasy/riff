@@ -2,11 +2,11 @@
 
 | Document field | Value |
 | --- | --- |
-| Version | 1.0 |
+| Version | 1.1 — workspace foundation |
 | Prepared | October 31, 2026 |
 | Product scope | All features F01–F40 in the [project documentation](project-documentation.md), including the nine studio expansions and inclusive participation |
 | Engineering baseline | [Engineering contract](../AGENTS.md) |
-| Implementation status | Architecture and technology selections. No application packages, lockfile, infrastructure, or integrations have been installed or deployed yet. |
+| Implementation status | Six-workspace foundation and npm dependencies installed, with a real lockfile, shared checks, local host, browser entries and operations templates. Live integrations remain unimplemented. See [setup status](setup-status.md) for verification and blocked checks. |
 
 Riff uses TypeScript throughout, React for the studio, Fastify for the trusted host, SQLite for durable state, and QuickJS for generated automation execution. Codex is the runtime compiler. The host owns permissions, approval, state, network access, and execution limits. The complete product includes stateful experiences, live evolution, audience co-creation, rehearsal, a visual canvas, collaboration across channels, an adaptive director, contextual remix, production integrations, and inclusive participation.
 
@@ -546,7 +546,7 @@ Use Gitleaks plus the project's focused secret checks, `pnpm audit` for dependen
 
 The intended release sequence is: frozen dependency installation → lint/types → host and sandbox tests → browser/accessibility checks → build and artifact identity verification → security scans → image publication → explicit environment deployment → smoke and recovery checks. Preserve reports and versions with the release.
 
-Commands and scripts described here are **planned tooling** until their implementations exist. This document does not claim `pnpm test`, deployment, or browser suites have already run. Changes should remain grouped into focused conventional commits when version control is initialized, without automated co-author attribution.
+The foundation commands now exist; [README](../README.md) lists their actual behavior and [setup status](setup-status.md) records which checks ran. Full product validation, deployment and integration tooling remain planned until implemented. Changes stay grouped into focused conventional commits without automated co-author attribution.
 
 ## 18. Package ownership and dependency inventory
 
@@ -651,4 +651,4 @@ This file answers **which technology owns each responsibility**. The [project do
 
 Primary documentation is linked beside the decisions it supports. External documentation was checked on October 31, 2026; APIs, support windows, and account eligibility must be checked again when the corresponding integration is built. Custom Riff architecture, resource limits, performance goals, and operational choices are design decisions, not guarantees made by those sources.
 
-When implementation begins, replace planned choices with verified versions and record compatibility evidence. Keep this document synchronized with new capabilities, direct dependencies, adapters, data stores, deployment modes, and release requirements.
+Exact resolved versions now live in the committed lockfile, with shared direct selections in `pnpm-workspace.yaml`. [Setup decisions](decisions/0001-workspace-foundation.md) records compatibility evidence, deprecated dependency follow-up, and the distinction between installed libraries and implemented systems. Keep this document synchronized with new capabilities, direct dependencies, adapters, data stores, deployment modes, and release requirements.

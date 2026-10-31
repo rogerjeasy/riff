@@ -1,0 +1,37 @@
+# 0001 — Workspace foundation
+
+Date: October 31, 2026. Status: accepted for foundation setup; product release gates remain open.
+
+## Decisions
+
+| Decision                                                                                            | Reason and evidence                                                                                         | Consequence / review trigger                                                                                            |
+| --------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Execute the authorized setup in the existing project directory                                      | The user requested implementation of the approved stack; no repository existed                              | Repository initialized on `setup/project-foundation`; no merge, remote or publication                                   |
+| Use Node 22.23.2 and pnpm 12.6.0 locally                                                            | Matches the Node 22 baseline and available toolchain; real SQLite/WASM tests pass                           | Global Node 24 stays untouched; `.tools` links must not be assumed on another machine                                   |
+| Keep one six-package workspace and a shared version catalog                                         | Preserves the documented dependency directions and avoids duplicated configuration                          | Package additions require explicit ownership and dependency-graph updates                                               |
+| Keep the SDK dependency-free                                                                        | Generated capability contracts must not pull in the host, network or Zod runtime                            | Validators and cross-package capability parity tests belong downstream                                                  |
+| Allow esbuild's hook, deny the SQLite rebuild hook                                                  | `better-sqlite3` 13 ships prebuilt binaries and sets `gypfile:false`; rebuilding was unnecessary and failed | Unsupported platforms need a deliberate native-build strategy and ABI verification                                      |
+| Skip third-party declaration checking, retain strict source checks                                  | Drizzle's declarations refer to optional drivers and contain internal type errors                           | Vendor declaration defects can be hidden; integration/runtime tests and upgrade review remain necessary                 |
+| Permit DOM types only in browser code and the trusted QuickJS host                                  | QuickJS declarations use WebAssembly types                                                                  | This does not expose DOM APIs to generated code; SDK ambient types remain empty                                         |
+| Put pnpm settings in workspace YAML                                                                 | pnpm 12 does not read general workspace settings from `.npmrc`                                              | Review current package-manager documentation before changing toolchain configuration                                    |
+| Restore the existing lockfile from local cached content during network failure                      | Frozen offline install succeeded with the explicit `--trust-lockfile` recovery option                       | Metadata freshness checks were skipped for that restoration; regular install/CI retains them, and audit remains pending |
+| Use native Node watch/import support                                                                | Avoids an unnecessary tsx CLI IPC listener; TypeScript still loads through tsx                              | Local app and browser listeners still require an environment that permits sockets                                       |
+| Keep runtime integrations unavailable                                                               | Dependencies and folders are installed before credentials, authorization and guest isolation exist          | Foundation health must never be presented as Twitch/compiler readiness                                                  |
+| Use a CSS-only inactive overlay                                                                     | Built HTML/manifest check caught a Vite preload script when a JS entry imported only CSS                    | Future overlay runtime must intentionally revise its bundle guard and add isolation tests                               |
+| Keep optional operations separate                                                                   | Caddy and monitoring are not required for local app development                                             | Local Compose profiles need a working engine; monitoring requires an explicit password                                  |
+| Keep the container workspace dependency graph intact for foundation verification                    | Legacy production deployment re-resolved dependencies instead of proving an offline frozen package          | Image retains development dependencies; minimize, scan and pin digests before deployment                                |
+| Commit the coupled build graph as one foundation unit, then operations and documentation separately | The root build requires all six workspaces to exist                                                         | Every committed runnable foundation includes its tests; delivery and documentation remain separate review units         |
+
+## Dependency follow-up
+
+ESLint 9.39.5 matches the approved baseline but the registry marks it deprecated. `prom-client` 15.1.3 is also deprecated; it is installed for the selected metrics direction but unused in the current host. Drizzle Kit brings deprecated `@esbuild-kit/core-utils` and `@esbuild-kit/esm-loader`; `crypto-js` is another transitive warning. Review replacements/support and run an online advisory audit before release. This setup does not claim the dependency tree is vulnerability-free.
+
+These decisions keep the full product scope. Installing QuickJS, the model SDK, Fastify security plugins, test libraries or OBS clients does not implement their required product behavior or prove a safe generated-code runtime.
+
+## Primary references
+
+- [pnpm configuration](https://pnpm.io/cli/config) and [settings](https://github.com/pnpm/pnpm/blob/main/pnpm/docs/settings.md): workspace configuration and machine settings.
+- [Vite build options](https://vite.dev/config/build-options): multi-page output and build manifests.
+- [Fastify ecosystem](https://fastify.dev/ecosystem/): plugin compatibility; installed plugins target Fastify 5.
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3): package/native runtime; local installed package metadata and real-file tests supplied ABI evidence.
+- [Grafana OSS download](https://grafana.com/grafana/download?edition=oss), [Prometheus releases](https://github.com/prometheus/prometheus/releases), [Caddy releases](https://github.com/caddyserver/caddy/releases): selected version tags for optional local templates, not claims that those images were pulled.

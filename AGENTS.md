@@ -14,6 +14,12 @@ The complete planned technology inventory and feature-to-tool mapping live in
 [the technology stack](docs/tech-stack.md). Its decision labels distinguish the
 existing baseline from supporting selections and conditional deployment tools.
 
+The development foundation now exists; see [README](README.md),
+[setup instructions](docs/setup.md), and [verified setup status](docs/setup-status.md).
+Contracts for the full product below remain requirements, not implemented features.
+The current host exposes only health and static UI; compilation and live integrations
+are unavailable, and no untrusted guest evaluator is exported.
+
 When this file and your instincts disagree, this file wins. When this file and the
 official Twitch or OpenAI docs disagree, the docs win — then fix this file in the same
 change.
@@ -23,7 +29,7 @@ change.
 ## 1. Architecture
 
 ```
-apps/web            React + Vite: console (/) and overlay (/overlay/:key) in one app
+apps/web            React + Vite: separate console, overlay and OBS dock entries
 apps/server         Fastify HTTP + WebSocket; owns Twitch, compiler, sandbox, DB
 packages/sdk        The Riff capability API: types, d.ts, docs and examples given to the compiler
 packages/compiler   Codex driver: intent -> {automation.ts, automation.test.ts, manifest.json} | question
@@ -86,8 +92,10 @@ The SDK is the complete universe the compiler sees. Rules for changing it:
   undocumented surface is invisible to Codex and must not exist.
 - Every capability has a name (`chat.say`, `overlay`, `timer`, `polls`, …) that
   appears in three places that must stay in sync: the d.ts, the host bridge in
-  `packages/sandbox/src/bridge.ts`, and the manifest schema in `packages/sdk/src/manifest.ts`.
-  A test in `packages/sdk` asserts the three sets are equal.
+  `packages/sandbox/src/bridge/`, and the host manifest validator in
+  `packages/compiler/src/contract.ts`. A downstream integration test asserts the
+  three sets are equal; never make the SDK depend on the compiler or sandbox.
+  SDK types/constants stay dependency-free; Zod validation belongs downstream.
 - Every external Twitch trigger maps to exactly one EventSub subscription type and
   version in `packages/twitch/src/triggers.ts`, with a sourced fixture under
   `packages/twitch/fixtures/<trigger>.json`. Internal timers, session transitions,
@@ -95,8 +103,10 @@ The SDK is the complete universe the compiler sees. Rules for changing it:
   normalized sources, never fabricated Twitch transport events.
 - Capability calls that cause side effects (`chat.*`, `overlay.*`, `timer.*`,
   `polls.*`, `predictions.*`, `state.set`) return `Promise<void>` and are queued by
-  the host; only reads (`state.get`, `state.incr`, `rate.allow`, `users.role`)
-  return data. Keep it that way: it is what makes handlers deterministic and testable.
+  the host; reads such as `state.get` and `users.role` return data. Atomic operations
+  such as `state.incr` and `rate.allow` also return data but mutate host-owned state
+  or counters; validate, budget and record them as mutations. Deterministic replay
+  supplies recorded host observations rather than consulting current live state.
 - Breaking changes to the SDK require a bump of `manifest.sdkVersion` and a
   compatibility note in `SDK.md`; old bundles keep running against the old bridge.
 
@@ -117,8 +127,9 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
   marshals JSON only (validated with zod on both directions).
 - Limits: 64 MB memory, 50 ms CPU per handler call (interrupt handler), 2 s wall,
   25 capability calls per handler, 1 MB `state` per automation. Host-level caps per
-  manifest field live in `packages/sandbox/src/limits.ts` and are the single source
-  of truth; the manifest schema imports them.
+  manifest field originate in the dependency-free SDK policy constants
+  (currently `packages/sdk/src/index.ts`); compiler validators and sandbox enforcement
+  import the same values without reversing package dependencies.
 - On trap or limit breach: record an incident, disable that automation version,
   notify the console. Never auto-retry a trapped handler.
 - Every capability call is checked in this order before execution: manifest lists
@@ -139,9 +150,11 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
   free text.
 - The temp directory contains exactly: `riff.d.ts`, `riff-test.d.ts`, `SDK.md`,
   `examples/` (the six curated automations from `packages/sdk/examples`), `TASK.md`.
-  Nothing else from this repo is visible to the compile-time Codex run.
-- Compile-time Codex runs use workspace-write limited to the temp directory with
-  network disabled. Verify the sandbox flags against the SDK docs when wiring.
+  The compiler receives no other repository material by design. A temporary
+  directory alone cannot enforce read restrictions; verify the actual filesystem boundary.
+- The trusted model transport needs approved network access. Generated tools/code
+  receive no general network egress or credentials. Verify restricted reads, egress
+  and sandbox options against the installed SDK and actual worker environment.
 - The validation pipeline is a pure function of `(files, sdkVersion)` and runs in
   this fixed order: manifest schema → restricted lint → `tsc` against the d.ts →
   esbuild → in-sandbox tests against fixtures. Each stage returns a structured
@@ -150,7 +163,7 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
   failure report truncated to 4 KB. No silent retries beyond that.
 - Hard timeout 180 s per compile; concurrency 1 per channel, 4 global; both are
   enforced in `packages/compiler/src/queue.ts`, not in route handlers.
-- `CODEX_MODE=mock` replays recorded compile outputs from
+- `RIFF_COMPILER_MODE=mock` replays recorded compile outputs from
   `packages/compiler/fixtures/` so the whole pipeline is tested in CI without Codex.
   Every new prompt-pack change must add or refresh a recorded fixture.
 - Every compile run is persisted with thread id, attempt, stage reports, duration
@@ -200,8 +213,9 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
 ### 2.6 Web
 
 - Console and overlay share components but never share state; the overlay is a
-  standalone route with no auth and no console code in its bundle (verify with
-  `vite build --report`).
+  separate entry with no interactive login and no console code in its bundle.
+  Future live delivery requires a scoped, rotatable overlay bearer key. Verify Vite
+  output manifests and HTML; the foundation uses `pnpm check:bundles` after build.
 - Overlay performance budget: transparent background, 1920×1080 safe area, 60 fps on
   an integrated GPU, canvas for particle effects, CSS transforms only (no layout
   thrash), no network calls other than its WebSocket.
@@ -255,8 +269,8 @@ structure, keeping app services responsible for external I/O and authorization.
     their own in-sandbox tests.
   - `packages/sandbox`: invariant tests (every bullet in §2.2), limit tests with
     deliberately hostile automations under `test/hostile/`.
-  - `packages/compiler`: contract tests with `CODEX_MODE=mock`; pipeline stage tests;
-    one opt-in `pnpm test:codex` suite that calls the real Codex (never in CI).
+  - `packages/compiler`: contract tests with `RIFF_COMPILER_MODE=mock`; pipeline stage tests;
+    one future opt-in `pnpm test:compiler:live` suite that calls the real Codex (never in CI).
   - `packages/twitch`: Helix client against `msw` handlers built from fixtures;
     EventSub client against a fake WebSocket server exercising welcome, keepalive
     timeout, reconnect and revocation.
@@ -276,8 +290,9 @@ structure, keeping app services responsible for external I/O and authorization.
 ## 4. Security rules
 
 - Secrets only from environment variables. `.env` is git-ignored; `.env.example`
-  lists every variable with a comment. CI fails on `oauth:`, `sk-`, `client_secret=`
-  or a 30+ char base64 token in tracked files (`scripts/check-secrets.sh`).
+  lists every variable with a comment. The focused `scripts/check-secrets.mjs` scan checks recognizable credential
+  patterns without treating public integrity hashes as secrets. Gitleaks supplies
+  the broader scan; release checks must include both.
 - Logs never contain tokens or cookies: a single redaction function in
   `apps/server/src/log.ts` strips `Authorization`, `access_token`, `refresh_token`
   and `Set-Cookie`. Compile logs pass through it before persistence.
@@ -294,7 +309,8 @@ structure, keeping app services responsible for external I/O and authorization.
   clears the overlay, and requires explicit confirmation to resume. It must work
   even when the compiler, DB write path or Twitch API is degraded: it flips an
   in-memory flag first and persists second.
-- Compile-time Codex runs: network disabled, temp dir only, deleted after the run.
+- Compiler workspaces: restricted guest/tool reads and egress, separate trusted model
+  transport, no inherited credentials, and deletion after the run. Test boundaries.
 - Dependencies: `pnpm audit --prod` is clean at submission; lockfile committed.
 
 ---
@@ -308,7 +324,7 @@ structure, keeping app services responsible for external I/O and authorization.
   User-visible messages say what happened and what to do; stack traces never reach
   the UI.
 - Naming: files kebab-case, types PascalCase, functions camelCase, env vars
-  `RIFF_*` / `TWITCH_*` / `CODEX_*`. Capability and trigger names are dotted
+  `RIFF_*` / `TWITCH_*`; preserve required upstream API identifiers. Capability and trigger names are dotted
   lowercase and are stable identifiers (they appear in manifests and prompts).
 - Functions do one thing; prefer pure functions and pass dependencies explicitly
   (no module-level singletons for DB, Twitch or Codex clients; a `createApp(deps)`
@@ -341,52 +357,39 @@ structure, keeping app services responsible for external I/O and authorization.
 
 ## 7. Repository layout and commands
 
-```
-riff/
-  AGENTS.md
-  README.md                       quick start, architecture, env, how to run tests
-  package.json  pnpm-workspace.yaml  tsconfig.base.json  eslint.config.js  .prettierrc  .env.example
-  apps/server/   src/{index.ts, app.ts, routes/, services/, db/{schema.ts,repo.ts}, overlay-ws.ts, log.ts}  drizzle/  test/
-  apps/web/      src/{console/, overlay/, effects/, components/, lib/}  public/  test/
-  packages/sdk/        src/{index.ts, manifest.ts}  riff.d.ts  riff-test.d.ts  SDK.md  examples/  eslint.generated.js  test/
-  packages/compiler/   src/{index.ts, contract.ts, prompt.ts, pipeline.ts, repair.ts, queue.ts, drivers/{sdk.ts,exec.ts,mock.ts}}  fixtures/  test/
-  packages/sandbox/    src/{host.ts, bridge.ts, limits.ts, runner.ts}  test/{invariants.test.ts, hostile/}
-  packages/twitch/     src/{helix.ts, eventsub.ts, auth.ts, triggers.ts, types.ts}  fixtures/  test/
-  scripts/             record-fixtures.ts  smoke.ts  check-secrets.sh  seed-demo.ts
-  data/                sqlite file (git-ignored)
+The six workspace roots above are implemented. Feature responsibility directories
+and their READMEs reserve all approved studio capabilities. [README.md](README.md)
+lists the actual layout and runnable commands; [docs/setup.md](docs/setup.md)
+explains installation, environment variables and optional operations.
+
+Current commands (use `./scripts/pnpm` for this checkout's local toolchain):
+
+```text
+pnpm dev              server (:8787) and web (:5173)
+pnpm build            packages, server and three browser entries
+pnpm test             trusted host/runtime installation tests only
+pnpm test:tooling      workspace graph and source-boundary tests
+pnpm test:e2e          Chromium/axe checks; requires local sockets
+pnpm lint             ESLint plus architecture boundary enforcement
+pnpm typecheck        strict source checks in all six workspaces
+pnpm check:bundles    inspect production entries after build
+pnpm smoke            Fastify injection and SQLite foundation smoke test
+pnpm db:migrate       apply committed Drizzle migrations
+pnpm db:generate      generate migrations after a schema change
+pnpm check            lint, types, host/tooling tests and focused secret scan
+pnpm run doctor       tool and dependency inventory (explicit run avoids pnpm built-in)
 ```
 
-Root scripts:
+`RIFF_COMPILER_MODE=mock` is the only accepted foundation compiler setting; even
+mock fixture compilation is not implemented yet. Live compiler tests, fixture
+recording, generated-code lint rules, seeded demos, and event-to-effect smoke tests
+are future scripts, not placeholder successful commands.
 
-```
-pnpm dev          server (:8787) + web (:5173) with hot reload
-pnpm build        all packages and apps
-pnpm test         vitest across the workspace (CODEX_MODE=mock)
-pnpm test:codex   compiler tests against the real Codex (requires codex login; not in CI)
-pnpm lint         eslint (host config) + generated-code rules against packages/sdk/examples
-pnpm typecheck    tsc -b
-pnpm smoke        boots the server, emits fixtures, asserts overlay + chat calls
-pnpm db:migrate   drizzle-kit migrate
-pnpm db:generate  drizzle-kit generate (after editing schema.ts)
-pnpm check        lint + typecheck + test + check-secrets (what CI runs)
-```
-
-Environment (`.env.example`):
-
-```
-TWITCH_CLIENT_ID=            # dev.twitch.tv app; redirect http://localhost:8787/auth/callback
-TWITCH_CLIENT_SECRET=
-RIFF_SECRET=                 # 32+ random bytes, base64; token encryption + cookie signing
-RIFF_PUBLIC_URL=http://localhost:5173
-RIFF_SERVER_URL=http://localhost:8787
-RIFF_DB_PATH=./data/riff.db
-CODEX_MODE=sdk               # sdk | exec | mock
-CODEX_MODEL=                 # optional override
-LOG_LEVEL=info
-```
-
-Env is parsed once with zod in `apps/server/src/env.ts`; the process exits with a
-clear message on any missing or malformed variable.
+`.env.example` is the current configuration inventory. Environment parsing in
+`apps/server/src/env.ts` validates loopback binding, explicit container binding
+consent, ports, log levels, database paths and inactive compiler mode.
+Defaults need no external credentials. Future integration fields stay blank.
+The only current database table is `channels`; migrate it explicitly with the CLI.
 
 ---
 

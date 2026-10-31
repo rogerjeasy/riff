@@ -35,11 +35,11 @@
 
 **Interfaces:** Workspace package names are `@riff/web`, `@riff/server`, `@riff/sdk`, `@riff/compiler`, `@riff/sandbox`, and `@riff/twitch`. A single version catalog owns shared direct dependency versions. Root commands own build, check, tests, database, browser installation, and tool inspection.
 
-- [ ] Record the available toolchain and installation restrictions; use existing Node 22 and cached pnpm when possible.
-- [ ] Define workspace manifests, exact compatible dependencies, build allowlists, and shared checks.
-- [ ] Install dependencies and native tooling from authorized sources/caches; preserve the resulting real lockfile.
-- [ ] Verify each workspace resolves only its declared dependencies and record any unavailable packages.
-- [ ] Commit the workspace foundation separately from application code.
+- [x] Record the available toolchain and installation restrictions; use existing Node 22 and cached pnpm when possible.
+- [x] Define workspace manifests, exact compatible dependencies, build allowlists, and shared checks.
+- [x] Install dependencies and native tooling from authorized sources/caches; preserve the resulting real lockfile.
+- [x] Verify each workspace resolves only its declared dependencies and record any unavailable packages.
+- [x] Commit the coupled workspace/application foundation together under the recorded delivery ruling.
 
 ## Task 2: Host and package foundations
 
@@ -47,11 +47,11 @@
 
 **Interfaces:** `parseEnv(input)` returns validated local configuration; `createApp(deps)` creates a Fastify instance without listening; `openDatabase(path)` returns the SQLite/Drizzle connection with explicit close; `/api/health` reports only foundation readiness. SDK exports version/policy types without runtime dependencies. No guest evaluator is exported.
 
-- [ ] Write environment, real-file database/migration, and health-route tests, and run them before implementation.
-- [ ] Implement environment parsing, redacted logging, dependency injection, database setup, health route, and graceful shutdown.
-- [ ] Add minimal typed package entrypoints and responsibility documentation; unsupported functionality remains unavailable.
-- [ ] Run focused tests, workspace checks, and production build.
-- [ ] Commit the host/package foundation with its tests.
+- [x] Write environment, real-file database/migration, and health-route tests, and run them before implementation.
+- [x] Implement environment parsing, redacted logging, dependency injection, database setup, health route, and graceful shutdown.
+- [x] Add minimal typed package entrypoints and responsibility documentation; unsupported functionality remains unavailable.
+- [x] Run focused tests, workspace checks, and production build.
+- [x] Commit the host/package foundation with its tests.
 
 ## Task 3: Browser foundations
 
@@ -59,11 +59,11 @@
 
 **Interfaces:** Three separate HTML entries share only intentional design tokens/components. Console and dock show foundation status; the overlay is transparent and inactive. Typed HTTP boundary validation is browser-local.
 
-- [ ] Add browser checks for console/dock rendering, transparent overlay, and absence of active connection/approval controls.
-- [ ] Implement accessible minimal entrypoints and shared presentation primitives.
-- [ ] Configure Vite proxy, manifest output, separate entries, and Tailwind integration.
+- [x] Add browser checks for console/dock rendering, transparent overlay, and absence of active connection/approval controls.
+- [x] Implement accessible minimal entrypoints and shared presentation primitives.
+- [x] Configure Vite proxy, manifest output, separate entries, and Tailwind integration.
 - [ ] Install browser binaries if available, run browser checks, and verify built entry separation.
-- [ ] Commit the browser foundation separately.
+- [x] Commit the browser foundation in the coupled build graph under the recorded delivery ruling.
 
 ## Task 4: Delivery, operations, and architecture guardrails
 
@@ -71,13 +71,16 @@
 
 **Interfaces:** Default development starts only the local server and web UI. Optional Compose profiles describe monitoring/proxy tooling without exposing public services. Doctor/setup reporting distinguishes installed, configured, conditional, and blocked tools.
 
-- [ ] Write and verify boundary-check failure cases, then implement the reusable checker.
-- [ ] Add container and optional operations configuration, CI, secret/dependency checks, and setup/doctor commands.
-- [ ] Document actual installation results, environment requirements, all directories, and exact startup commands.
-- [ ] Reconcile relevant engineering-contract clarifications and update implementation status in both product documents.
+- [x] Write and verify boundary-check failure cases, then implement the reusable checker.
+- [x] Add container and optional operations configuration, CI, secret/dependency checks, and setup/doctor commands.
+- [x] Document actual installation results, environment requirements, all directories, and exact startup commands.
+- [x] Reconcile relevant engineering-contract clarifications and update implementation status in both product documents.
 - [ ] Run lint, typecheck, tests, build, smoke, browser checks, and available security checks; record unavailable checks explicitly.
 - [ ] Obtain a fresh whole-change review, fix material findings, rerun affected/full checks, and commit focused delivery/documentation groups.
 
 ## Execution notes
 
 - Initial inspection: documentation only, no repository, no packages. Active shell Node is 24; Node 22.23.2 exists locally. Cached pnpm 12.6.0 exists. Terminal registry DNS fails; Docker CLI exists but daemon access is denied and Compose is absent. These observations guide installation attempts, not assumptions about completion.
+
+- Delivery ruling: keep the coupled workspace/app build graph and associated tests in one runnable foundation commit, followed by separate operations and documentation commits. This avoids intermediate commits whose root build points at absent workspaces.
+- Environment limits: browser assertions, fresh online install/audit, Compose and container execution remain pending; see `docs/setup-status.md`. No full-product or security certification is implied.
