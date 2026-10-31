@@ -1,3 +1,4 @@
+import { transitionRepository } from './transitions.js';
 import { admissionRepository } from './admission.js';
 import { sessionRepository } from './sessions.js';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -19,6 +20,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
   return {
     channelId,
     ...sessionRepository(connection, channelId),
+    ...transitionRepository(connection, channelId),
     ...admissionRepository(connection, channelId),
     ensure(displayName: string) {
       db.insert(channels)
@@ -135,6 +137,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
     /** Atomically make `versionId` the active version of its automation. */
     activate(automationId: string, versionId: string) {
       connection.client.transaction(() => {
+        transitionRepository(connection, channelId).invalidateTransitions(automationId);
         const current = db
           .select()
           .from(automations)

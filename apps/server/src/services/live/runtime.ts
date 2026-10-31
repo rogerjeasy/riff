@@ -1,4 +1,9 @@
-import { createSessionControl, experienceOf, sessionSeed } from './sessions.js';
+import {
+  createSessionControl,
+  experienceOf,
+  sessionSeed,
+  SessionConfigurationError,
+} from './sessions.js';
 import {
   ADMISSION_RETENTION_MS,
   recordsAdmission,
@@ -6,6 +11,12 @@ import {
   restoreChannelEffects,
 } from './admission.js';
 import {
+  artifactIdentity,
+  advanceSession,
+  runSessionMigration,
+  sessionDefinitionHash,
+  migrationSourceHash,
+  transitionIdentity,
   createAdmissionState,
   createEngine,
   DECISION_MESSAGES,
@@ -20,6 +31,8 @@ import {
   type ExecutionDecision,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
+import { transitionEvidenceId } from '../../db/repositories/transitions.js';
+import { approvalBlockers } from '../automations/views.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { OverlayBroker } from '../overlay/broker.js';
@@ -279,8 +292,118 @@ export function createLiveRuntime(deps: {
             : decision.reason,
       });
     }
+    await applyPending();
     return results;
   }
+
+  async function applyTransition(id: string) {
+    const reviewed = repo.transition(id);
+    if (!reviewed || !['review', 'pending'].includes(reviewed.status))
+      throw new SessionConfigurationError('This transition is no longer available.');
+    if (
+      transitionEvidenceId(reviewed.plan, reviewed.migrationSource, reviewed.evidence) !==
+      reviewed.evidenceId
+    )
+      throw new SessionConfigurationError('The transition evidence changed. Review again.');
+    const version = repo.version(reviewed.targetVersionId);
+    const source = repo.version(reviewed.sourceVersionId);
+    const targetDefinition = version ? experienceOf(version) : null;
+    const current = repo.session(reviewed.automationId);
+    const automation = repo.automation(reviewed.automationId);
+    if (panic || closed || repo.state().panic || repo.state().transitionEpoch !== reviewed.epoch)
+      throw new SessionConfigurationError(
+        'Everything is stopped or this approval was cancelled. Review again.',
+      );
+    if (
+      !version ||
+      !source ||
+      !targetDefinition ||
+      !current ||
+      automation?.activeVersionId !== source.id ||
+      current.versionId !== source.id ||
+      current.id !== reviewed.sourceSessionId ||
+      source.artifactId !== reviewed.plan.sourceArtifactId ||
+      artifactIdentity({ source: source.source, manifest: source.manifest }) !==
+        reviewed.plan.sourceArtifactId ||
+      version.artifactId !== reviewed.plan.targetArtifactId ||
+      sessionDefinitionHash(current.definition) !== reviewed.plan.sourceDefinitionHash ||
+      sessionDefinitionHash(targetDefinition) !== reviewed.plan.targetDefinitionHash ||
+      migrationSourceHash(reviewed.migrationSource) !== reviewed.plan.migrationSourceHash
+    )
+      throw new SessionConfigurationError(
+        'The source session or reviewed artifacts changed. Review again.',
+      );
+    transitionIdentity(reviewed.plan);
+    const blockers = approvalBlockers(version, panic);
+    if (blockers.length) throw new SessionConfigurationError(blockers.join(' '));
+    if (
+      reviewed.plan.boundary === 'stopped' &&
+      (automation.status !== 'paused' || current.snapshot.phase !== 'paused')
+    )
+      throw new SessionConfigurationError(
+        'Stop this interaction before approving a stopped transition.',
+      );
+    if (reviewed.plan.boundary === 'round-end' && current.snapshot.phase !== 'finished')
+      return false;
+    const fence = generation;
+    const at = Math.max(now(), current.snapshot.updatedAt);
+    const advanced = advanceSession(current.snapshot, at, current.definition);
+    // Normalize the boundary privately; its control journal row commits with migration.
+    const snapshot = await runSessionMigration(reviewed.migrationSource, {
+      oldDefinition: current.definition,
+      newDefinition: targetDefinition,
+      snapshot: advanced,
+      at,
+    }).catch(() => {
+      throw new SessionConfigurationError(
+        'The migration no longer preserves current progress. Review again or choose an explicit reset.',
+      );
+    });
+    const prepared = createEngine(
+      { source: version.source, manifest: version.manifest },
+      { seed: sessionSeed(snapshot.id), mode: 'live', session: snapshot, channelBudget },
+    );
+    try {
+      await prepared.warm();
+      if (fence !== generation || panic || closed)
+        throw new SessionConfigurationError('Activation was stopped. Review and approve again.');
+      const currentTarget = repo.version(version.id);
+      if (!currentTarget || approvalBlockers(currentTarget, panic).length)
+        throw new SessionConfigurationError(
+          'The target health changed while preparing activation. Review again.',
+        );
+      if (!repo.commitTransition(id, current.revision, snapshot, at))
+        throw new SessionConfigurationError(
+          'The session or approval changed before activation. Review again.',
+        );
+    } catch (error) {
+      prepared.stop();
+      throw error;
+    }
+    // No await separates the committed version from replacing the prepared engine.
+    engines.get(reviewed.automationId)?.engine.stop();
+    engines.delete(reviewed.automationId);
+    if (automation.status === 'live')
+      engines.set(reviewed.automationId, { engine: prepared, version });
+    else prepared.stop();
+    refreshInstructions();
+    hub.publish('studio', null);
+    return true;
+  }
+  async function applyPending() {
+    if (panic || closed) return;
+    for (const pending of repo.transitions().filter((t) => t.status === 'pending')) {
+      const current = repo.session(pending.automationId);
+      if (current?.snapshot.phase !== 'finished') continue;
+      try {
+        await applyTransition(pending.id);
+      } catch {
+        repo.cancelTransition(pending.id);
+        hub.publish('studio', null);
+      }
+    }
+  }
+  let transitionJobs = 0;
 
   const api = {
     get panicked() {
@@ -300,7 +423,10 @@ export function createLiveRuntime(deps: {
     /** Restore live engines after boot. A persisted panic keeps everything stopped. */
     boot() {
       panic = repo.state().panic;
-      if (panic) return;
+      if (panic) {
+        repo.invalidateTransitions();
+        return;
+      }
       for (const automation of repo.automations()) {
         if (automation.status !== 'live' || !automation.activeVersionId) continue;
         const version = repo.version(automation.activeVersionId);
@@ -334,9 +460,18 @@ export function createLiveRuntime(deps: {
       overlay.setInstructions([]);
       const panicAt = now();
       try {
-        repo.updateState({ panic: true, panicAt });
+        repo.updateState({
+          panic: true,
+          panicAt,
+          transitionEpoch: repo.state().transitionEpoch + 1,
+        });
       } catch {
         /* Remain stopped in memory. */
+      }
+      try {
+        repo.invalidateTransitions();
+      } catch {
+        /* epoch or resume also invalidates pending work */
       }
       // Never roll back a durable panic because a secondary session write fails.
       // panicAt also lets explicit resume recover the frozen clock after a restart.
@@ -366,6 +501,7 @@ export function createLiveRuntime(deps: {
     resume() {
       const panicAt = repo.state().panicAt;
       repo.atomic(() => {
+        repo.invalidateTransitions();
         for (const automation of repo.automations()) {
           if (automation.status !== 'live') continue;
           const current = repo.session(automation.id);
@@ -411,27 +547,45 @@ export function createLiveRuntime(deps: {
     },
     tick(): Promise<void> {
       const fence = generation;
-      const next = queue.then(() => {
+      const next = queue.then(async () => {
         if (fence !== generation || panic || closed) return;
         for (const [automationId, { engine, version }] of engines) {
           if (experienceOf(version)) sessions.tick(automationId, engine);
         }
+        await applyPending();
       });
       queue = next.catch(() => undefined);
       return next;
+    },
+    /** Queue reviewed activation with chat/ticks; preparation completes before commit. */
+    activateTransition(id: string): Promise<boolean> {
+      if (transitionJobs >= 8)
+        return Promise.reject(
+          new SessionConfigurationError('The activation queue is full. Try again shortly.'),
+        );
+      transitionJobs++;
+      const next = queue.then(() => applyTransition(id));
+      queue = next.catch(() => undefined);
+      return next.finally(() => {
+        transitionJobs--;
+      });
     },
     /** Read-only: replays the round journal privately; never touches engines or the overlay. */
     auditSession(automationId: string) {
       return sessions.audit(automationId);
     },
     prepareActivation(version: VersionRow, resetSession = false) {
+      repo.invalidateTransitions(version.automationId);
       sessions.configure(version, resetSession);
       generation++;
     },
     resetSession(automationId: string, version: VersionRow) {
       generation++;
       stop(automationId);
-      repo.atomic(() => sessions.reset(version));
+      repo.atomic(() => {
+        repo.invalidateTransitions(automationId);
+        sessions.reset(version);
+      });
       if (!panic && repo.automation(automationId)?.status === 'live') start(automationId, version);
       refreshInstructions();
       return repo.session(automationId)?.snapshot ?? null;

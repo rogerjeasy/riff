@@ -1,7 +1,7 @@
 import type { PermissionManifest } from '@riff/sdk';
 import type { IntentCheck } from '@riff/compiler';
 import type { VerificationReport } from '@riff/sandbox';
-import { artifactIdentity } from '@riff/sandbox';
+import { artifactIdentity, classifySessionTransition } from '@riff/sandbox';
 import { describeAudience, describeWindow } from '@riff/compiler';
 import type { VersionRow } from '../../db/repositories/studio.js';
 
@@ -93,7 +93,12 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
   if (JSON.stringify(a.experience ?? null) !== JSON.stringify(b.experience ?? null))
     changes.push({
       field: 'experience',
-      label: 'Session rules (reset required)',
+      label:
+        a.experience &&
+        b.experience &&
+        classifySessionTransition(a.experience, b.experience) !== 'reset-required'
+          ? 'Session rules (reviewed migration required)'
+          : 'Session rules (explicit reset required)',
       from: a.experience ? JSON.stringify(a.experience) : 'No shared session',
       to: b.experience ? JSON.stringify(b.experience) : 'No shared session',
       authority: 'same',
@@ -115,8 +120,13 @@ export function approvalBlockers(row: VersionRow, panic: boolean): string[] {
   const evidence = row.evidence as Evidence;
   if (!['candidate', 'approved', 'superseded'].includes(row.status))
     blockers.push(`This version is ${row.status}.`);
-  if (!evidence.verification.ok) blockers.push('Verification did not pass.');
-  if (evidence.intent.some((check) => check.status === 'mismatch'))
+  if (['approved', 'superseded'].includes(row.status) && row.approvedAt === null)
+    blockers.push('This version has no recorded prior approval.');
+  if (!evidence?.verification?.ok) blockers.push('Verification did not pass.');
+  if (
+    !Array.isArray(evidence?.intent) ||
+    evidence.intent.some((check) => check.status === 'mismatch')
+  )
     blockers.push('The candidate does not match what you asked for.');
   try {
     if (

@@ -5,6 +5,7 @@ import type {
   ExperienceDefinition,
   SessionSnapshot,
   SessionTransitionPlan,
+  PermissionManifest,
 } from '@riff/sdk';
 import { artifactIdentity, createEngine, type ExecutionEngine } from './engine.js';
 import {
@@ -35,6 +36,7 @@ export type JournalEntry = { seq: number; at: number; versionId: string; digest:
   | { kind: 'start'; snapshot: SessionSnapshot; definition?: ExperienceDefinition }
   | {
       kind: 'migration';
+      sourceVersionId: string;
       oldDefinition: ExperienceDefinition;
       newDefinition: ExperienceDefinition;
       source: string;
@@ -171,20 +173,26 @@ export async function replaySessionJournal(input: {
         return fail('a round start', entry.kind);
       } else if (entry.kind === 'migration') {
         const artifact = input.artifactFor(entry.versionId);
-        const prior = input.artifactFor(
-          input.entries[input.entries.indexOf(entry) - 1]?.versionId ?? '',
-        );
+        const prior = input.artifactFor(entry.sourceVersionId);
         if (!artifact || !prior)
           return result('unavailable', 'A required migration version is unavailable.', state);
         try {
           const plan = sessionTransitionPlanSchema.parse(entry.plan);
+          const priorDefinition = (prior.manifest as PermissionManifest).experience;
+          const targetDefinition = (artifact.manifest as PermissionManifest).experience;
+          if (!priorDefinition || !targetDefinition)
+            return fail('stateful migration artifacts', 'missing session rules');
           if (
             sessionDefinitionHash(definition) !== sessionDefinitionHash(entry.oldDefinition) ||
             plan.sourceDefinitionHash !== sessionDefinitionHash(definition) ||
             plan.targetDefinitionHash !== sessionDefinitionHash(entry.newDefinition) ||
             plan.migrationSourceHash !== migrationSourceHash(entry.source) ||
             plan.sourceArtifactId !== artifactIdentity(prior) ||
-            plan.targetArtifactId !== artifactIdentity(artifact)
+            plan.targetArtifactId !== artifactIdentity(artifact) ||
+            sessionDefinitionHash(priorDefinition) !== plan.sourceDefinitionHash ||
+            sessionDefinitionHash(targetDefinition) !== plan.targetDefinitionHash ||
+            (plan.boundary === 'round-end' && state.phase !== 'finished') ||
+            (plan.boundary === 'stopped' && state.phase !== 'paused')
           )
             return fail('verified migration artifacts', 'changed migration artifacts');
           state = await runSessionMigration(entry.source, {
@@ -202,7 +210,8 @@ export async function replaySessionJournal(input: {
         let engine = engines.get(entry.versionId);
         if (!engine) {
           const artifact = input.artifactFor(entry.versionId);
-          if (!artifact) return fail(`version ${entry.versionId}`, 'a missing version');
+          if (!artifact)
+            return result('unavailable', `Version ${entry.versionId} is unavailable.`, state);
           engine = createEngine(artifact, { seed: sessionSeed(state.id), mode: 'preview' });
           engines.set(entry.versionId, engine);
         }

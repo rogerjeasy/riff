@@ -389,7 +389,7 @@ explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optio
 EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
 Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
 `experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
-`admission_events`.
+`admission_events`, `session_transitions`.
 
 ---
 
@@ -476,8 +476,8 @@ Host deadlines survive restart and count downtime; expired rounds finish on reco
 Pause freezes remaining time. Panic first fences memory, then persists the channel
 flag independently of session pause writes. Explicit resume uses persisted panicAt
 to recover a pause if an individual session write failed. Canonical definition
-changes require explicit reset consent; identical-definition edits preserve progress.
-F32 migration programs and generalized multi-round tournaments remain future work.
+changes require a reviewed preserving transition or explicit reset consent; identical-definition
+edits preserve progress. Generalized multi-round tournaments remain future work.
 
 Every committed round change (start, chat decision, pause, resume, deadline/recovery
 advance) appends a `session_journal` row with a digest of the resulting state in the
@@ -495,3 +495,27 @@ protocol adds `sessions` with validated canonical definition and snapshot. Rotat
 clears old clients but preserves authoritative projection cache for reconnection.
 The shared HUD uses safe DOM text, respects reduced motion and clears on lost liveness.
 No new environment variables or dependencies were added.
+
+
+F32 adds tenant-scoped `session_transitions`: immutable migration source, host-computed
+plan and evidence identities, source session/version/revision, and durable review,
+pending, applied or cancelled status. `channel_state.transition_epoch` fences panic
+across asynchronous work and recovery. Panic cancels reviewed/pending transitions;
+explicit resume also invalidates them if a secondary cancellation write failed.
+Manual activation/reset/discard cancels incompatible reviews. Migration activation
+shares the chat/tick queue, revalidates current progress, prepares the target worker,
+and commits state/version/status/journal/outbox fencing in one revision-checked
+transaction. Stopped transitions require an already-paused session and stay paused;
+round-end transitions survive restart and apply to the finished state once.
+
+`POST /api/versions/:id/transition/preview` accepts a bounded `migrationSource`,
+`boundary` (`immediate`, `round-end`, `stopped`), optional `seed` and up to 24
+hypothetical `events`. Its private comparison uses both real host engines with the
+same inputs/seed and synthetic provenance; it never dispatches live effects.
+`POST /api/transitions/:id/approve` binds `evidenceId`, `artifactId`,
+`expectedActiveVersionId`, `sessionId` and `boundary`; `/cancel` permanently cancels
+reviewed/pending work. Both use the existing mutation guard. Earlier approved
+versions use the same preview/approval path for preserving rollback; incompatible
+reductions require explicit full reset. Studio automation snapshots expose scoped
+`transitions`. Journals record original definitions plus migration source/version,
+plan and resulting digest; audit uses the same session/event seeds as live play.

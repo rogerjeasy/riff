@@ -110,6 +110,66 @@ export function registerStudioRoutes(
       reply.raw.removeListener('close', cancel);
     }
   });
+  app.post('/api/versions/:id/transition/preview', async (request, reply) => {
+    const p = params.safeParse(request.params);
+    const body = z
+      .object({
+        migrationSource: z.string().min(1).max(32768),
+        boundary: z.enum(['immediate', 'round-end', 'stopped']),
+        events: z.array(eventSchema).max(24).optional(),
+        seed: z.number().int().min(1).max(0xffffffff).optional(),
+      })
+      .strict()
+      .safeParse(request.body);
+    if (!p.success || !body.success)
+      return reply
+        .code(400)
+        .send({
+          code: 'INVALID',
+          message:
+            'Provide a bounded migration source, boundary and at most 24 hypothetical events.',
+        });
+    try {
+      return { transition: await studio.previewTransition(p.data.id, body.data) };
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+  app.post('/api/transitions/:id/approve', async (request, reply) => {
+    const p = params.safeParse(request.params);
+    const body = z
+      .object({
+        evidenceId: z.string().regex(/^[a-f0-9]{64}$/),
+        artifactId: z.string().regex(/^[a-f0-9]{64}$/),
+        expectedActiveVersionId: id,
+        sessionId: id,
+        boundary: z.enum(['immediate', 'round-end', 'stopped']),
+      })
+      .strict()
+      .safeParse(request.body);
+    if (!p.success || !body.success)
+      return reply
+        .code(400)
+        .send({
+          code: 'INVALID',
+          message: 'Approval must bind exact transition evidence and source session.',
+        });
+    try {
+      return { transition: await studio.approveTransition(p.data.id, body.data) };
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+  app.post('/api/transitions/:id/cancel', async (request, reply) => {
+    const p = params.safeParse(request.params);
+    if (!p.success)
+      return reply.code(400).send({ code: 'INVALID', message: 'Invalid transition.' });
+    try {
+      return { transition: studio.cancelTransition(p.data.id) };
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
   app.post('/api/versions/:id/approve', async (request, reply) => {
     const p = params.safeParse(request.params);
     const body = z

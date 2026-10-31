@@ -1,5 +1,6 @@
 import type {
   ExperienceDefinition,
+  SessionTransitionPlan,
   SessionSnapshot,
   ChatEvent,
   DecisionCode,
@@ -20,6 +21,7 @@ export const channelState = sqliteTable('channel_state', {
     .references(() => channels.id),
   panic: integer('panic', { mode: 'boolean' }).notNull().default(false),
   panicAt: integer('panic_at'),
+  transitionEpoch: integer('transition_epoch').notNull().default(0),
   overlayKey: text('overlay_key').notNull(),
   twitchUserId: text('twitch_user_id'),
   twitchLogin: text('twitch_login'),
@@ -207,11 +209,21 @@ export const sessionJournal = sqliteTable(
     sessionId: text('session_id').notNull(),
     automationId: text('automation_id').notNull(),
     versionId: text('version_id').notNull(),
-    kind: text('kind', { enum: ['start', 'chat', 'pause', 'resume', 'advance'] }).notNull(),
+    kind: text('kind', {
+      enum: ['start', 'chat', 'pause', 'resume', 'advance', 'migration'],
+    }).notNull(),
     at: integer('at').notNull(),
     event: text('event', { mode: 'json' }).$type<ChatEvent>(),
     code: text('code').$type<DecisionCode>(),
     snapshot: text('snapshot', { mode: 'json' }).$type<SessionSnapshot>(),
+    definition: text('definition', { mode: 'json' }).$type<ExperienceDefinition>(),
+    migration: text('migration', { mode: 'json' }).$type<{
+      oldDefinition: ExperienceDefinition;
+      newDefinition: ExperienceDefinition;
+      source: string;
+      sourceVersionId: string;
+      plan: SessionTransitionPlan;
+    }>(),
     digest: text('digest').notNull(),
   },
   (table) => [index('session_journal_order').on(table.channelId, table.sessionId, table.seq)],
@@ -230,4 +242,38 @@ export const sessionOutbox = sqliteTable(
     dispatchedAt: integer('dispatched_at'),
   },
   (table) => [index('session_outbox_channel').on(table.channelId, table.automationId)],
+);
+
+/** Immutable reviewed artifacts and evidence; only status/timestamps can change. */
+export const sessionTransitions = sqliteTable(
+  'session_transitions',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id')
+      .notNull()
+      .references(() => automations.id),
+    sourceVersionId: text('source_version_id')
+      .notNull()
+      .references(() => versions.id),
+    targetVersionId: text('target_version_id')
+      .notNull()
+      .references(() => versions.id),
+    sourceSessionId: text('source_session_id').notNull(),
+    sourceRevision: integer('source_revision').notNull(),
+    sourceDigest: text('source_digest').notNull(),
+    epoch: integer('epoch').notNull(),
+    migrationSource: text('migration_source').notNull(),
+    plan: text('plan', { mode: 'json' }).$type<SessionTransitionPlan>().notNull(),
+    evidence: text('evidence', { mode: 'json' }).notNull(),
+    evidenceId: text('evidence_id').notNull(),
+    status: text('status', { enum: ['review', 'pending', 'applied', 'cancelled'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+    approvedAt: integer('approved_at'),
+    appliedAt: integer('applied_at'),
+    cancelledAt: integer('cancelled_at'),
+  },
+  (table) => [index('transitions_channel_automation').on(table.channelId, table.automationId)],
 );

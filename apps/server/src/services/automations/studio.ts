@@ -9,14 +9,9 @@ import type { LiveRuntime } from '../live/runtime.js';
 import type { OverlayBroker } from '../overlay/broker.js';
 import { approvalBlockers, versionView } from './views.js';
 
-export class StudioError extends Error {
-  constructor(
-    readonly code: 'NOT_FOUND' | 'STALE' | 'BLOCKED',
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import { StudioError } from './errors.js';
+import { createTransitionService } from './transitions.js';
+export { StudioError };
 
 /** Approval, activation, pause, rollback and emergency stop for one channel. */
 export function createStudioService(deps: {
@@ -27,6 +22,7 @@ export function createStudioService(deps: {
 }) {
   const { repo, hub, runtime } = deps;
   const changed = () => hub.publish('studio', null);
+  const transitions = createTransitionService(repo, runtime, changed);
   const control = (
     message: string,
     automationId: string | null,
@@ -87,6 +83,11 @@ export function createStudioService(deps: {
   }
 
   return {
+    previewTransition(versionId: string, input: Parameters<typeof transitions.preview>[1]) {
+      return transitions.preview(mustVersion(versionId), input);
+    },
+    approveTransition: transitions.approve,
+    cancelTransition: transitions.cancel,
     snapshot() {
       const state = repo.state();
       const automations = repo.automations().map((automation) => {
@@ -94,6 +95,7 @@ export function createStudioService(deps: {
         const active = versions.find((v) => v.id === automation.activeVersionId);
         return {
           ...automation,
+          transitions: repo.transitions(automation.id),
           session:
             active && experienceOf(active) ? (repo.session(automation.id)?.snapshot ?? null) : null,
           versions: versions.map((v) => versionView(v, active, runtime.panicked)),
@@ -210,7 +212,10 @@ export function createStudioService(deps: {
       const version = mustVersion(versionId);
       if (version.status !== 'candidate' && version.status !== 'failed')
         throw new StudioError('BLOCKED', 'Only unapproved candidates can be discarded.');
-      repo.updateVersion(version.id, { status: 'discarded' });
+      repo.atomic(() => {
+        repo.updateVersion(version.id, { status: 'discarded' });
+        repo.invalidateTransitions(version.automationId);
+      });
       changed();
     },
     panic(source: string) {

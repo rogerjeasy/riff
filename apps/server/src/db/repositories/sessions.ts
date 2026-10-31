@@ -64,6 +64,7 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
         event: detail.kind === 'chat' ? detail.event : null,
         code: detail.kind === 'chat' ? detail.code : null,
         snapshot: detail.kind === 'start' ? after : null,
+        definition: detail.kind === 'start' ? session(row.automationId)?.definition : null,
         digest: sessionDigest(after),
       })
       .run();
@@ -342,7 +343,14 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
         .map((row): JournalEntry => {
           const base = { seq: row.seq, at: row.at, versionId: row.versionId, digest: row.digest };
           if (row.kind === 'start' && row.snapshot)
-            return { ...base, kind: 'start', snapshot: row.snapshot };
+            return {
+              ...base,
+              kind: 'start',
+              snapshot: row.snapshot,
+              ...(row.definition ? { definition: row.definition } : {}),
+            };
+          if (row.kind === 'migration' && row.migration)
+            return { ...base, kind: 'migration', ...row.migration };
           if (row.kind === 'chat' && row.event && row.code)
             return { ...base, kind: 'chat', event: row.event, code: row.code };
           if (row.kind === 'pause' || row.kind === 'resume' || row.kind === 'advance')

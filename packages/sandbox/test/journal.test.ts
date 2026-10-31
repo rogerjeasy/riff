@@ -232,6 +232,7 @@ it('audits a migration from the original definition and rejects changed migratio
     {
       seq: 4,
       kind: 'migration' as const,
+      sourceVersionId: 'v1',
       at: 4000,
       versionId: 'v2',
       digest: host.sessionDigest(migrated),
