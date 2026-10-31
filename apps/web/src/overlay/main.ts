@@ -1,3 +1,5 @@
+import { renderCommunity } from './community.js';
+import type { Community } from '../community/schema.js';
 import { overlayMessageSchema } from './messages.js';
 import { createSessionHud } from '../sessions/presentation.js';
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
@@ -23,6 +25,11 @@ const reducedMotion =
   params.get('motion') === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 let retry = 0;
+let community: Community | null = null;
+const communityRoot = document.createElement('section');
+communityRoot.className = 'overlay-community';
+communityRoot.setAttribute('aria-label', 'Community co-creation');
+root.append(communityRoot);
 const sessionsRoot = document.createElement('div');
 sessionsRoot.className = 'overlay-sessions';
 root.append(sessionsRoot);
@@ -34,8 +41,15 @@ function renderSessions() {
     ),
   );
 }
-setInterval(renderSessions, 1000);
-function clearOverlay() {
+setInterval(() => {
+  renderSessions();
+  renderCommunity(communityRoot, community, Date.now());
+}, 1000);
+function clearOverlay(withdrawCommunity = true) {
+  if (withdrawCommunity) {
+    community = null;
+    renderCommunity(communityRoot, null, Date.now());
+  }
   clearStage(stage);
   setInstructions([]);
   sessions = [];
@@ -82,12 +96,21 @@ function connect() {
   );
   socket.onmessage = (event) => {
     let parsed;
+    let raw: unknown;
     try {
-      parsed = overlayMessageSchema.safeParse(JSON.parse(String(event.data)));
+      raw = JSON.parse(String(event.data)) as unknown;
+      parsed = overlayMessageSchema.safeParse(raw);
     } catch {
       return;
     }
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'community') {
+        // A rejected replacement cannot leave withdrawn text cached on screen.
+        community = null;
+        renderCommunity(communityRoot, null, Date.now());
+      }
+      return;
+    }
     armWatchdog();
     const data = parsed.data;
     if (data.type === 'hello') {
@@ -105,8 +128,14 @@ function connect() {
     else if (data.type === 'sessions') {
       sessions = data.payload.sessions;
       renderSessions();
-    } else if (data.type === 'clear') clearOverlay();
-    else if (data.type === 'test') flash('✓ Riff overlay connected');
+    } else if (data.type === 'community') {
+      // The broker fences publication during panic; a fresh frame also resumes
+      // community on the same socket after explicit channel recovery.
+      community = data.payload;
+      renderCommunity(communityRoot, community, Date.now());
+    } else if (data.type === 'clear') {
+      clearOverlay(data.payload.reason !== 'pause');
+    } else if (data.type === 'test') flash('✓ Riff overlay connected');
   };
   socket.onclose = (event) => {
     clearTimeout(watchdog);

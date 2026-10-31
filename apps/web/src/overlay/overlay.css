@@ -70,3 +70,38 @@ body,
   font-weight: 650;
   border: 2px solid #7ee2a8;
 }
+.overlay-community {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  width: min(440px, calc(100% - 64px));
+  max-height: calc(100% - 160px);
+  overflow: hidden;
+  padding: 18px 22px;
+  border-radius: 18px;
+  background: rgb(15 14 20 / 0.88);
+  color: #fff;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
+}
+.overlay-community[hidden] {
+  display: none;
+}
+.overlay-community h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  color: #ffb37a;
+}
+.overlay-community h3 {
+  margin: 16px 0 8px;
+  font-size: 18px;
+}
+.overlay-community p {
+  margin: 6px 0;
+}
+.overlay-community small {
+  display: block;
+  opacity: 0.85;
+  font-size: 13px;
+}

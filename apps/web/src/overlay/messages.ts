@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { communitySchema } from '../community/schema.js';
 import { overlaySessionSchema } from '../sessions/schemas.js';
 
 export const overlayMessageSchema = z.discriminatedUnion('type', [
+  z.object({ v: z.literal(1), type: z.literal('community'), payload: communitySchema.nullable() }),
   z.object({
     v: z.literal(1),
     type: z.literal('sessions'),
