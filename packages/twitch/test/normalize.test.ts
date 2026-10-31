@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_CHAT_TEXT_LENGTH, normalizeChatMessage, sanitizeChatText } from '../src/normalize.js';
+import {
+  BADGE_ROLES,
+  MAX_CHAT_TEXT_LENGTH,
+  normalizeChatMessage,
+  sanitizeChatText,
+} from '../src/normalize.js';
 import { TRIGGERS } from '../src/triggers.js';
 import { fixture } from './support.js';
 
@@ -58,6 +63,14 @@ describe('normalizeChatMessage', () => {
       meta,
     );
     expect(owner?.roles).toEqual(['viewer', 'subscriber', 'broadcaster']);
+  });
+
+  it('maps only badge set ids that Twitch actually publishes', () => {
+    // fixture() requires the recording's _source before returning the payload.
+    const recorded = fixture('helix.get-global-chat-badges.json') as { data: { set_id: string }[] };
+    const published = recorded.data.map((set) => set.set_id);
+    for (const setId of Object.keys(BADGE_ROLES)) expect(published).toContain(setId);
+    expect(BADGE_ROLES.founder).toBe('subscriber');
   });
 
   it('ignores inherited object keys as badge set ids', () => {

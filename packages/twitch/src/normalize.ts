@@ -36,13 +36,14 @@ const chatMessageEvent = z.looseObject({
   badges: z.array(z.looseObject({ set_id: z.string(), id: z.string(), info: z.string() })),
 });
 
-// Badge set ids. `broadcaster`, `moderator` and `subscriber` appear in the chat
-// docs (https://dev.twitch.tv/docs/chat/irc/ badges tag; channel.chat.message example).
-const BADGE_ROLES: Readonly<Record<string, Exclude<ChatRole, 'viewer'>>> = {
+// Badge set ids, all present in Helix GET /chat/badges/global
+// (fixtures/helix.get-global-chat-badges.json). `founder` replaces `subscriber` for a
+// channel's first subscribers and, per https://help.twitch.tv/s/article/founders-badge,
+// "will display in chat only if you are a current subscriber to the channel".
+export const BADGE_ROLES: Readonly<Record<string, Exclude<ChatRole, 'viewer'>>> = {
   broadcaster: 'broadcaster',
   moderator: 'moderator',
   subscriber: 'subscriber',
-  // UNVERIFIED: `founder` as the badge set id for founding subscribers is not shown in the Twitch docs pages checked.
   founder: 'subscriber',
 };
 
