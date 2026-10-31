@@ -185,6 +185,109 @@ const transition = (): Transition => ({
   },
 });
 
+it.each([
+  'source-version',
+  'source-artifact',
+  'target-version',
+  'target-artifact',
+  'session',
+] as const)(
+  'requires fresh outer-card authority and reset consent after %s replacement',
+  async (change) => {
+    const onApprove = vi.fn(async () => undefined);
+    const common = { panic: false, previewed: true, onApprove, onDiscard: async () => undefined };
+    const { rerender } = render(
+      <Evidence version={editedVersion} automation={automation} {...common} />,
+    );
+    fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+    fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
+    expect(
+      screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
+    ).toBe(false);
+    const source = {
+      ...version,
+      id: change === 'source-version' ? 'v3' : version.id,
+      artifactId: change === 'source-artifact' ? 'a'.repeat(64) : version.artifactId,
+    };
+    const target = {
+      ...editedVersion,
+      id: change === 'target-version' ? 'v4' : editedVersion.id,
+      artifactId: change === 'target-artifact' ? 'b'.repeat(64) : editedVersion.artifactId,
+    };
+    const nextAutomation = {
+      ...automation,
+      activeVersionId: source.id,
+      versions: [source],
+      session: { ...snapshot, id: change === 'session' ? 'replacement-round' : snapshot.id },
+    };
+    rerender(<Evidence version={target} automation={nextAutomation} {...common} />);
+    expect(
+      (screen.getByLabelText(/I understand this grants more authority/) as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    expect(
+      (screen.getByLabelText(/I agree to reset session progress/) as HTMLInputElement).checked,
+    ).toBe(false);
+    expect(
+      screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
+    ).toBe(true);
+    const t = transition();
+    t.sourceVersionId = source.id;
+    t.sourceSessionId = nextAutomation.session.id;
+    t.targetVersionId = target.id;
+    t.plan.targetArtifactId = target.artifactId!;
+    vi.spyOn(api, 'previewTransition').mockResolvedValue(t);
+    fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+    const reviewedApproval = await screen.findByRole('button', { name: 'Approve reviewed change' });
+    expect(reviewedApproval.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+    expect(reviewedApproval.hasAttribute('disabled')).toBe(false);
+    expect(
+      screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
+    ).toBe(true);
+    fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
+    expect(
+      screen.getByRole('button', { name: /Approve v2 & replace/ }).hasAttribute('disabled'),
+    ).toBe(false);
+    expect(onApprove).not.toHaveBeenCalled();
+  },
+);
+
+it('retains outer-card acknowledgements when accepted chat advances the same round', () => {
+  const common = {
+    version: editedVersion,
+    panic: false,
+    previewed: true,
+    onApprove: async () => undefined,
+    onDiscard: async () => undefined,
+  };
+  const { rerender } = render(<Evidence automation={automation} {...common} />);
+  fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
+  fireEvent.click(screen.getByLabelText(/I agree to reset session progress/));
+  rerender(
+    <Evidence
+      automation={{
+        ...automation,
+        session: {
+          ...snapshot,
+          revision: snapshot.revision + 1,
+          participants: {
+            alice: { ...snapshot.participants.alice!, contributions: 2, remaining: 1 },
+          },
+          scores: { red: 2, blue: 0 },
+        },
+      }}
+      {...common}
+    />,
+  );
+  expect(
+    (screen.getByLabelText(/I understand this grants more authority/) as HTMLInputElement).checked,
+  ).toBe(true);
+  expect(
+    (screen.getByLabelText(/I agree to reset session progress/) as HTMLInputElement).checked,
+  ).toBe(true);
+});
+
 it('validates transition wire evidence and sends exact approval identities', async () => {
   const t = transition();
   const fetcher = vi.fn(async (): Promise<{ ok: boolean; json: () => Promise<unknown> }> => ({

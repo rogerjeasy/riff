@@ -12,7 +12,7 @@ const INTENT_BADGE: Record<string, [string, string]> = {
   changed: ['Changed without being asked', 'warn'],
 };
 
-export function Evidence(props: {
+interface EvidenceProps {
   version: Version;
   automation: Automation | undefined;
   panic: boolean;
@@ -20,7 +20,22 @@ export function Evidence(props: {
   onDiscard: (version: Version) => Promise<void>;
   previewed: boolean;
   onTransitioned?: (() => Promise<void>) | undefined;
-}) {
+}
+
+export function Evidence(props: EvidenceProps) {
+  const active = props.automation?.versions.find((v) => v.id === props.automation?.activeVersionId);
+  // Consent belongs to this exact comparison and round; chat progress is revalidated by the host.
+  const context = JSON.stringify([
+    props.version.id,
+    props.version.artifactId,
+    props.automation?.activeVersionId,
+    active?.artifactId,
+    props.automation?.session?.id,
+  ]);
+  return <EvidenceCard key={context} {...props} />;
+}
+
+function EvidenceCard(props: EvidenceProps) {
   const { version } = props;
   const verification = version.evidence.verification;
   const passedStages = verification.stages.filter((s) => s.status === 'passed').length;
