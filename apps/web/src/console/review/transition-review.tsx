@@ -322,17 +322,25 @@ function StateComparison({
           </tr>
         </thead>
         <tbody>
-          {Object.entries(before.participants).map(([id, p]) => (
+          {[
+            ...new Set([...Object.keys(before.participants), ...Object.keys(after.participants)]),
+          ].map((id) => (
             <tr key={id}>
               <th scope="row">{id}</th>
               <td>
-                {p.teamId ?? 'Community'} → {after.participants[id]?.teamId ?? 'Community'}
+                {before.participants[id]
+                  ? (before.participants[id].teamId ?? 'Community')
+                  : 'Absent'}{' '}
+                →{' '}
+                {after.participants[id] ? (after.participants[id].teamId ?? 'Community') : 'Absent'}
               </td>
               <td>
-                {p.contributions} → {after.participants[id]?.contributions ?? 'missing'}
+                {before.participants[id]?.contributions ?? 'Absent'} →{' '}
+                {after.participants[id]?.contributions ?? 'Absent'}
               </td>
               <td>
-                {p.remaining} → {after.participants[id]?.remaining ?? 'missing'}
+                {before.participants[id]?.remaining ?? 'Absent'} →{' '}
+                {after.participants[id]?.remaining ?? 'Absent'}
               </td>
             </tr>
           ))}

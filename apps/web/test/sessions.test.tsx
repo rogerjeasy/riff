@@ -288,6 +288,30 @@ it('retains outer-card acknowledgements when accepted chat advances the same rou
   ).toBe(true);
 });
 
+it('compares participants appearing on either side and labels absent membership explicitly', async () => {
+  const t = transition();
+  t.evidence.comparison.before = {
+    ...snapshot,
+    participants: { alice: snapshot.participants.alice! },
+  };
+  t.evidence.comparison.after = {
+    ...snapshot,
+    participants: { bob: { teamId: null, remaining: 5, contributions: 0 } },
+  };
+  vi.spyOn(api, 'previewTransition').mockResolvedValue(t);
+  render(
+    <TransitionReview version={editedVersion} automation={automation} panic={false} allowed />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Preview keeping progress' }));
+  await screen.findByRole('button', { name: 'Approve reviewed change' });
+  const comparison = screen.getByText('Progress after hypothetical chat').closest('details')!;
+  expect(comparison.textContent).toContain('bob');
+  expect(comparison.textContent).toContain('Absent → Community');
+  expect(comparison.textContent).toContain('Absent → 5');
+  expect(comparison.textContent).toContain('red → Absent');
+  expect(comparison.textContent).toContain('2 → Absent');
+});
+
 it('validates transition wire evidence and sends exact approval identities', async () => {
   const t = transition();
   const fetcher = vi.fn(async (): Promise<{ ok: boolean; json: () => Promise<unknown> }> => ({
