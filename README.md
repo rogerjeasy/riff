@@ -41,7 +41,10 @@ Codex CLI once (`codex login`) and set `RIFF_COMPILER_MODE=codex` in `.env`.
 Measured on this machine with Codex CLI 0.166.0 (`./scripts/pnpm compile:live … --edit …`):
 Tomato Toss compiled, verified and matched the intent in 39 s on the first attempt;
 the `!splat` / 30 s / subscribers-only edit in 63 s, also first attempt, with every
-stage and intent check passing.
+stage and intent check passing. The stateful reference prompt (“Create a tomato battle
+lasting two minutes. Viewers join red or blue, each gets three throws…”) compiled to a
+red/blue `!throw` battle in 41 s and its edit into a `!grow` community goal of 10 in
+43 s, both first attempt with 5/5 stages and 7/7 independent host checks passing.
 
 ## Stateful experiences
 
@@ -70,6 +73,12 @@ A pause freezes remaining time. Deadlines continue through ordinary server downt
 startup finishes an expired round once. Emergency stop persists independently of
 session writes and stays stopped after restart. Explicit resume recovers the frozen
 clock from the panic timestamp if a session pause could not be saved.
+
+**Verify round.** Every committed change to a round — start, each chat decision,
+pause, resume and the deadline — is journaled in the same transaction with a digest
+of the state it produced. Pressing **Verify round** replays the journal in a private
+engine and proves the live scoreboard reproduces exactly from its inputs, or names
+the first entry that does not. It is read-only and works while the channel is stopped.
 
 Visual-only edits preserve the session when its canonical rules are unchanged.
 Changing those rules, incompatible rollback, and starting a new round require explicit

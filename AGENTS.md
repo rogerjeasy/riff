@@ -388,7 +388,7 @@ configuration inventory; `apps/server/src/env.ts` validates it (loopback binding
 explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optional
 EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
 Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
-`experience_sessions`, `session_events`, `session_outbox`.
+`experience_sessions`, `session_events`, `session_outbox`, `session_journal`.
 
 ---
 
@@ -470,6 +470,15 @@ flag independently of session pause writes. Explicit resume uses persisted panic
 to recover a pause if an individual session write failed. Canonical definition
 changes require explicit reset consent; identical-definition edits preserve progress.
 F32 migration programs and generalized multi-round tournaments remain future work.
+
+Every committed round change (start, chat decision, pause, resume, deadline/recovery
+advance) appends a `session_journal` row with a digest of the resulting state in the
+same transaction; the repository classifies control writes itself so no call site can
+skip the journal. `replaySessionJournal` (sandbox) rebuilds a round in isolated
+preview engines and names the first entry that does not reproduce;
+`POST /api/automations/:id/session/audit` exposes it read-only (one at a time, works
+while stopped). Timer ticks commit only the deadline: clients derive the countdown
+from `deadlineAt`, so time alone is never written, journaled or broadcast.
 
 New route: `POST /api/automations/:id/session/reset` requires `{confirm:true}` and the
 existing same-origin mutation guard. Approve and rollback accept optional explicit
