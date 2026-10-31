@@ -116,3 +116,20 @@ remainingMs and participants (teamId, remaining, contributions), e.g.
 the event; scenario clock starts at 0.
 Required coverage: at least one happy path, one limit/role/window edge, and one
 negative (unrelated chat does nothing).
+
+## Host transition contract
+
+SessionTransitionPlan version 1 binds sourceArtifactId, targetArtifactId,
+sourceDefinitionHash, targetDefinitionHash and migrationSourceHash, computed by the
+host. Executable migration source is a separate artifact. Boundary is immediate,
+round-end or stopped (already paused and remaining paused). The fixed preserve
+list is identity, participants, teams, scores, contributions, phase and time;
+resets is empty. Incompatible changes require explicit whole-session reset.
+
+Migration is a bounded function expression receiving deeply frozen oldDefinition,
+newDefinition, snapshot and explicit host at timestamp. It returns JSON state
+(or a Promise resolving to JSON state). It has no effects, clock, randomness,
+imports or capabilities. Preserve every snapshot field and increase each existing
+participant's remaining resources by new perParticipant minus old perParticipant.
+Keep the input revision unchanged: the host independently validates preservation
+and advances revision. This contract adds no generated handler capability.

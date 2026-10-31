@@ -223,3 +223,26 @@ export interface Scenario {
 }
 export const SCENARIO_LIMITS = Object.freeze({ minScenarios: 3, maxScenarios: 12, maxSteps: 24 });
 export * from './guide.js';
+
+/** Host-reviewed activation boundary; stopped requires an already paused session. */
+export type SessionTransitionBoundary = 'immediate' | 'round-end' | 'stopped';
+/** Immutable host-computed identities; executable source is stored separately. */
+export interface SessionTransitionPlan {
+  version: 1;
+  sourceArtifactId: string;
+  targetArtifactId: string;
+  sourceDefinitionHash: string;
+  targetDefinitionHash: string;
+  migrationSourceHash: string;
+  boundary: SessionTransitionBoundary;
+  preserve: readonly [
+    'identity',
+    'participants',
+    'teams',
+    'scores',
+    'contributions',
+    'phase',
+    'time',
+  ];
+  resets: readonly [];
+}
