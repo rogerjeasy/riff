@@ -517,3 +517,131 @@ it('persists moderation command receipts so delayed duplicate events do not reap
   );
   expect(f.service.snapshot().proposals[0]?.state).toBe('pending');
 });
+
+it('deduplicates retained suggestion, vote and credit commands across command kinds and restart', () => {
+  const f = setup();
+  const submitted = f.service.submit(actor(), {
+    eventId: 'shared-suggest',
+    text: 'Add two throws to the round',
+  });
+  if (!submitted.ok || !submitted.proposalId) throw Error('submission failed');
+  const p = f.service.moderate(creator, {
+    proposalId: submitted.proposalId,
+    expectedRevision: 0,
+    action: 'shortlist',
+  });
+  const ballot = f.service.createBallot(creator, {
+    proposalIds: [{ id: p.id, revision: p.revision }],
+    durationSeconds: 15,
+  });
+  expect(
+    f.service.vote(actor(), { eventId: 'shared-suggest', ballotId: ballot.id, option: 1 }),
+  ).toEqual(submitted);
+  expect(
+    f.service.handleCommand(actor(), { eventId: 'shared-suggest', text: '!riff credit on' }).result,
+  ).toEqual(submitted);
+  expect(
+    f.service.vote(actor(), { eventId: 'shared-vote', ballotId: ballot.id, option: 1 }),
+  ).toEqual({ ok: true });
+  f.restart();
+  expect(
+    f.service.submit(actor('bob'), {
+      eventId: 'shared-vote',
+      text: 'A totally different proposal',
+    }),
+  ).toEqual({ ok: true });
+  expect(f.service.snapshot().proposals).toMatchObject([{ id: p.id, contributorCount: 1 }]);
+  expect(f.service.snapshot().ballots[0]!.options[0]!.votes).toBe(1);
+  expect(f.service.publicProjection().ballot!.options[0]!.authors).toEqual([]);
+  // Neither replay consumes an additional suggestion attempt.
+  expect(
+    f.service.submit(actor(), { eventId: 'after-replay-1', text: 'Another independent suggestion' })
+      .ok,
+  ).toBe(true);
+  expect(
+    f.service.submit(actor(), { eventId: 'after-replay-2', text: 'Third independent suggestion' })
+      .ok,
+  ).toBe(true);
+});
+
+it('withdraws current credit and hidden text from closed ballot history after restart while retaining audit counts', () => {
+  const f = setup();
+  const submitted = f.service.submit(actor(), {
+    eventId: 'closed-proposal',
+    text: 'Private closed-history suggestion',
+  });
+  if (!submitted.ok || !submitted.proposalId) throw Error('submission failed');
+  f.service.setCredit(actor(), true);
+  const p = f.service.moderate(creator, {
+    proposalId: submitted.proposalId,
+    expectedRevision: 0,
+    action: 'shortlist',
+  });
+  const ballot = f.service.createBallot(creator, {
+    proposalIds: [{ id: p.id, revision: p.revision }],
+    durationSeconds: 15,
+  });
+  f.service.vote(actor(), { eventId: 'closed-vote', ballotId: ballot.id, option: 1 });
+  f.service.closeBallot(creator, { ballotId: ballot.id, expectedRevision: 0 });
+  const selection = f.service.select(creator, {
+    proposalId: p.id,
+    expectedRevision: p.revision,
+    brief: 'The reviewed private brief',
+  });
+  f.restart();
+  expect(f.service.publicProjection().outcomes[0]!.options[0]!.authors).toHaveLength(1);
+  f.service.setCredit(actor(), false);
+  expect(f.service.publicProjection().outcomes[0]!.options[0]!.authors).toEqual([]);
+  f.service.moderate(creator, {
+    proposalId: p.id,
+    expectedRevision: selection.proposalRevision,
+    action: 'hide',
+  });
+  const publicJson = JSON.stringify(f.service.publicProjection());
+  for (const privateValue of [
+    'Private closed-history',
+    'Alice',
+    'alice',
+    'closed-vote',
+    'reviewed private',
+  ])
+    expect(publicJson).not.toContain(privateValue);
+  expect(f.service.publicProjection().outcomes[0]!.options).toEqual([]);
+  expect(f.service.publicProjection().selections).toEqual([]);
+  expect(f.service.snapshot().ballots[0]!.options[0]!.votes).toBe(1);
+  expect(f.service.history(p.id).some((h) => h.action === 'hide')).toBe(true);
+});
+
+it('samples manual close time inside the transaction and persists deadline reconciliation despite stale revision', () => {
+  const f = setup();
+  const submitted = f.service.submit(actor(), {
+    eventId: 'clock-proposal',
+    text: 'Add some more tomato throws',
+  });
+  if (!submitted.ok || !submitted.proposalId) throw Error('submission failed');
+  const p = f.service.moderate(creator, {
+    proposalId: submitted.proposalId,
+    expectedRevision: 0,
+    action: 'shortlist',
+  });
+  const ballot = f.service.createBallot(creator, {
+    proposalIds: [{ id: p.id, revision: p.revision }],
+    durationSeconds: 15,
+  });
+  let samples = 0;
+  const service = createProposalService(f.connection, 'home', {
+    now: () => {
+      samples++;
+      return ballot.deadlineAt;
+    },
+  });
+  expect(() => service.closeBallot(creator, { ballotId: ballot.id, expectedRevision: 0 })).toThrow(
+    'STALE',
+  );
+  expect(samples).toBe(1);
+  f.restart();
+  expect(f.service.snapshot().ballots[0]).toMatchObject({
+    closedAt: ballot.deadlineAt,
+    revision: 1,
+  });
+});

@@ -238,13 +238,18 @@ export function createProposalService(
     input: { ballotId: string; expectedRevision: number },
   ) {
     creator(actor);
-    repo.expireBallots(now());
-    return repo.transaction(() => {
-      const ballot = repo.ballot(input.ballotId) ?? fail('NOT_FOUND');
-      if (ballot.revision !== input.expectedRevision) fail('STALE');
-      if (!repo.closeBallot(ballot.id, input.expectedRevision, now())) fail('BALLOT_CLOSED');
-      return repo.ballot(ballot.id) ?? fail('NOT_FOUND');
+    const result = repo.transaction(() => {
+      const at = now();
+      repo.expireBallots(at);
+      const ballot = repo.ballot(input.ballotId);
+      if (!ballot) return { error: 'NOT_FOUND' } as const;
+      if (ballot.revision !== input.expectedRevision) return { error: 'STALE' } as const;
+      if (!repo.closeBallot(ballot.id, input.expectedRevision, at))
+        return { error: 'BALLOT_CLOSED' } as const;
+      return { ballot: repo.ballot(ballot.id) ?? fail('NOT_FOUND') };
     });
+    if ('error' in result) fail(result.error);
+    return result.ballot;
   }
   function vote(
     actor: ChatActor,
@@ -325,7 +330,13 @@ export function createProposalService(
       return repo.selection(selection.id) ?? fail('NOT_FOUND');
     });
   }
-  function snapshot(input: { state?: ProposalRow['state']; offset?: number; limit?: number } = {}) {
+  function snapshot(
+    input: {
+      state?: ProposalRow['state'] | undefined;
+      offset?: number | undefined;
+      limit?: number | undefined;
+    } = {},
+  ) {
     return repo.transaction(() => {
       repo.expireBallots(now());
       return {
@@ -457,8 +468,10 @@ export function createProposalService(
     snapshot,
     publicProjection,
     handleCommand,
-    history: (id: string, input: { offset?: number; limit?: number } = {}) =>
-      repo.history(id, page(input.limit, 50, 50), page(input.offset, 0, 1000000)),
+    history: (
+      id: string,
+      input: { offset?: number | undefined; limit?: number | undefined } = {},
+    ) => repo.history(id, page(input.limit, 50, 50), page(input.offset, 0, 1000000)),
   };
 }
 export type ProposalService = ReturnType<typeof createProposalService>;
