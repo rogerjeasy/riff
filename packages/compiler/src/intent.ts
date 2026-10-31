@@ -229,9 +229,17 @@ export function checkIntent(
     const statedTeams =
       sessionHints.teams !== null
         ? teamText(sessionHints.teams)
-        : sessionHints.teamCount !== null
-          ? `${sessionHints.teamCount} teams`
-          : null;
+        : sessionHints.teamNames !== null
+          ? sessionHints.teamNames.join(', ')
+          : sessionHints.teamCount !== null
+            ? `${sessionHints.teamCount} teams`
+            : null;
+    // Names without commands ("join red or blue") match ids or labels in any order.
+    const sameNames = (names: string[], teams: ExperienceDefinition['teams']) =>
+      names.length === teams.length &&
+      names.every((name) =>
+        teams.some((team) => team.id === name || team.label.toLowerCase() === name),
+      );
     rows.push(
       [
         'duration',
@@ -251,6 +259,8 @@ export function checkIntent(
         !!experience &&
           (sessionHints.teams === null ||
             teamText(sessionHints.teams) === teamText(experience.teams)) &&
+          (sessionHints.teamNames === null ||
+            sameNames(sessionHints.teamNames, experience.teams)) &&
           (sessionHints.teamCount === null || sessionHints.teamCount === experience.teams.length),
       ],
       [

@@ -149,6 +149,107 @@ describe('stateful experience compilation', () => {
     ).toEqual(['preserved', 'preserved', 'preserved', 'preserved']);
   });
 
+  it('reads natural phrasing of teams, resources and targets as stated, not assumed', () => {
+    // Manifests produced by a real Codex compile of the F31 reference prompt and an edit.
+    const definition = (experience: object) => ({
+      source:
+        "async (event, riff) => { await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: 0.5 }); }",
+      manifest: {
+        sdkVersion: '0.4.0',
+        capabilities: ['overlay', 'session'],
+        trigger: { command: '!throw', audience: ['viewer'], maxPerViewer: 3, windowMs: 120000 },
+        limits: { effectsPerEvent: 1, effectsPerMinute: 60 },
+        experience,
+      } as unknown as ManifestView,
+    });
+    const battle = definition({
+      version: 1,
+      title: 'Tomato Battle',
+      durationMs: 120000,
+      maxParticipants: 256,
+      teams: [
+        { id: 'red', label: 'Red', joinCommand: '!red' },
+        { id: 'blue', label: 'Blue', joinCommand: '!blue' },
+      ],
+      resource: { name: 'throws', perParticipant: 3 },
+      contribution: { command: '!throw', points: 1 },
+      objective: { kind: 'highest-score', target: null },
+    });
+    const statuses = (intent: string, c: ReturnType<typeof definition>) =>
+      Object.fromEntries(checkIntent(intent, c).map((check) => [check.aspect, check.status]));
+    const reference =
+      'Create a tomato battle lasting two minutes. Viewers join red or blue, each gets three throws, and successful throws earn team points. Show the scores, remaining time and winner.';
+    expect(statuses(reference, battle)).toMatchObject({
+      allowance: 'match',
+      teams: 'match',
+      resource: 'match',
+      duration: 'match',
+      objective: 'match',
+    });
+    expect(statuses(reference.replace('red or blue', 'red or green'), battle).teams).toBe(
+      'mismatch',
+    );
+    expect(statuses(reference.replace('three throws', 'five throws'), battle).resource).toBe(
+      'mismatch',
+    );
+
+    const goal = definition({
+      version: 1,
+      title: 'Community Goal',
+      durationMs: 180000,
+      maxParticipants: 256,
+      teams: [],
+      resource: { name: 'hearts', perParticipant: 3 },
+      contribution: { command: '!grow', points: 1 },
+      objective: { kind: 'collective-goal', target: 10 },
+    });
+    const edit =
+      'Make it a cooperative community goal instead: viewers type !grow to add hearts, three each, and the whole chat wins together at 10 points within three minutes.';
+    const checks = checkIntent(edit, goal);
+    expect(Object.fromEntries(checks.map((c) => [c.aspect, c.status]))).toMatchObject({
+      resource: 'match',
+      objective: 'match',
+      teams: 'match',
+    });
+    expect(checks.find((c) => c.aspect === 'objective')?.stated).toBe('collective-goal: 10');
+    expect(
+      checkIntent(edit.replace('10 points', '12 points'), goal).find(
+        (c) => c.aspect === 'objective',
+      )?.status,
+    ).toBe('mismatch');
+  });
+
+  it('compiles the F31 reference prompt offline with the same rules Codex chose', () => {
+    const output = compileOffline({
+      intent:
+        'Create a tomato battle lasting two minutes. Viewers join red or blue, each gets three throws, and successful throws earn team points. Show the scores, remaining time and winner.',
+      base: null,
+    });
+    expect(output.kind).toBe('candidate');
+    expect(output.manifest).toMatchObject({
+      trigger: { command: '!throw' },
+      experience: {
+        durationMs: 120000,
+        teams: [
+          { id: 'red', joinCommand: '!red' },
+          { id: 'blue', joinCommand: '!blue' },
+        ],
+        resource: { name: 'throws', perParticipant: 3 },
+        objective: { kind: 'highest-score', target: null },
+      },
+    });
+    // Derived commands are disclosed, never silent.
+    expect(output.assumptions).toEqual(
+      expect.arrayContaining([
+        'Teams join with !red or !blue, named after the teams.',
+        'Participants contribute with !throw.',
+      ]),
+    );
+    expect(compileOffline({ intent: 'Make a team battle with !throw', base: null }).kind).toBe(
+      'question',
+    );
+  });
+
   it.each([
     'Make a team battle with !throw, health bars, damage and elimination.',
     'Create a cooperative community goal with !grow and a shared inventory that unlocks levels.',

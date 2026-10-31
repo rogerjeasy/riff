@@ -7,6 +7,8 @@ import {
 } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { extractExperienceHints } from './experience-hints.js';
+
+const RESERVED_TEAM_IDS = ['__proto__', 'constructor', 'prototype', 'community', 'tie'];
 import {
   describeAudience,
   describeWindow,
@@ -54,13 +56,30 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
     return unsupported(
       'Choose a highest-score team battle or a cooperative collective goal. The offline compiler does not infer other session rules.',
     );
-  const teams = hints.teams ?? previous?.teams ?? [];
+  const assumptions = ['Offline template compiler; no model call.'];
+  // "join red or blue" names teams without commands; derive !red/!blue and say so.
+  const derived = hints.teamNames?.map((name) => ({
+    id: name,
+    label: name.charAt(0).toUpperCase() + name.slice(1),
+    joinCommand: `!${name}`,
+  }));
+  const derivable =
+    derived?.length &&
+    derived.length <= 8 &&
+    derived.every(
+      (team) => /^[a-z0-9_-]{1,31}$/.test(team.id) && !RESERVED_TEAM_IDS.includes(team.id),
+    );
+  if (derivable)
+    assumptions.push(
+      `Teams join with ${derived.map((team) => team.joinCommand).join(' or ')}, named after the teams.`,
+    );
+  const teams = hints.teams ?? (derivable ? derived : null) ?? previous?.teams ?? [];
   if (kind === 'highest-score' && !teams.length)
     return {
       ...empty,
       kind: 'question',
       title: 'Which Teams?',
-      summary: 'A team battle needs explicit join commands.',
+      summary: 'A team battle needs explicit teams.',
       question: 'Which teams and join commands should the battle use?',
       choices: ['Red with !red and Blue with !blue'],
     };
@@ -68,18 +87,13 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
     return unsupported(
       'The stated number of teams does not match the explicit team join commands.',
     );
-  const command = hints.command ?? previous?.contribution.command;
-  if (!command)
-    return {
-      ...empty,
-      kind: 'question',
-      title: 'Contribution Command',
-      summary: 'The session needs a contribution command separate from its join commands.',
-      question: 'Which command spends one participant resource and adds a point?',
-      choices: ['!throw', '!grow'],
-    };
+  const fallbackCommand = kind === 'highest-score' ? '!throw' : '!grow';
+  const command = hints.command ?? previous?.contribution.command ?? fallbackCommand;
+  if (!hints.command && !previous)
+    assumptions.push(`Participants contribute with ${fallbackCommand}.`);
+  if (teams.some((team) => team.joinCommand === command))
+    return unsupported('The contribution command must differ from every team join command.');
   const facts = extractIntentHints(request.intent);
-  const assumptions = ['Offline template compiler; no model call.'];
   function pick<T>(stated: T | null, old: T | undefined, fallback: T, note: string): T {
     if (stated !== null) return stated;
     if (old !== undefined) return old;
