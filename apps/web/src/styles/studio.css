@@ -1712,3 +1712,145 @@ pre {
 .pill.twitch-connect:hover {
   background: #7a55c0;
 }
+
+/* Audience inbox: compact private controls, comfortable keyboard targets. */
+.proposal-inbox {
+  margin-bottom: 24px;
+}
+.proposal-inbox select,
+.proposal-inbox input:not([type='checkbox']) {
+  display: block;
+  border: 1px solid var(--line, #44414f);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: var(--surface, #19171e);
+  color: inherit;
+  max-width: 100%;
+}
+.proposal-inbox label {
+  font-size: 13px;
+  font-weight: 650;
+}
+.proposal-inbox select {
+  margin-top: 5px;
+}
+.proposal-inbox summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 8px 0;
+}
+.proposal-inbox code {
+  overflow-wrap: anywhere;
+}
+.proposal-guidance {
+  margin: 12px 0;
+  font-size: 13px;
+  color: var(--muted, #bbb5c9);
+}
+.proposal-toolbar,
+.proposal-actions,
+.proposal-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.proposal-toolbar {
+  justify-content: space-between;
+  margin: 12px 0;
+}
+.proposal-actions {
+  gap: 6px;
+}
+.proposal-pagination {
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.proposal-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  max-height: 480px;
+  overflow: auto;
+}
+.proposal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line, #38333f);
+}
+.proposal-row[data-state='hidden'] {
+  opacity: 0.8;
+}
+.proposal-text {
+  margin: 7px 0;
+  overflow-wrap: anywhere;
+}
+.proposal-row .hint {
+  margin: 0;
+}
+.proposal-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+}
+.proposal-detail {
+  padding: 15px 0;
+  border-top: 1px solid var(--line, #38333f);
+  margin-top: 16px;
+}
+.proposal-detail h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.proposal-detail ul {
+  padding-left: 20px;
+}
+.proposal-detail li {
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.proposal-ballots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
+  max-height: 440px;
+  overflow: auto;
+}
+.proposal-ballot {
+  padding: 12px;
+  background: rgb(127 110 150 / 0.08);
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.proposal-ballot p {
+  margin: 6px 0;
+}
+.proposal-ballot li .button {
+  margin-left: 8px;
+}
+.proposal-editor textarea {
+  margin: 7px 0 12px;
+}
+.proposal-editor select {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.proposal-inbox :focus-visible {
+  outline: 2px solid #ffb37a;
+  outline-offset: 3px;
+}
+@media (max-width: 800px) {
+  .proposal-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .proposal-actions {
+    align-items: flex-start;
+  }
+  .proposal-inbox .card-head {
+    flex-wrap: wrap;
+  }
+}

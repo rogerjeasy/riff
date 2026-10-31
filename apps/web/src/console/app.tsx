@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { useStudio } from '../lib/use-studio.js';
 import type { Run, Studio, Version } from '../lib/types.js';
+import { ProposalInbox } from './proposals/inbox.js';
 import { Composer } from './authoring/composer.js';
 import { Evidence } from './review/evidence.js';
 import { Rehearsal } from './rehearsal/stage.js';
@@ -44,7 +45,7 @@ export function StopControl({
     );
   return confirming ? (
     <span className="resume-confirm" role="group" aria-label="Confirm resume">
-      <span>Resume every approved interaction?</span>
+      <span>Resume eligible approved interactions? Removed proposal versions stay paused.</span>
       <button
         type="button"
         className="button small go"
@@ -118,7 +119,7 @@ function Steps({
 }
 
 export function App() {
-  const { studio, runs, connection, error, refresh } = useStudio();
+  const { studio, runs, connection, error, refresh, setRuns } = useStudio();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [previewed, setPreviewed] = useState<Set<string>>(new Set());
@@ -228,8 +229,9 @@ export function App() {
       {studio.panic && (
         <div className="banner" role="alert">
           Everything is stopped
-          {studio.panicAt ? ` since ${new Date(studio.panicAt).toLocaleTimeString()}` : ''}. Chat
-          commands are ignored and the overlay is clear until you resume.
+          {studio.panicAt ? ` since ${new Date(studio.panicAt).toLocaleTimeString()}` : ''}.
+          Interaction commands are ignored. Proposals remain private and the overlay is clear until
+          you resume.
         </div>
       )}
       <main id="main" className="studio">
@@ -245,6 +247,21 @@ export function App() {
             studio={studio}
           />
         </div>
+        <ProposalInbox
+          studio={studio}
+          runs={runs}
+          refresh={refresh}
+          onRun={(started) => {
+            setRuns((current) => ({ ...current, [started.id]: started }));
+            setRunId(started.id);
+          }}
+          onReview={(id) => {
+            setSelectedId(id);
+            document
+              .getElementById('describe-heading')
+              ?.scrollIntoView({ behavior: 'instant', block: 'start' });
+          }}
+        />
         <div className="workspace">
           <div className="col">
             <Composer
@@ -258,6 +275,7 @@ export function App() {
               onGenerate={async (intent, baseVersionId) => {
                 try {
                   const started = await api.generate(intent, baseVersionId);
+                  setRuns((current) => ({ ...current, [started.id]: started }));
                   setRunId(started.id);
                 } catch (cause) {
                   notify(
