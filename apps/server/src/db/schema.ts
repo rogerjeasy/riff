@@ -1,8 +1,122 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-// Only channel identity is scaffolded. Feature tables arrive with their owning feature.
 export const channels = sqliteTable('channels', {
   id: text('id').primaryKey(),
   displayName: text('display_name').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
+
+/** Channel-wide control state. Panic persists so a restart stays stopped. */
+export const channelState = sqliteTable('channel_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  panic: integer('panic', { mode: 'boolean' }).notNull().default(false),
+  panicAt: integer('panic_at'),
+  overlayKey: text('overlay_key').notNull(),
+  twitchUserId: text('twitch_user_id'),
+  twitchLogin: text('twitch_login'),
+  /** AES-256-GCM sealed JSON {accessToken, refreshToken, expiresAt, scopes}. */
+  twitchTokens: text('twitch_tokens'),
+  updatedAt: integer('updated_at').notNull(),
+});
+
+export const automations = sqliteTable(
+  'automations',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    title: text('title').notNull(),
+    activeVersionId: text('active_version_id'),
+    /** draft (never approved), live, paused. */
+    status: text('status', { enum: ['draft', 'live', 'paused'] }).notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('automations_channel').on(table.channelId)],
+);
+
+export const versions = sqliteTable(
+  'versions',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id')
+      .notNull()
+      .references(() => automations.id),
+    number: integer('number').notNull(),
+    parentVersionId: text('parent_version_id'),
+    /** sha256 of artifact + host policy; approval binds to it. */
+    artifactId: text('artifact_id'),
+    title: text('title').notNull(),
+    intent: text('intent').notNull(),
+    source: text('source').notNull(),
+    manifest: text('manifest', { mode: 'json' }).notNull(),
+    tests: text('tests', { mode: 'json' }).notNull(),
+    behavior: text('behavior', { mode: 'json' }).notNull(),
+    assumptions: text('assumptions', { mode: 'json' }).notNull(),
+    /** Verification report and intent checks exactly as produced by the host. */
+    evidence: text('evidence', { mode: 'json' }).notNull(),
+    origin: text('origin', { enum: ['codex', 'offline', 'manual', 'reference'] }).notNull(),
+    compileRunId: text('compile_run_id'),
+    status: text('status', {
+      enum: ['candidate', 'failed', 'approved', 'active', 'superseded', 'quarantined', 'discarded'],
+    }).notNull(),
+    incident: text('incident'),
+    approvedAt: integer('approved_at'),
+    activatedAt: integer('activated_at'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [
+    index('versions_channel').on(table.channelId),
+    uniqueIndex('versions_automation_number').on(table.automationId, table.number),
+  ],
+);
+
+export const compileRuns = sqliteTable(
+  'compile_runs',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id'),
+    baseVersionId: text('base_version_id'),
+    intent: text('intent').notNull(),
+    status: text('status').notNull(),
+    transport: text('transport').notNull(),
+    model: text('model'),
+    promptVersion: text('prompt_version').notNull(),
+    threadId: text('thread_id'),
+    attempts: text('attempts', { mode: 'json' }).notNull(),
+    usage: text('usage', { mode: 'json' }),
+    durationMs: integer('duration_ms'),
+    error: text('error'),
+    versionId: text('version_id'),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('compile_runs_channel').on(table.channelId)],
+);
+
+export const activity = sqliteTable(
+  'activity',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    at: integer('at').notNull(),
+    kind: text('kind', { enum: ['decision', 'incident', 'control', 'system'] }).notNull(),
+    automationId: text('automation_id'),
+    versionId: text('version_id'),
+    eventId: text('event_id'),
+    viewer: text('viewer'),
+    code: text('code'),
+    message: text('message').notNull(),
+  },
+  (table) => [index('activity_channel_at').on(table.channelId, table.at)],
+);
