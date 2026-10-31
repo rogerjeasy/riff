@@ -81,10 +81,7 @@
       "indexes": {
         "activity_channel_at": {
           "name": "activity_channel_at",
-          "columns": [
-            "channel_id",
-            "at"
-          ],
+          "columns": ["channel_id", "at"],
           "isUnique": false
         }
       },
@@ -93,12 +90,8 @@
           "name": "activity_channel_id_channels_id_fk",
           "tableFrom": "activity",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -170,19 +163,12 @@
       "indexes": {
         "admission_event_identity": {
           "name": "admission_event_identity",
-          "columns": [
-            "channel_id",
-            "automation_id",
-            "event_id"
-          ],
+          "columns": ["channel_id", "automation_id", "event_id"],
           "isUnique": true
         },
         "admission_recent": {
           "name": "admission_recent",
-          "columns": [
-            "channel_id",
-            "at"
-          ],
+          "columns": ["channel_id", "at"],
           "isUnique": false
         }
       },
@@ -247,9 +233,7 @@
       "indexes": {
         "automations_channel": {
           "name": "automations_channel",
-          "columns": [
-            "channel_id"
-          ],
+          "columns": ["channel_id"],
           "isUnique": false
         }
       },
@@ -258,12 +242,8 @@
           "name": "automations_channel_id_channels_id_fk",
           "tableFrom": "automations",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -347,12 +327,8 @@
           "name": "channel_state_channel_id_channels_id_fk",
           "tableFrom": "channel_state",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -511,9 +487,7 @@
       "indexes": {
         "compile_runs_channel": {
           "name": "compile_runs_channel",
-          "columns": [
-            "channel_id"
-          ],
+          "columns": ["channel_id"],
           "isUnique": false
         }
       },
@@ -522,12 +496,8 @@
           "name": "compile_runs_channel_id_channels_id_fk",
           "tableFrom": "compile_runs",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -599,16 +569,12 @@
       "indexes": {
         "experience_sessions_id_unique": {
           "name": "experience_sessions_id_unique",
-          "columns": [
-            "id"
-          ],
+          "columns": ["id"],
           "isUnique": true
         },
         "sessions_channel": {
           "name": "sessions_channel",
-          "columns": [
-            "channel_id"
-          ],
+          "columns": ["channel_id"],
           "isUnique": false
         }
       },
@@ -617,12 +583,8 @@
           "name": "experience_sessions_automation_id_automations_id_fk",
           "tableFrom": "experience_sessions",
           "tableTo": "automations",
-          "columnsFrom": [
-            "automation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["automation_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -630,12 +592,8 @@
           "name": "experience_sessions_channel_id_channels_id_fk",
           "tableFrom": "experience_sessions",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -643,12 +601,8 @@
           "name": "experience_sessions_version_id_versions_id_fk",
           "tableFrom": "experience_sessions",
           "tableTo": "versions",
-          "columnsFrom": [
-            "version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["version_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -734,20 +688,12 @@
       "indexes": {
         "session_event_identity": {
           "name": "session_event_identity",
-          "columns": [
-            "channel_id",
-            "session_id",
-            "event_id"
-          ],
+          "columns": ["channel_id", "session_id", "event_id"],
           "isUnique": true
         },
         "session_automation_event_identity": {
           "name": "session_automation_event_identity",
-          "columns": [
-            "channel_id",
-            "automation_id",
-            "event_id"
-          ],
+          "columns": ["channel_id", "automation_id", "event_id"],
           "isUnique": true
         }
       },
@@ -854,11 +800,7 @@
       "indexes": {
         "session_journal_order": {
           "name": "session_journal_order",
-          "columns": [
-            "channel_id",
-            "session_id",
-            "seq"
-          ],
+          "columns": ["channel_id", "session_id", "seq"],
           "isUnique": false
         }
       },
@@ -937,10 +879,7 @@
       "indexes": {
         "session_outbox_channel": {
           "name": "session_outbox_channel",
-          "columns": [
-            "channel_id",
-            "automation_id"
-          ],
+          "columns": ["channel_id", "automation_id"],
           "isUnique": false
         }
       },
@@ -1082,10 +1021,7 @@
       "indexes": {
         "transitions_channel_automation": {
           "name": "transitions_channel_automation",
-          "columns": [
-            "channel_id",
-            "automation_id"
-          ],
+          "columns": ["channel_id", "automation_id"],
           "isUnique": false
         }
       },
@@ -1094,12 +1030,8 @@
           "name": "session_transitions_channel_id_channels_id_fk",
           "tableFrom": "session_transitions",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1107,12 +1039,8 @@
           "name": "session_transitions_automation_id_automations_id_fk",
           "tableFrom": "session_transitions",
           "tableTo": "automations",
-          "columnsFrom": [
-            "automation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["automation_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1120,12 +1048,8 @@
           "name": "session_transitions_source_version_id_versions_id_fk",
           "tableFrom": "session_transitions",
           "tableTo": "versions",
-          "columnsFrom": [
-            "source_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1133,12 +1057,8 @@
           "name": "session_transitions_target_version_id_versions_id_fk",
           "tableFrom": "session_transitions",
           "tableTo": "versions",
-          "columnsFrom": [
-            "target_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["target_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1301,17 +1221,12 @@
       "indexes": {
         "versions_channel": {
           "name": "versions_channel",
-          "columns": [
-            "channel_id"
-          ],
+          "columns": ["channel_id"],
           "isUnique": false
         },
         "versions_automation_number": {
           "name": "versions_automation_number",
-          "columns": [
-            "automation_id",
-            "number"
-          ],
+          "columns": ["automation_id", "number"],
           "isUnique": true
         }
       },
@@ -1320,12 +1235,8 @@
           "name": "versions_channel_id_channels_id_fk",
           "tableFrom": "versions",
           "tableTo": "channels",
-          "columnsFrom": [
-            "channel_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["channel_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1333,12 +1244,8 @@
           "name": "versions_automation_id_automations_id_fk",
           "tableFrom": "versions",
           "tableTo": "automations",
-          "columnsFrom": [
-            "automation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["automation_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
