@@ -33,3 +33,13 @@ export {
   type StepResult,
   type VerificationReport,
 } from './verify.js';
+
+export {
+  createSessionSnapshot,
+  advanceSession,
+  pauseSession,
+  resumeSession,
+  sessionDefinitionSchema,
+  sessionSnapshotSchema,
+  validateSessionSnapshot,
+} from './session.js';

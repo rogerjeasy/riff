@@ -8,6 +8,7 @@ import {
 } from 'quickjs-emscripten';
 import { HOST_LIMITS } from '@riff/sdk';
 import { z } from 'zod';
+import { sessionSnapshotSchema } from './session.js';
 import { artifactSchema, eventSchema, effectSchema } from './contract.js';
 
 // One worker serves one engine (one artifact, one mode). The WASM module is loaded
@@ -17,7 +18,14 @@ const init = z
   .object({ artifact: artifactSchema, program: z.string().max(131072) })
   .strict()
   .parse(workerData);
-const job = z.object({ id: z.number().int(), event: eventSchema, seed: z.number().int() }).strict();
+const job = z
+  .object({
+    id: z.number().int(),
+    event: eventSchema,
+    seed: z.number().int(),
+    session: sessionSnapshotSchema.nullable(),
+  })
+  .strict();
 type Effect = z.infer<typeof effectSchema>;
 
 function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
@@ -84,18 +92,39 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
     });
     context.setProp(context.global, '__emit', emit);
     emit.dispose();
+    const snapshot = context.newFunction('snapshot', () => {
+      calls++;
+      if (
+        calls > HOST_LIMITS.bridgeCallsPerEvent ||
+        !init.artifact.manifest.capabilities.includes('session') ||
+        !input.session
+      ) {
+        fault ??= 'Undeclared or unavailable session capability';
+        throw new Error(fault);
+      }
+      return context.newString(JSON.stringify(input.session));
+    });
+    context.setProp(context.global, '__sessionSnapshot', snapshot);
+    snapshot.dispose();
     // The host installs the only bridge, then removes its global alias. Guest source
     // is an expression, compiled by QuickJS itself; it is never evaluated by Node.
     const setup = context.evalCode(`
       const riff = (() => {
         const emit = __emit;
+        const snapshot = __sessionSnapshot;
+        delete globalThis.__sessionSnapshot;
+        const freeze = value => {
+          if(value && typeof value === 'object') {for(const key of Object.keys(value)) freeze(value[key]);Object.freeze(value);}
+          return value;
+        };
+        const session = Object.freeze({snapshot: () => freeze(JSON.parse(snapshot()))});
         delete globalThis.__emit;
         let seed = ${input.seed} >>> 0;
         const util = Object.freeze({ now: () => ${input.event.at}, random: () => {
           seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
           return (seed >>> 0) / 4294967296;
         }});
-        return Object.freeze({util, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
+        return Object.freeze({util, session, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
       })();
       const event = Object.freeze(${JSON.stringify(input.event)});
       for (const fn of [function(){}, async function(){}, function*(){}, async function*(){}]) {

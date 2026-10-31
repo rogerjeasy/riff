@@ -7,10 +7,13 @@ import {
   HOST_LIMITS,
   PROJECTILE_ASSETS,
   SCENARIO_LIMITS,
+  SESSION_LIMITS,
   SDK_VERSION,
   TRIGGER_LIMITS,
   type DecisionCode,
 } from '@riff/sdk';
+
+import { sessionDefinitionSchema } from './session.js';
 
 const roleSchema = z.enum(AUDIENCE_ROLES);
 const hasNoControlCharacters = (s: string) =>
@@ -18,7 +21,8 @@ const hasNoControlCharacters = (s: string) =>
 
 export const manifestSchema = z
   .object({
-    sdkVersion: z.literal(SDK_VERSION),
+    sdkVersion: z.enum(['0.3.0', SDK_VERSION]),
+    experience: sessionDefinitionSchema.nullable().optional(),
     capabilities: z
       .array(z.enum(CAPABILITIES))
       .max(CAPABILITIES.length)
@@ -50,7 +54,22 @@ export const manifestSchema = z
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((manifest, ctx) => {
+    if (
+      manifest.experience &&
+      (manifest.sdkVersion !== '0.4.0' ||
+        !manifest.capabilities.includes('session') ||
+        manifest.trigger.command !== manifest.experience.contribution.command)
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'Experiences require SDK 0.4.0, session capability and the canonical contribution command',
+      });
+    if (!manifest.experience && manifest.capabilities.includes('session'))
+      ctx.addIssue({ code: 'custom', message: 'Session capability requires an experience' });
+  });
 export const artifactSchema = z
   .object({
     source: z.string().min(1).max(HOST_LIMITS.sourceBytes),
@@ -64,7 +83,11 @@ export const eventSchema = z
     viewerId: z.string().min(1).max(100),
     roles: z.array(roleSchema).max(4),
     text: z.string().max(500).refine(hasNoControlCharacters, 'Control characters forbidden'),
-    at: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    at: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER - 2 * SESSION_LIMITS.durationMs.max),
   })
   .strict();
 export const effectSchema = z
@@ -84,6 +107,27 @@ export const scenarioStepSchema = z
     id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
     expect: decisionCodeSchema,
     effects: z.number().int().min(0).max(EFFECT_LIMITS.perEvent),
+    session: z
+      .object({
+        phase: z.enum(['running', 'paused', 'finished']).optional(),
+        scores: z.record(z.string(), z.number().int().nonnegative()).optional(),
+        remainingMs: z.number().int().nonnegative().optional(),
+        participants: z
+          .record(
+            z.string(),
+            z
+              .object({
+                remaining: z.number().int().nonnegative().optional(),
+                contributions: z.number().int().nonnegative().optional(),
+                teamId: z.string().nullable().optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
   })
   .strict();
 export const scenarioSchema = z

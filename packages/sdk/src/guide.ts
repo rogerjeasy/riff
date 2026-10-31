@@ -2,10 +2,11 @@
  * The complete universe the runtime compiler sees. `SDK.md` is generated from
  * `SDK_GUIDE` and a test keeps them identical; undocumented surface must not exist.
  */
-export const SDK_GUIDE = `# Riff SDK 0.3.0 — handler contract
+export const SDK_GUIDE = `# Riff SDK 0.4.0 — handler contract
 
-Compatibility: 0.2.0 artifacts must be regenerated. 0.3.0 adds live execution, the
-\`heart\` asset, case-insensitive commands and declarative scenario tests.
+Compatibility: existing 0.3.0 projectile artifacts retain their rolling allowance
+semantics and artifact identity. 0.4.0 adds canonical host-owned sessions. 0.2.0
+artifacts must be regenerated.
 
 ## Handler
 
@@ -30,6 +31,53 @@ number in [0, 1).
 Any thrown error, invalid effect, undeclared capability, too many effects, more than
 25 bridge calls, 50 ms CPU, 2 s wall time or 64 MB memory quarantines the version and
 discards every effect from that event.
+
+## Canonical stateful experiences (SDK 0.4.0)
+
+Use sdkVersion:'0.4.0', declare capability \`session\` and an \`experience\` definition. The host interprets the
+rules; generated handlers control visuals. \`riff.session.snapshot()\` returns a fresh,
+deeply frozen JSON snapshot of the staged state, including the accepted contribution.
+Example: \`const total = riff.session.snapshot().scores.community;\`
+The handler never changes resources, enrollment, score, clock or outcome directly.
+Any guest fault discards the staged contribution and all its effects atomically.
+
+ExperienceDefinition = {
+  version: 1, title: string (1..120), durationMs: 1000..3600000,
+  maxParticipants: 1..256,
+  teams: [{ id, label, joinCommand }], // 0..8; unique ids and commands
+  resource: { name, perParticipant: 1..100 },
+  contribution: { command, points: 1..100 },
+  objective: { kind: 'highest-score' | 'collective-goal', target: number | null }
+}
+Names and labels are bounded to 60 characters. Team ids are lowercase [a-z0-9_-],
+1..32 characters; reserved object keys, community and tie are excluded. Commands
+match trigger.command syntax and team commands must differ from contribution.command.
+trigger.command MUST equal experience.contribution.command. Collective goals use
+no teams and a positive target ≤ 2560000; highest-score requires target:null.
+The optional experience field may be absent or null for legacy projectile behavior.
+
+Tomato Battle: teams red/blue join via !red/!blue; contribute via !throw, three
+resources per participant, one point per action, durationMs:120000, highest-score.
+Community Goal: no teams; !grow auto-enrolls, three resources per participant,
+one point per action, durationMs:120000, collective-goal target:5.
+
+SessionSnapshot = { id, phase:'running'|'paused'|'finished', startedAt, deadlineAt,
+remainingMs, updatedAt, revision, participants, scores, winner, outcome }.
+participants maps viewer ids to {teamId:string|null,remaining,contributions}.
+scores maps team ids to numbers, or community without teams. winner is a team id,
+community, tie, or null when a cooperative deadline expires before the target;
+outcome is deadline, goal, or null. Pausing freezes remainingMs; resuming creates
+an updated deadline. Host persistence owns identity and restart recovery.
+
+Session admission follows dedupe → command (including team join commands) → audience
+→ phase → enrollment/resources. Joins return ACCEPTED with zero effects and never
+invoke the handler. ALREADY_JOINED prevents team switching; NOT_JOINED requires a
+team join; PARTICIPANT_LIMIT rejects enrollment over the cap. RESOURCE_LIMIT means
+all lifetime session resources were spent, regardless of trigger.windowMs. Paused
+and finished rounds return SESSION_PAUSED and SESSION_FINISHED. At exactly the
+deadline the session finishes before contribution; a cooperative goal finishes on
+the contribution reaching its target. Host cosmetic budgets may suppress effects
+while returning ACCEPTED and preserving canonical semantic progress.
 
 ## Permission manifest
 
@@ -66,15 +114,35 @@ Tests are an array of 3..12 scenarios. Each scenario runs in a fresh engine:
 - id: unique per message unless deliberately repeated to model a duplicate delivery.
 - viewer: lowercase synthetic name like "alice". at: ms since scenario start, never
   decreasing. expect: a decision code above. effects: exact number expected.
+For stateful scenarios an optional session subset assertion checks phase, scores,
+remainingMs and participants (teamId, remaining, contributions), e.g.
+\`session:{scores:{red:1},participants:{alice:{remaining:2}}}\`. Assertions apply after
+the event; scenario clock starts at 0.
 Required coverage: at least one happy path, one limit/role/window edge, and one
 negative (unrelated chat does nothing).
 `;
 
 export const RIFF_DTS = `declare module 'riff' {
+  export interface ExperienceDefinition {
+    version: 1; title: string; durationMs: number; maxParticipants: number;
+    teams: { id: string; label: string; joinCommand: string }[];
+    resource: { name: string; perParticipant: number };
+    contribution: { command: string; points: number };
+    objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+  }
+  export interface SessionParticipant { teamId: string | null; remaining: number; contributions: number }
+  export interface SessionSnapshot {
+    id: string; phase: 'running' | 'paused' | 'finished'; startedAt: number;
+    deadlineAt: number | null; remainingMs: number; updatedAt: number; revision: number;
+    participants: Record<string, SessionParticipant>; scores: Record<string, number>;
+    winner: string | null; outcome: 'deadline' | 'goal' | null;
+  }
   export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
   export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number }
   export interface ProjectileEffect { kind: 'projectile'; asset: 'tomato' | 'star' | 'heart'; x: number }
   export interface Riff {
+    /** Read deeply frozen staged state. Example: riff.session.snapshot().scores.community. */
+    session: { snapshot(): Readonly<SessionSnapshot> };
     overlay: { emit(effect: ProjectileEffect): Promise<void> };
     util: { now(): number; random(): number };
   }
@@ -83,8 +151,9 @@ export const RIFF_DTS = `declare module 'riff' {
 `;
 
 export const RIFF_TEST_DTS = `declare module 'riff/test' {
-  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE';
-  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number }
+  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT';
+  export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>> }
+  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null }
   export interface Scenario { name: string; kind: 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window'; steps: ScenarioStep[] }
 }
 `;

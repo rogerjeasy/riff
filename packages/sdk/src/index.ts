@@ -1,5 +1,5 @@
-/** Public SDK version. 0.3.0 adds live mode, the heart asset and declarative scenarios. */
-export const SDK_VERSION = '0.3.0' as const;
+/** Public SDK version. 0.4.0 adds host-owned stateful sessions; 0.3.0 remains supported. */
+export const SDK_VERSION = '0.4.0' as const;
 
 export type JsonValue =
   string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -22,7 +22,7 @@ export const HOST_LIMITS = Object.freeze({
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
-export const CAPABILITIES = ['overlay'] as const;
+export const CAPABILITIES = ['overlay', 'session'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
 export const AUDIENCE_ROLES = ['viewer', 'subscriber', 'moderator', 'broadcaster'] as const;
@@ -46,7 +46,8 @@ export interface ChatEvent {
   at: number;
 }
 export interface PermissionManifest {
-  sdkVersion: typeof SDK_VERSION;
+  sdkVersion: typeof SDK_VERSION | '0.3.0';
+  experience?: ExperienceDefinition | null | undefined;
   capabilities: Capability[];
   trigger: {
     /** Lowercase `!command`. Chat text matches after trimming and lowercasing. */
@@ -63,7 +64,66 @@ export interface ProjectileEffect {
   asset: ProjectileAsset;
   x: number;
 }
+/** Canonical bounded session policy, independent of cosmetic effect budgets. */
+export const SESSION_LIMITS = Object.freeze({
+  durationMs: { min: 1000, max: 3_600_000 },
+  maxParticipants: 256,
+  maxTeams: 8,
+  resourcePerParticipant: 100,
+  pointsPerContribution: 100,
+  titleLength: 120,
+  labelLength: 60,
+  idLength: 32,
+  maxScore: 2_560_000,
+});
+export interface ExperienceDefinition {
+  version: 1;
+  title: string;
+  durationMs: number;
+  maxParticipants: number;
+  teams: { id: string; label: string; joinCommand: string }[];
+  resource: { name: string; perParticipant: number };
+  contribution: { command: string; points: number };
+  objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+}
+export interface SessionParticipant {
+  teamId: string | null;
+  remaining: number;
+  contributions: number;
+}
+export interface SessionSnapshot {
+  id: string;
+  phase: 'running' | 'paused' | 'finished';
+  startedAt: number;
+  deadlineAt: number | null;
+  remainingMs: number;
+  updatedAt: number;
+  revision: number;
+  participants: Record<string, SessionParticipant>;
+  scores: Record<string, number>;
+  winner: string | null;
+  outcome: 'deadline' | 'goal' | null;
+}
+export interface SessionAssertion {
+  phase?: SessionSnapshot['phase'] | undefined;
+  scores?: Record<string, number> | undefined;
+  remainingMs?: number | undefined;
+  participants?:
+    | Record<
+        string,
+        {
+          teamId?: string | null | undefined;
+          remaining?: number | undefined;
+          contributions?: number | undefined;
+        }
+      >
+    | undefined;
+}
 export interface AutomationContext {
+  session: {
+    /** Read deeply frozen canonical state. Example: const score = riff.session.snapshot().scores.community. */
+    snapshot(): Readonly<SessionSnapshot>;
+  };
   overlay: {
     /** Queue a bounded projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
     emit(effect: ProjectileEffect): Promise<void>;
@@ -91,7 +151,13 @@ export type DecisionCode =
   | 'INCIDENT'
   | 'DISABLED'
   | 'CAPACITY'
-  | 'STOPPED';
+  | 'STOPPED'
+  | 'NOT_JOINED'
+  | 'RESOURCE_LIMIT'
+  | 'SESSION_PAUSED'
+  | 'SESSION_FINISHED'
+  | 'ALREADY_JOINED'
+  | 'PARTICIPANT_LIMIT';
 export const DECISION_CODES: readonly DecisionCode[] = [
   'ACCEPTED',
   'UNRELATED',
@@ -104,6 +170,12 @@ export const DECISION_CODES: readonly DecisionCode[] = [
   'DISABLED',
   'CAPACITY',
   'STOPPED',
+  'NOT_JOINED',
+  'RESOURCE_LIMIT',
+  'SESSION_PAUSED',
+  'SESSION_FINISHED',
+  'ALREADY_JOINED',
+  'PARTICIPANT_LIMIT',
 ];
 /** Viewer allowance after admission, for explanations. */
 export interface AllowanceSnapshot {
@@ -114,6 +186,7 @@ export interface AllowanceSnapshot {
   nextAt: number | null;
 }
 export interface ExecutionDecision {
+  session?: SessionSnapshot;
   eventId: string;
   artifactId: string;
   code: DecisionCode;
@@ -127,6 +200,8 @@ export interface ExecutionDecision {
 
 /** One synthetic chat message inside a declarative scenario. */
 export interface ScenarioStep {
+  /** Optional subset assertion against canonical state after this event. */
+  session?: SessionAssertion | null | undefined;
   /** Stable synthetic viewer identity, e.g. "alice". */
   viewer: string;
   roles: AudienceRole[];

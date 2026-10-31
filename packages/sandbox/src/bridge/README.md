@@ -1,5 +1,8 @@
 # Capability bridge
 
-Validated JSON only, host grants/quotas, deterministic observations, and isolated live/preview/rehearsal sinks.
-
-This directory establishes ownership for the approved product scope. Its product implementation is not part of the workspace scaffold.
+`guest-worker.ts` installs the JSON-only `overlay` and `session` capabilities.
+Every handler gets a fresh QuickJS context. Overlay emits require a declared capability
+and bounded validated projectile payloads. `riff.session.snapshot()` requires declared
+`session` authority and a canonical staged snapshot. The returned object and all nested
+data are deeply frozen; enrollment, resources, scoring and round clocks remain host-owned.
+No persistent guest globals, arbitrary mutable store, filesystem or network are exposed.

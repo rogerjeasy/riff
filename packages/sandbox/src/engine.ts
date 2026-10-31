@@ -8,9 +8,11 @@ import {
   type ExecutionDecision,
   type ExecutionMode,
   type ProjectileEffect,
+  type SessionSnapshot,
 } from '@riff/sdk';
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
+import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
 import { artifactSchema, eventSchema, effectSchema } from './contract.js';
 
 export const DECISION_MESSAGES: Record<DecisionCode, string> = {
@@ -25,6 +27,12 @@ export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   DISABLED: 'This version is quarantined after an incident.',
   CAPACITY: 'This rehearsal is full. Reset to start a fresh one.',
   STOPPED: 'Stopped; nothing was sent.',
+  NOT_JOINED: 'Join a team before contributing.',
+  RESOURCE_LIMIT: 'This participant has spent their resources for this session.',
+  SESSION_PAUSED: 'This session is paused.',
+  SESSION_FINISHED: 'This session has finished.',
+  ALREADY_JOINED: 'This participant already joined; teams cannot be changed.',
+  PARTICIPANT_LIMIT: 'The session participant limit has been reached.',
 };
 const workerReply = z
   .object({
@@ -62,6 +70,7 @@ export interface Incident {
   fault: string;
 }
 export interface EngineOptions {
+  session?: SessionSnapshot;
   seed: number;
   mode?: ExecutionMode;
   admission?: AdmissionState;
@@ -90,7 +99,11 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
   const mode: ExecutionMode = options.mode ?? 'preview';
   const artifactId = artifactIdentity(artifact);
   const state = options.admission ?? createAdmissionState();
-  const { trigger, limits } = artifact.manifest;
+  const { trigger, limits, experience } = artifact.manifest;
+  let session: SessionSnapshot | null =
+    options.session && experience ? validateSessionSnapshot(experience, options.session) : null;
+  if (options.session && !experience)
+    throw new Error('Cannot restore a session without an experience');
   let disabled = false;
   let stopped = false;
   let incident: Incident | null = null;
@@ -127,6 +140,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     viewerId: extra.viewerId ?? null,
     at: extra.at ?? null,
     allowance: extra.allowance ?? null,
+    ...(session ? { session: structuredClone(session) } : {}),
   });
 
   function spawn(): Promise<boolean> {
@@ -159,7 +173,11 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     ready = undefined;
     void current?.terminate();
   }
-  async function execute(event: z.infer<typeof eventSchema>, eventSeed: number) {
+  async function execute(
+    event: z.infer<typeof eventSchema>,
+    eventSeed: number,
+    snapshot: SessionSnapshot | null = null,
+  ) {
     ready ??= spawn();
     if (!(await ready) || !worker) {
       discardWorker();
@@ -195,7 +213,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       };
       current.on('message', onMessage);
       current.once('exit', onExit);
-      current.postMessage({ id, event, seed: eventSeed });
+      current.postMessage({ id, event, seed: eventSeed, session: snapshot });
     });
   }
   function forget(at: number) {
@@ -220,13 +238,15 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     if (state.channelId && state.channelId !== event.channelId)
       return decision(event.id, 'INVALID_EVENT', base);
     if (state.seen.has(event.id)) return decision(event.id, 'DUPLICATE', base);
-    if (event.at < state.lastAt) return decision(event.id, 'INVALID_EVENT', base);
+    if (event.at < state.lastAt || (session && event.at < session.updatedAt))
+      return decision(event.id, 'INVALID_EVENT', base);
     forget(event.at);
     if (mode === 'preview' && state.seen.size >= HOST_LIMITS.previewEvents)
       return decision(event.id, 'CAPACITY', base);
     state.channelId = event.channelId;
     state.lastAt = event.at;
     state.seen.set(event.id, event.at);
+    if (experience) return runSession(event);
     if (!matchesCommand(event.text, trigger.command)) return decision(event.id, 'UNRELATED', base);
     if (!event.roles.some((role) => trigger.audience.includes(role)))
       return decision(event.id, 'AUDIENCE', base);
@@ -285,9 +305,138 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       allowance: allowance(history, event.at),
     });
   }
+  async function runSession(event: z.infer<typeof eventSchema>): Promise<ExecutionDecision> {
+    if (!experience) throw new Error('Missing experience');
+    session ??= createSessionSnapshot(experience, event.at);
+    const base = { viewerId: event.viewerId, at: event.at };
+    // Clock transitions do not depend on guest execution; gameplay mutations do.
+    const before = session;
+    const staged = advanceSession(session, event.at, experience);
+    const team = experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
+    const contributes = matchesCommand(event.text, experience.contribution.command);
+    if (!team && !contributes) {
+      session = staged;
+      return decision(event.id, 'UNRELATED', base);
+    }
+    if (!event.roles.some((role) => trigger.audience.includes(role))) {
+      session = staged;
+      return decision(event.id, 'AUDIENCE', base);
+    }
+    if (staged.phase !== 'running') {
+      session = staged;
+      return decision(
+        event.id,
+        staged.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
+        base,
+      );
+    }
+    let participant = Object.hasOwn(staged.participants, event.viewerId)
+      ? staged.participants[event.viewerId]
+      : undefined;
+    if (team && participant) {
+      session = staged;
+      return decision(event.id, 'ALREADY_JOINED', base);
+    }
+    if (!participant) {
+      if (!team && experience.teams.length) {
+        session = staged;
+        return decision(event.id, 'NOT_JOINED', base);
+      }
+      if (Object.keys(staged.participants).length >= experience.maxParticipants) {
+        session = staged;
+        return decision(event.id, 'PARTICIPANT_LIMIT', base);
+      }
+      participant = {
+        teamId: team?.id ?? null,
+        remaining: experience.resource.perParticipant,
+        contributions: 0,
+      };
+      Object.defineProperty(staged.participants, event.viewerId, {
+        value: participant,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
+    }
+    if (team) {
+      staged.revision = before.revision + 1;
+      session = staged;
+      return decision(event.id, 'ACCEPTED', base);
+    }
+    if (participant.remaining <= 0) {
+      session = staged;
+      return decision(event.id, 'RESOURCE_LIMIT', base);
+    }
+    participant.remaining--;
+    participant.contributions++;
+    const scoreKey = participant.teamId ?? 'community';
+    staged.scores[scoreKey] = (staged.scores[scoreKey] ?? 0) + experience.contribution.points;
+    staged.revision = before.revision + 1;
+    if (
+      experience.objective.kind === 'collective-goal' &&
+      (staged.scores.community ?? 0) >= (experience.objective.target ?? Infinity)
+    ) {
+      staged.phase = 'finished';
+      staged.remainingMs = 0;
+      staged.deadlineAt = null;
+      staged.winner = 'community';
+      staged.outcome = 'goal';
+    }
+    const eventSeed =
+      createHash('sha256').update(`${seed}:${event.id}`).digest().readUInt32LE() || 1;
+    const reply = await execute(event, eventSeed, staged);
+    if (stopped) return decision(event.id, 'STOPPED', base);
+    if (reply) lastCpuMicros = reply.cpuMicros;
+    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+      session = before;
+      disabled = true;
+      discardWorker();
+      incident = {
+        eventId: event.id,
+        fault: reply?.fault ?? 'Exceeded the wall-clock, startup or worker limits',
+      };
+      options.onIncident?.(incident);
+      return decision(event.id, 'INCIDENT', {
+        ...base,
+        reason: `${DECISION_MESSAGES.INCIDENT} Cause: ${incident.fault}.`,
+      });
+    }
+    session = staged;
+    state.effects = state.effects.filter((at) => at > event.at - 60_000);
+    const shared = options.channelBudget;
+    if (shared) shared.effects = shared.effects.filter((at) => at > event.at - 60_000);
+    const remaining = Math.min(
+      limits.effectsPerMinute - state.effects.length,
+      shared ? shared.perMinute - shared.effects.length : Infinity,
+    );
+    const effects = reply.effects.length <= remaining ? reply.effects : [];
+    state.effects.push(...effects.map(() => event.at));
+    shared?.effects.push(...effects.map(() => event.at));
+    return decision(event.id, 'ACCEPTED', {
+      ...base,
+      effects,
+      allowance: {
+        used: participant.contributions,
+        max: experience.resource.perParticipant,
+        windowMs: experience.durationMs,
+        nextAt: null,
+      },
+      ...(effects.length < reply.effects.length
+        ? { reason: 'Contribution accepted; visual effects suppressed by the channel budget.' }
+        : {}),
+    });
+  }
   return {
     artifactId,
     mode,
+    get session(): SessionSnapshot | null {
+      return session ? structuredClone(session) : null;
+    },
+    /** Restore committed host state after a transaction or control change. Example: engine.restoreSession(snapshot). */
+    restoreSession(snapshot: SessionSnapshot) {
+      if (!experience) throw new Error('Cannot restore a session without an experience');
+      session = validateSessionSnapshot(experience, snapshot);
+    },
     get status(): 'ready' | 'quarantined' | 'stopped' {
       return stopped ? 'stopped' : disabled ? 'quarantined' : 'ready';
     },

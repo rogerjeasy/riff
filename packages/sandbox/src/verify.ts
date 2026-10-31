@@ -6,9 +6,12 @@ import {
   type DecisionCode,
   type PermissionManifest,
   type Scenario,
+  type SessionSnapshot,
+  type SessionAssertion,
 } from '@riff/sdk';
 import { artifactSchema, manifestSchema, scenariosSchema } from './contract.js';
 import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
+import { createSessionSnapshot } from './session.js';
 import { instrumentHandler } from './instrument.js';
 
 export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
@@ -20,6 +23,8 @@ export interface Finding {
   line: number | null;
 }
 export interface StepResult {
+  session?: SessionSnapshot;
+  expectSession?: SessionAssertion;
   id: string;
   viewer: string;
   roles: AudienceRole[];
@@ -145,7 +150,13 @@ export async function runScenarios(
   const results: ScenarioResult[] = [];
   for (const scenario of scenarios) {
     const started = performance.now();
-    const engine = createEngine(artifact, { seed, mode: 'preview' });
+    const engine = createEngine(artifact, {
+      seed,
+      mode: 'preview',
+      ...(artifact.manifest.experience
+        ? { session: createSessionSnapshot(artifact.manifest.experience, 0) }
+        : {}),
+    });
     const steps: StepResult[] = [];
     try {
       for (const step of scenario.steps) {
@@ -159,10 +170,12 @@ export async function runScenarios(
         });
         const expectEffects = step.effects;
         const passed =
+          matchesSessionAssertion(decision.session, step.session) &&
           decision.code === step.expect &&
-          (expectEffects < 0
-            ? decision.effects.length > 0
-            : decision.effects.length === expectEffects);
+          (expectEffects === -2 ||
+            (expectEffects < 0
+              ? decision.effects.length > 0
+              : decision.effects.length === expectEffects));
         steps.push({
           id: step.id,
           viewer: step.viewer,
@@ -171,6 +184,8 @@ export async function runScenarios(
           at: step.at,
           expect: step.expect,
           expectEffects: expectEffects < 0 ? null : expectEffects,
+          ...(decision.session ? { session: decision.session } : {}),
+          ...(step.session ? { expectSession: step.session } : {}),
           actual: decision.code,
           actualEffects: decision.effects.length,
           passed,
@@ -193,9 +208,11 @@ export async function runScenarios(
 
 /**
  * The host's own acceptance suite, derived only from the manifest. Generated code and
- * generated tests cannot edit it. `effects: -1` means "at least one effect".
+ * generated tests cannot edit it. `effects: -1` means "at least one effect";
+ * internal session steps use -2 to check semantic state with any effect count.
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
+  if (manifest.experience) return sessionHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
   const eligible: AudienceRole[] = audience.includes('viewer')
     ? ['viewer']
@@ -275,6 +292,212 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   return scenarios;
 }
 
+/** Compare only the declared canonical state fields. Example: matchesSessionAssertion(state, {scores:{red:2}}). */
+export function matchesSessionAssertion(
+  actual: SessionSnapshot | undefined,
+  expected: SessionAssertion | null | undefined,
+): boolean {
+  if (!expected) return true;
+  if (!actual) return false;
+  if (expected.phase !== undefined && actual.phase !== expected.phase) return false;
+  if (expected.remainingMs !== undefined && actual.remainingMs !== expected.remainingMs)
+    return false;
+  for (const [key, score] of Object.entries(expected.scores ?? {}))
+    if (!Object.hasOwn(actual.scores, key) || actual.scores[key] !== score) return false;
+  for (const [key, participant] of Object.entries(expected.participants ?? {})) {
+    if (!Object.hasOwn(actual.participants, key)) return false;
+    const found = actual.participants[key];
+    for (const [field, value] of Object.entries(participant))
+      if (found?.[field as keyof typeof found] !== value) return false;
+  }
+  return true;
+}
+function sessionHostScenarios(manifest: PermissionManifest): Scenario[] {
+  const d = manifest.experience;
+  if (!d) return [];
+  const eligible: AudienceRole[] = manifest.trigger.audience.includes('viewer')
+    ? ['viewer']
+    : [manifest.trigger.audience[0] ?? 'broadcaster', 'viewer'];
+  const step = (
+    id: string,
+    viewer: string,
+    text: string,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+    session?: SessionAssertion,
+  ): Scenario['steps'][number] => ({
+    id,
+    viewer,
+    text,
+    at,
+    roles: eligible,
+    expect,
+    effects,
+    ...(session ? { session } : {}),
+  });
+  const command = d.contribution.command,
+    team = d.teams[0],
+    scoreKey = team?.id ?? 'community';
+  const join = () =>
+    team
+      ? [
+          step('join', 'ada', team.joinCommand, 0, 'ACCEPTED', 0, {
+            participants: {
+              ada: { remaining: d.resource.perParticipant, contributions: 0, teamId: team.id },
+            },
+          }),
+        ]
+      : [];
+  const afterFirst = {
+    scores: { [scoreKey]: d.contribution.points },
+    participants: { ada: { remaining: d.resource.perParticipant - 1, contributions: 1 } },
+  };
+  const first = () => step('first', 'ada', command, 1, 'ACCEPTED', -2, afterFirst);
+  const suite: Scenario[] = [
+    {
+      name: 'Session contribution updates canonical resources and score',
+      kind: 'happy',
+      steps: [...join(), first()],
+    },
+    {
+      name: 'Session duplicate identity cannot score twice',
+      kind: 'duplicate',
+      steps: [...join(), first(), step('first', 'ada', command, 2, 'DUPLICATE', 0, afterFirst)],
+    },
+    {
+      name: 'Session finishes before accepting a contribution at the exact deadline',
+      kind: 'limit',
+      steps: [
+        ...join(),
+        step('deadline', 'ada', command, d.durationMs, 'SESSION_FINISHED', 0, {
+          phase: 'finished',
+          scores: { [scoreKey]: 0 },
+          remainingMs: 0,
+        }),
+      ],
+    },
+    {
+      name: 'Session unrelated chat does not consume resources',
+      kind: 'negative',
+      steps: [
+        ...join(),
+        step('unrelated', 'ada', 'hello chat', 1, 'UNRELATED', 0, { scores: { [scoreKey]: 0 } }),
+        first(),
+      ],
+    },
+  ];
+  if (team)
+    suite.push({
+      name: 'Session requires joining and keeps the chosen team',
+      kind: 'role',
+      steps: [
+        step('before', 'ada', command, 0, 'NOT_JOINED', 0),
+        ...join(),
+        step('again', 'ada', d.teams[1]?.joinCommand ?? team.joinCommand, 1, 'ALREADY_JOINED', 0),
+      ],
+    });
+  const steps = join();
+  const target = d.objective.target ?? Infinity;
+  let finished = false;
+  for (let i = 0; i < d.resource.perParticipant; i++) {
+    const score = (i + 1) * d.contribution.points;
+    finished = score >= target;
+    steps.push(
+      step(`resource${i}`, 'ada', command, 1 + i, 'ACCEPTED', -2, {
+        scores: { [scoreKey]: score },
+        participants: {
+          ada: { remaining: d.resource.perParticipant - i - 1, contributions: i + 1 },
+        },
+        phase: finished ? 'finished' : 'running',
+      }),
+    );
+    if (finished) break;
+  }
+  steps.push(
+    step(
+      'blocked',
+      'ada',
+      command,
+      Math.min(
+        d.durationMs - 1,
+        Math.max(1 + d.resource.perParticipant, manifest.trigger.windowMs),
+      ),
+      finished ? 'SESSION_FINISHED' : 'RESOURCE_LIMIT',
+      0,
+    ),
+  );
+  suite.push({
+    name: finished
+      ? 'Cooperative goal finishes as soon as the target is reached'
+      : 'Session resources never renew in a rolling window',
+    kind: 'limit',
+    steps,
+  });
+  // Keep verification bounded independently of model-authored scenario sizes.
+  const actionsToGoal = Math.ceil(target / d.contribution.points);
+  if (
+    d.objective.kind === 'collective-goal' &&
+    actionsToGoal <= 24 &&
+    actionsToGoal <= d.maxParticipants * d.resource.perParticipant
+  ) {
+    const goalSteps: Scenario['steps'] = [];
+    for (let i = 0; i < actionsToGoal; i++) {
+      const viewer = `goal${Math.floor(i / d.resource.perParticipant)}`;
+      goalSteps.push(
+        step(`goal${i}`, viewer, command, i, 'ACCEPTED', -2, {
+          phase: i === actionsToGoal - 1 ? 'finished' : 'running',
+          scores: { community: (i + 1) * d.contribution.points },
+          participants: {
+            [viewer]: {
+              remaining: d.resource.perParticipant - (i % d.resource.perParticipant) - 1,
+            },
+          },
+        }),
+      );
+    }
+    goalSteps.push(
+      step('aftergoal', 'late', command, actionsToGoal, 'SESSION_FINISHED', 0, {
+        phase: 'finished',
+      }),
+    );
+    suite.push({
+      name: 'Cooperative goal accumulates participants and stops immediately at target',
+      kind: 'limit',
+      steps: goalSteps,
+    });
+  }
+  if (!manifest.trigger.audience.includes('viewer')) {
+    const denied = step('denied', 'ben', team?.joinCommand ?? command, 0, 'AUDIENCE', 0);
+    denied.roles = ['viewer'];
+    suite.push({
+      name: 'Session joins and contributions enforce the declared audience',
+      kind: 'role',
+      steps: [denied, ...join(), first()],
+    });
+  }
+  if (d.maxParticipants > 1 && (!Number.isFinite(target) || d.contribution.points < target)) {
+    const otherTeam = d.teams[1] ?? team,
+      otherKey = otherTeam?.id ?? 'community';
+    suite.push({
+      name: 'Fresh session isolates participants and preserves both contributions',
+      kind: 'happy',
+      steps: [
+        ...join(),
+        first(),
+        ...(otherTeam ? [step('joinben', 'ben', otherTeam.joinCommand, 2, 'ACCEPTED', 0)] : []),
+        step('ben', 'ben', command, 3, 'ACCEPTED', -2, {
+          scores: {
+            [otherKey]: otherKey === scoreKey ? d.contribution.points * 2 : d.contribution.points,
+          },
+          participants: { ada: { contributions: 1 }, ben: { contributions: 1 } },
+        }),
+      ],
+    });
+  }
+  return suite;
+}
+
 function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
   const lines: string[] = [];
   for (const stage of report.stages)
@@ -288,7 +511,7 @@ function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
     for (const step of result.steps.filter((s) => !s.passed))
       lines.push(
         `  step ${step.id} ${step.viewer} "${step.text}" @${step.at}ms expected ${step.expect}` +
-          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}`,
+          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}`,
       );
   }
   const text = lines.join('\n');
