@@ -74,14 +74,14 @@ body,
   position: absolute;
   top: 32px;
   left: 32px;
-  width: min(440px, calc(100% - 64px));
-  max-height: calc(100% - 160px);
-  overflow: hidden;
-  padding: 18px 22px;
+  width: min(560px, calc(100% - 64px));
+  padding: 16px 18px;
   border-radius: 18px;
   background: rgb(15 14 20 / 0.88);
   color: #fff;
-  font-size: 17px;
+  font:
+    14px/18px ui-monospace,
+    monospace;
   overflow-wrap: anywhere;
   box-sizing: border-box;
 }
@@ -89,19 +89,37 @@ body,
   display: none;
 }
 .overlay-community h2 {
-  margin: 0 0 10px;
-  font-size: 20px;
+  margin: 0 0 8px;
+  font-size: 18px;
+  line-height: 22px;
   color: #ffb37a;
 }
 .overlay-community h3 {
-  margin: 16px 0 8px;
-  font-size: 18px;
+  margin: 12px 0 6px;
+  font-size: 15px;
+  line-height: 18px;
 }
 .overlay-community p {
-  margin: 6px 0;
+  margin: 2px 0;
 }
 .overlay-community small {
   display: block;
   opacity: 0.85;
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.community-option {
+  padding: 7px 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.15);
+}
+.community-vote {
+  display: block;
+  font-size: 14px;
+  line-height: 18px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.community-selection {
+  margin-top: 10px;
 }

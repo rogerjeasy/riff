@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { overlayMessageSchema } from '../src/overlay/messages.js';
+import overlayStyles from '../src/overlay/overlay.css?raw';
 import { renderCommunity } from '../src/overlay/community.js';
 const publicProposal = {
   proposalId: 'p',
@@ -129,4 +130,59 @@ it.each([
     overlayMessageSchema.safeParse({ v: 1, type: 'community', payload: { ...community, ...patch } })
       .success,
   ).toBe(false);
+});
+
+it('bounds worst-case public ballot rows and keeps every choice and vote command visible', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const longText = 'W'.repeat(499);
+  const projection = {
+    ...community,
+    commands: ['!riff suggest <text>', '!riff vote <ballot-id> <option>', '!riff credit on|off'],
+    creditNotice: 'N'.repeat(500),
+    ballot: {
+      ...community.ballot,
+      id,
+      deadlineAt: 15000,
+      options: Array.from({ length: 5 }, (_, index) => ({
+        proposalId: `p${index}`,
+        text: `${longText}${index}`,
+        authors: Array(5).fill('A'.repeat(500)),
+        option: index + 1,
+        votes: 10000,
+      })),
+    },
+    selections: Array.from({ length: 5 }, (_, index) => ({
+      ...community.selections[0]!,
+      id: `s${index}`,
+      text: longText,
+      authors: Array(5).fill('B'.repeat(500)),
+    })),
+  };
+  const root = document.createElement('div');
+  renderCommunity(root, projection, 0);
+  const rows = root.querySelectorAll('.community-option');
+  expect(rows).toHaveLength(3);
+  for (const [index, row] of [...rows].entries()) {
+    expect(row.textContent).toContain(`!riff vote ${id} ${index + 1}`);
+    expect(row.querySelector('.community-excerpt')?.textContent?.length).toBeLessThanOrEqual(73);
+    expect(row.textContent?.length).toBeLessThanOrEqual(185);
+  }
+  expect(root.textContent).toContain('Excerpts · full proposals in creator inbox');
+  expect(root.textContent?.length).toBeLessThanOrEqual(1800);
+  const panelRules = overlayStyles.match(/\.overlay-community \{([^}]+)\}/)?.[1] ?? '';
+  expect(panelRules).not.toMatch(/overflow:\s*hidden|max-height:/);
+  expect(root.textContent).not.toContain(longText);
+  expect(root.textContent).toContain('Options page 1/2');
+  renderCommunity(root, projection, 3000);
+  expect(root.querySelectorAll('.community-option')).toHaveLength(2);
+  for (const option of [4, 5]) expect(root.textContent).toContain(`!riff vote ${id} ${option}`);
+  expect(root.textContent).toContain('Options page 2/2');
+  // Small read-only sources show one complete option/command per page.
+  vi.stubGlobal('innerHeight', 480);
+  for (let index = 0; index < 5; index++) {
+    renderCommunity(root, projection, index * 3000);
+    expect(root.querySelectorAll('.community-option')).toHaveLength(1);
+    expect(root.textContent).toContain(`!riff vote ${id} ${index + 1}`);
+    expect(root.querySelector('.community-selection')).toBeNull();
+  }
 });
