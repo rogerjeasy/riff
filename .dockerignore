@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+.cache
+.tools
+.local
+.superpowers
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/test-results
+**/playwright-report
+data
+coverage
+*.log

@@ -1,0 +1,4 @@
+# Local HTTP only; public HTTPS and authentication need a deployment decision.
+:80 {
+  reverse_proxy app:8787
+}

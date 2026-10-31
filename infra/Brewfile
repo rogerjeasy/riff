@@ -1,0 +1,8 @@
+# Optional host tools. Review before installing; this changes the local machine.
+brew "gitleaks"
+brew "trivy"
+brew "restic"
+brew "caddy"
+brew "docker-compose"
+# A working Docker engine is separate. Keep an existing engine if already installed.
+# OBS, Streamer.bot and Firebot are optional GUI integrations, installed separately.

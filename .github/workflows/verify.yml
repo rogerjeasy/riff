@@ -1,0 +1,36 @@
+name: Verify workspace
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: corepack enable && corepack prepare pnpm@12.6.0 --activate
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm check
+      - run: pnpm build
+      - run: pnpm smoke
+      - run: pnpm check:bundles
+      - run: pnpm db:migrate
+        env:
+          RIFF_DB_PATH: ./.cache/ci/riff.db
+      - run: pnpm --filter @riff/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+      - run: pnpm security:audit
+      - run: docker compose -f infra/compose.yaml config --quiet
+      - run: docker compose -f infra/monitoring/compose.yaml config --quiet
+        env:
+          RIFF_GRAFANA_PASSWORD: ci-validation-only

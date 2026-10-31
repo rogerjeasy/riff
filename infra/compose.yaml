@@ -1,0 +1,36 @@
+name: riff-local
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: infra/containers/Dockerfile
+    init: true
+    ports:
+      - '127.0.0.1:8787:8787'
+    volumes:
+      - riff-data:/opt/riff/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    stop_grace_period: 15s
+  proxy:
+    image: caddy:2.11.7-alpine
+    profiles: [proxy]
+    ports:
+      - '127.0.0.1:8080:80'
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - proxy-data:/data
+      - proxy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+volumes:
+  riff-data:
+  proxy-data:
+  proxy-config:
