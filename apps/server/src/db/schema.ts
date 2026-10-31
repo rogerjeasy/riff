@@ -2,6 +2,7 @@ import type {
   ExperienceDefinition,
   SessionSnapshot,
   ChatEvent,
+  DecisionCode,
   ExecutionDecision,
 } from '@riff/sdk';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
@@ -170,6 +171,27 @@ export const sessionEvents = sqliteTable(
       table.eventId,
     ),
   ],
+);
+/**
+ * Ordered round journal: every committed state change, written in the same
+ * transaction, so an audit can rebuild the round from its inputs alone.
+ */
+export const sessionJournal = sqliteTable(
+  'session_journal',
+  {
+    seq: integer('seq').primaryKey({ autoIncrement: true }),
+    channelId: text('channel_id').notNull(),
+    sessionId: text('session_id').notNull(),
+    automationId: text('automation_id').notNull(),
+    versionId: text('version_id').notNull(),
+    kind: text('kind', { enum: ['start', 'chat', 'pause', 'resume', 'advance'] }).notNull(),
+    at: integer('at').notNull(),
+    event: text('event', { mode: 'json' }).$type<ChatEvent>(),
+    code: text('code').$type<DecisionCode>(),
+    snapshot: text('snapshot', { mode: 'json' }).$type<SessionSnapshot>(),
+    digest: text('digest').notNull(),
+  },
+  (table) => [index('session_journal_order').on(table.channelId, table.sessionId, table.seq)],
 );
 export const sessionOutbox = sqliteTable(
   'session_outbox',

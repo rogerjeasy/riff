@@ -1,4 +1,9 @@
-import { validateSessionSnapshot } from '@riff/sandbox';
+import {
+  classifyTransition,
+  sessionDigest,
+  validateSessionSnapshot,
+  type JournalEntry,
+} from '@riff/sandbox';
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import type {
@@ -12,6 +17,7 @@ import {
   automations,
   experienceSessions,
   sessionEvents,
+  sessionJournal,
   sessionOutbox,
   versions,
 } from '../schema.js';
@@ -39,6 +45,29 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
         ),
       )
       .get();
+  const transaction = <T>(work: () => T): T => connection.client.transaction(work)();
+  /** Journal rows are written only inside the transaction that commits their state. */
+  function journal(
+    row: { sessionId: string; automationId: string; versionId: string; at: number },
+    after: SessionSnapshot,
+    detail:
+      | { kind: 'start' }
+      | { kind: 'chat'; event: ChatEvent; code: ExecutionDecision['code'] }
+      | { kind: 'control'; before: SessionSnapshot },
+  ) {
+    const kind = detail.kind === 'control' ? classifyTransition(detail.before, after) : detail.kind;
+    db.insert(sessionJournal)
+      .values({
+        channelId,
+        ...row,
+        kind,
+        event: detail.kind === 'chat' ? detail.event : null,
+        code: detail.kind === 'chat' ? detail.code : null,
+        snapshot: detail.kind === 'start' ? after : null,
+        digest: sessionDigest(after),
+      })
+      .run();
+  }
   return {
     atomic<T>(work: () => T): T {
       return connection.client.transaction(work)();
@@ -70,26 +99,38 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
         .get();
       if (!owner) throw new Error('Session version does not belong to this channel');
       const snapshot = validateSessionSnapshot(input.definition, input.snapshot);
-      const row = {
-        ...input,
-        snapshot,
-        id: input.snapshot.id,
-        channelId,
-        revision: input.snapshot.revision,
-        updatedAt: input.snapshot.updatedAt,
-      };
-      db.insert(experienceSessions)
-        .values(row)
-        .onConflictDoUpdate({ target: experienceSessions.automationId, set: row })
-        .run();
-      db.delete(sessionOutbox)
-        .where(
-          and(
-            eq(sessionOutbox.channelId, channelId),
-            eq(sessionOutbox.automationId, input.automationId),
-          ),
-        )
-        .run();
+      transaction(() => {
+        const row = {
+          ...input,
+          snapshot,
+          id: input.snapshot.id,
+          channelId,
+          revision: input.snapshot.revision,
+          updatedAt: input.snapshot.updatedAt,
+        };
+        db.insert(experienceSessions)
+          .values(row)
+          .onConflictDoUpdate({ target: experienceSessions.automationId, set: row })
+          .run();
+        db.delete(sessionOutbox)
+          .where(
+            and(
+              eq(sessionOutbox.channelId, channelId),
+              eq(sessionOutbox.automationId, input.automationId),
+            ),
+          )
+          .run();
+        journal(
+          {
+            sessionId: snapshot.id,
+            automationId: input.automationId,
+            versionId: input.versionId,
+            at: snapshot.startedAt,
+          },
+          snapshot,
+          { kind: 'start' },
+        );
+      });
     },
     removeSession(automationId: string) {
       db.delete(experienceSessions)
@@ -196,6 +237,22 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
             JSON.stringify(input.snapshot) !== JSON.stringify(current.snapshot))
         )
           throw new Error('Session revision must advance with state');
+        const where = {
+          sessionId: current.id,
+          automationId: input.automationId,
+          versionId: input.versionId,
+        };
+        if (input.event && input.decision)
+          journal({ ...where, at: input.event.at }, input.snapshot, {
+            kind: 'chat',
+            event: input.event,
+            code: input.decision.code,
+          });
+        else if (sessionDigest(current.snapshot) !== sessionDigest(input.snapshot))
+          journal({ ...where, at: input.snapshot.updatedAt }, input.snapshot, {
+            kind: 'control',
+            before: current.snapshot,
+          });
         if (input.event && input.decision) {
           db.insert(sessionEvents)
             .values({
@@ -234,27 +291,64 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
     },
     /** Controls already hold the runtime fence; publish state without accepting chat. */
     updateSessionControl(automationId: string, snapshot: SessionSnapshot, versionId?: string) {
-      const current = session(automationId);
-      if (!current || current.id !== snapshot.id) throw new Error('Session changed');
-      db.update(experienceSessions)
-        .set({
-          snapshot,
-          revision: snapshot.revision,
-          updatedAt: snapshot.updatedAt,
-          ...(versionId ? { versionId } : {}),
-        })
+      transaction(() => {
+        const current = session(automationId);
+        if (!current || current.id !== snapshot.id) throw new Error('Session changed');
+        if (sessionDigest(current.snapshot) !== sessionDigest(snapshot))
+          journal(
+            {
+              sessionId: current.id,
+              automationId,
+              versionId: versionId ?? current.versionId,
+              at: snapshot.updatedAt,
+            },
+            snapshot,
+            { kind: 'control', before: current.snapshot },
+          );
+        db.update(experienceSessions)
+          .set({
+            snapshot,
+            revision: snapshot.revision,
+            updatedAt: snapshot.updatedAt,
+            ...(versionId ? { versionId } : {}),
+          })
+          .where(
+            and(
+              eq(experienceSessions.channelId, channelId),
+              eq(experienceSessions.automationId, automationId),
+            ),
+          )
+          .run();
+        db.delete(sessionOutbox)
+          .where(
+            and(
+              eq(sessionOutbox.channelId, channelId),
+              eq(sessionOutbox.automationId, automationId),
+            ),
+          )
+          .run();
+      });
+    },
+    /** The ordered journal of one round, as the audit replays it. */
+    sessionJournal(sessionId: string): JournalEntry[] {
+      return db
+        .select()
+        .from(sessionJournal)
         .where(
-          and(
-            eq(experienceSessions.channelId, channelId),
-            eq(experienceSessions.automationId, automationId),
-          ),
+          and(eq(sessionJournal.channelId, channelId), eq(sessionJournal.sessionId, sessionId)),
         )
-        .run();
-      db.delete(sessionOutbox)
-        .where(
-          and(eq(sessionOutbox.channelId, channelId), eq(sessionOutbox.automationId, automationId)),
-        )
-        .run();
+        .orderBy(asc(sessionJournal.seq))
+        .all()
+        .map((row): JournalEntry => {
+          const base = { seq: row.seq, at: row.at, versionId: row.versionId, digest: row.digest };
+          if (row.kind === 'start' && row.snapshot)
+            return { ...base, kind: 'start', snapshot: row.snapshot };
+          if (row.kind === 'chat' && row.event && row.code)
+            return { ...base, kind: 'chat', event: row.event, code: row.code };
+          if (row.kind === 'pause' || row.kind === 'resume' || row.kind === 'advance')
+            return { ...base, kind: row.kind };
+          throw new Error(`Malformed journal entry ${row.seq}`);
+        });
     },
     sessionOutbox(automationId: string) {
       return db

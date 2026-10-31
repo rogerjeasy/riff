@@ -43,3 +43,12 @@ export {
   sessionSnapshotSchema,
   validateSessionSnapshot,
 } from './session.js';
+export {
+  AUDIT_MAX_ENTRIES,
+  classifyTransition,
+  replaySessionJournal,
+  sessionDigest,
+  type ControlTransition,
+  type JournalEntry,
+  type SessionAudit,
+} from './journal.js';

@@ -67,7 +67,22 @@ export function createLiveRuntime(deps: {
     const lines = [...engines.values()].map(({ version }) => {
       const t = (version.manifest as PermissionManifest).trigger;
       const who = t.audience.includes('viewer') ? '' : ` (${describeAudience(t.audience)})`;
-      return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
+      const experience = experienceOf(version);
+      if (!experience)
+        return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
+      // Rounds spend a lifetime allowance and may need a team first; never imply a
+      // rolling window or let a late viewer type a command that is rejected.
+      const { teams, contribution, resource, objective } = experience;
+      const each = `${resource.perParticipant} ${resource.name} each this round`;
+      return teams.length
+        ? `Type ${teams
+            .map((team) => team.joinCommand)
+            .join(', ')
+            .replace(
+              /, ([^,]*)$/,
+              ' or $1',
+            )} to join a team${who}, then ${contribution.command} · ${each}`
+        : `Type ${contribution.command}${who} to help reach ${objective.target ?? ''} together · ${each}`;
     });
     overlay.setInstructions(panic ? [] : lines);
     sessions.publish(panic);
@@ -345,6 +360,10 @@ export function createLiveRuntime(deps: {
       });
       queue = next.catch(() => undefined);
       return next;
+    },
+    /** Read-only: replays the round journal privately; never touches engines or the overlay. */
+    auditSession(automationId: string) {
+      return sessions.audit(automationId);
     },
     prepareActivation(version: VersionRow, resetSession = false) {
       sessions.configure(version, resetSession);

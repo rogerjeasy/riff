@@ -3,10 +3,12 @@ import {
   advanceSession,
   createSessionSnapshot,
   pauseSession,
+  replaySessionJournal,
   resumeSession,
   sessionDefinitionSchema,
   sessionSnapshotSchema,
   type ExecutionEngine,
+  type SessionAudit,
 } from '@riff/sandbox';
 import type {
   ChatEvent,
@@ -19,6 +21,7 @@ import type { Hub } from '../hub.js';
 import type { OverlayBroker } from '../overlay/broker.js';
 
 export class SessionConfigurationError extends Error {}
+export class SessionAuditBusyError extends Error {}
 export const experienceOf = (version: VersionRow) => {
   const definition = (version.manifest as PermissionManifest).experience;
   return definition ? sessionDefinitionSchema.parse(definition) : null;
@@ -146,7 +149,37 @@ export function createSessionControl(deps: {
     }
     return sent;
   }
+  let auditing = false;
+  /**
+   * Rebuild the current round from its journal in isolated preview engines. The read
+   * is one transaction, so the journal and the stored state describe the same moment.
+   */
+  async function audit(automationId: string): Promise<SessionAudit | null> {
+    if (auditing) throw new SessionAuditBusyError('A round audit is already running.');
+    const read = repo.atomic(() => {
+      const row = repo.session(automationId);
+      return row ? { row, entries: repo.sessionJournal(row.id) } : null;
+    });
+    if (!read) return null;
+    auditing = true;
+    try {
+      return await replaySessionJournal({
+        definition: read.row.definition,
+        entries: read.entries,
+        expected: read.row.snapshot,
+        artifactFor: (versionId) => {
+          const version = repo.version(versionId);
+          return version?.automationId === automationId
+            ? { source: version.source, manifest: version.manifest }
+            : null;
+        },
+      });
+    } finally {
+      auditing = false;
+    }
+  }
   return {
+    audit,
     configure,
     publish,
     pause,
@@ -242,7 +275,11 @@ export function createSessionControl(deps: {
     tick(automationId: string, engine: ExecutionEngine) {
       const current = repo.session(automationId);
       if (!current || current.snapshot.phase !== 'running') return;
-      const next = advanceSession(current.snapshot, now(), current.definition);
+      // Clients derive the countdown from deadlineAt, so time alone is not a state
+      // change: only the deadline itself is committed, journaled and published.
+      const at = now();
+      if (current.snapshot.deadlineAt === null || at < current.snapshot.deadlineAt) return;
+      const next = advanceSession(current.snapshot, at, current.definition);
       if (JSON.stringify(next) === JSON.stringify(current.snapshot)) return;
       if (
         repo.commitSession({

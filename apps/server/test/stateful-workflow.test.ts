@@ -111,6 +111,38 @@ it('serializes concurrent resources, recovers progress and deduplication after r
     rmSync(directory, { recursive: true, force: true });
   }
 });
+it('interleaved concurrent throws from many viewers on both teams never lose a point', async () => {
+  const app = await createApp({ logger: false, now: () => 5000 });
+  apps.push(app);
+  const { automation } = activate(app);
+  const roster = Array.from({ length: 12 }, (_, i) => ({
+    viewer: `viewer${i}`,
+    team: i % 2 ? 'blue' : 'red',
+  }));
+  await Promise.all(
+    roster.map(({ viewer, team }) =>
+      app.riff.runtime.handleChat(chat(`join-${viewer}`, viewer, `!${team}`)),
+    ),
+  );
+  // Every viewer asks for five throws at once, interleaved across teams, and Twitch
+  // redelivers every message (https://dev.twitch.tv/docs/eventsub/#handling-duplicate-events).
+  const attempts = Array.from({ length: 5 }, (_, n) =>
+    roster.map(({ viewer }) => chat(`throw-${viewer}-${n}`, viewer, '!throw')),
+  ).flat();
+  const deliveries = [...attempts, ...[...attempts].reverse()];
+  const decisions = (
+    await Promise.all(deliveries.map((m) => app.riff.runtime.handleChat(m)))
+  ).flat();
+  const count = (code: string) => decisions.filter((d) => d.code === code).length;
+  expect(count('ACCEPTED')).toBe(12 * 3);
+  expect(count('RESOURCE_LIMIT')).toBe(12 * 2);
+  expect(count('DUPLICATE')).toBe(12 * 5);
+  const snapshot = app.riff.repo.session(automation.id)!.snapshot;
+  expect(snapshot.scores).toEqual({ red: 18, blue: 18 });
+  for (const { viewer } of roster)
+    expect(snapshot.participants[viewer]).toMatchObject({ remaining: 0, contributions: 3 });
+});
+
 it('pause/panic freeze the timer and an explicit reset creates a fresh fenced session', async () => {
   let at = 1000;
   const app = await createApp({ logger: false, now: () => at });

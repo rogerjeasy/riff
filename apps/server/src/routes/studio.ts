@@ -184,6 +184,16 @@ export function registerStudioRoutes(
       return fail(reply, error);
     }
   });
+  app.post('/api/automations/:id/session/audit', async (request, reply) => {
+    const p = params.safeParse(request.params);
+    if (!p.success)
+      return reply.code(400).send({ code: 'INVALID', message: 'Invalid automation.' });
+    try {
+      return { audit: await studio.auditSession(p.data.id) };
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
   app.post('/api/channel/panic', async () => {
     studio.panic('console stop button');
     return { ok: true, panic: true };

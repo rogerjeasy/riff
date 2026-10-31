@@ -1,4 +1,8 @@
-import { SessionConfigurationError, experienceOf } from '../live/sessions.js';
+import {
+  SessionAuditBusyError,
+  SessionConfigurationError,
+  experienceOf,
+} from '../live/sessions.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { LiveRuntime } from '../live/runtime.js';
@@ -170,6 +174,19 @@ export function createStudioService(deps: {
       if (runtime.panicked)
         throw new StudioError('BLOCKED', 'Everything is stopped. Resume the channel first.');
       return goLive(previous, 'rollback', resetSession);
+    },
+    async auditSession(automationId: string) {
+      mustAutomation(automationId);
+      try {
+        const audit = await runtime.auditSession(automationId);
+        if (!audit)
+          throw new StudioError('NOT_FOUND', 'This interaction has no session round to audit.');
+        return audit;
+      } catch (error) {
+        if (error instanceof SessionAuditBusyError)
+          throw new StudioError('BLOCKED', 'A round audit is already running. Try again shortly.');
+        throw error;
+      }
     },
     resetSession(automationId: string) {
       const automation = mustAutomation(automationId);
