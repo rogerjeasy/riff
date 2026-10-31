@@ -52,3 +52,15 @@ export {
   type JournalEntry,
   type SessionAudit,
 } from './journal.js';
+export {
+  MIGRATION_LIMITS,
+  sessionTransitionPlanSchema,
+  sessionDefinitionHash,
+  migrationSourceHash,
+  transitionIdentity,
+  classifySessionTransition,
+  validatePreservingMigration,
+  runSessionMigration,
+  type SessionMigrationInput,
+  type SessionTransitionClassification,
+} from './transition.js';
