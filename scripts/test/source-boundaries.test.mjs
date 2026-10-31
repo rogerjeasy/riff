@@ -36,6 +36,35 @@ test('rejects network clients in the compiler package', () => {
     /network/,
   );
 });
+test('rejects forbidden TypeScript import types', () => {
+  assert.match(
+    inspect(
+      'packages/compiler/src/main.ts',
+      "type Host = import('@riff/server/private').Host;",
+    ).join('\n'),
+    /not allowed/,
+  );
+});
+test('rejects network builtin subpaths', () => {
+  assert.match(
+    inspect('packages/compiler/src/main.ts', "import { lookup } from 'node:dns/promises';").join(
+      '\n',
+    ),
+    /network/,
+  );
+});
+test('rejects network client package subpaths', () => {
+  assert.match(
+    inspect('packages/compiler/src/main.ts', "import OpenAI from 'openai/client';").join('\n'),
+    /network/,
+  );
+});
+test('allows type imports from an approved dependency', () => {
+  assert.deepEqual(
+    inspect('packages/compiler/src/main.ts', "type Value = import('@riff/sdk').JsonValue;"),
+    [],
+  );
+});
 test('rejects dynamically computed package imports', () => {
   assert.match(
     inspect('packages/compiler/src/main.ts', 'const module = await import(name);').join('\n'),

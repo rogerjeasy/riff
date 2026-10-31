@@ -6,7 +6,7 @@ const inside = (parent, child) => {
   return path === '' || (!path.startsWith('..') && !isAbsolute(path));
 };
 const networkModules =
-  /^(?:node:)?(?:http|https|http2|net|tls|dns)$|^(?:ws|undici|openai|obs-websocket-js)$|^@openai\//;
+  /^(?:node:)?(?:http|https|http2|net|tls|dns)(?:\/|$)|^(?:ws|undici|openai|obs-websocket-js)(?:\/|$)|^@openai\//;
 
 /** Dependency hygiene only. Runtime isolation is enforced independently by the host. */
 export function findSourceBoundaryErrors({ root, filePath, source, definitions }) {
@@ -42,6 +42,9 @@ export function findSourceBoundaryErrors({ root, filePath, source, definitions }
   function visit(node) {
     if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier)
       check(node.moduleSpecifier);
+    if (ts.isImportTypeNode(node)) {
+      check(ts.isLiteralTypeNode(node.argument) ? node.argument.literal : undefined);
+    }
     if (ts.isCallExpression(node)) {
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) check(node.arguments[0]);
       if (ts.isIdentifier(node.expression) && node.expression.text === 'require')
