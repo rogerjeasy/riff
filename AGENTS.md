@@ -449,7 +449,11 @@ Rolling-window admission is durable: every command decision is written to
 identities, per-viewer windows, per-interaction and channel effect budgets) are rebuilt
 from the last hour of records on start. Durable identity also catches redeliveries
 older than the engine's 10-minute in-memory window. A failed write sends nothing and
-pauses the interaction. `founder` badges count as subscribers: the set id is recorded
+pauses the interaction. Stateful sessions also record cosmetic decisions in
+`admission_events`, atomically with gameplay and outbox writes. Per-interaction effect
+windows persist across migrations, preserving rollbacks and restarts, independently
+of semantic resources and session identities. Failed writes rebuild counters from
+durable history before explicit resume. `founder` badges count as subscribers: the set id is recorded
 from Helix (`packages/twitch/fixtures/helix.get-global-chat-badges.json`) and Twitch
 states the badge displays only for current subscribers.
 

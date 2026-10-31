@@ -5,7 +5,7 @@ import { admissionEvents } from '../schema.js';
 
 export type AdmissionRow = typeof admissionEvents.$inferSelect;
 
-/** Channel-scoped durable admission records for rolling-window interactions. */
+/** Channel-scoped durable admission and cosmetic budget records for live interactions. */
 export function admissionRepository(connection: DatabaseConnection, channelId: string) {
   const { db } = connection;
   return {

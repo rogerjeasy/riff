@@ -155,7 +155,8 @@ export function createLiveRuntime(deps: {
       {
         seed: stored ? sessionSeed(stored.id) : (now() % 0xfffffff) + 1,
         mode: 'live',
-        ...(stored ? { session: stored.snapshot } : { admission: admissionFor(automationId) }),
+        admission: admissionFor(automationId),
+        ...(stored ? { session: stored.snapshot } : {}),
         channelBudget,
       },
     );
@@ -243,6 +244,11 @@ export function createLiveRuntime(deps: {
         engines.delete(automationId);
         // In-memory counters may include the unrecorded event; rebuild from storage.
         admissions.delete(automationId);
+        try {
+          channelBudget.effects = restoreChannelEffects(recentAdmissions(), now());
+        } catch {
+          /* Keep conservative in-memory charges if the durable history cannot be read. */
+        }
         try {
           repo.updateAutomation(automationId, { status: 'paused' });
           sessions.pause(automationId);
@@ -361,7 +367,13 @@ export function createLiveRuntime(deps: {
     });
     const prepared = createEngine(
       { source: version.source, manifest: version.manifest },
-      { seed: sessionSeed(snapshot.id), mode: 'live', session: snapshot, channelBudget },
+      {
+        seed: sessionSeed(snapshot.id),
+        mode: 'live',
+        session: snapshot,
+        admission: admissionFor(reviewed.automationId),
+        channelBudget,
+      },
     );
     try {
       if (!(await prepared.warm().catch(() => false)))

@@ -175,7 +175,8 @@ export const sessionEvents = sqliteTable(
   ],
 );
 /**
- * Durable admission record for rolling-window interactions: every command decision,
+ * Durable admission record for live interactions: every rolling command or stateful
+ * cosmetic decision,
  * written before any effect leaves the host, so duplicate suppression, per-viewer
  * windows and effect budgets survive a restart. Rows older than the longest window
  * are pruned.

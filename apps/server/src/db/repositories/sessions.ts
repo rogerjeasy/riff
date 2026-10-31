@@ -14,6 +14,7 @@ import type {
 } from '@riff/sdk';
 import type { DatabaseConnection } from '../client.js';
 import {
+  admissionEvents,
   automations,
   experienceSessions,
   sessionEvents,
@@ -255,6 +256,18 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
             before: current.snapshot,
           });
         if (input.event && input.decision) {
+          // Cosmetic budgets share the semantic commit; controls/migrations may clear outbox.
+          db.insert(admissionEvents)
+            .values({
+              channelId,
+              automationId: input.automationId,
+              eventId: input.event.id,
+              viewerId: input.event.viewerId,
+              at: input.event.at,
+              code: input.decision.code,
+              effects: input.decision.effects.length,
+            })
+            .run();
           db.insert(sessionEvents)
             .values({
               id: randomUUID(),

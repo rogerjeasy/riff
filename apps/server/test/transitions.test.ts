@@ -25,7 +25,7 @@ const definition: ExperienceDefinition = {
   objective: { kind: 'highest-score', target: null },
 };
 const migration = `(input)=>{const s=JSON.parse(JSON.stringify(input.snapshot));for(const p of Object.values(s.participants))p.remaining+=input.newDefinition.resource.perParticipant-input.oldDefinition.resource.perParticipant;return s;}`;
-async function setup(database?: DatabaseConnection) {
+async function setup(database?: DatabaseConnection, effectsPerMinute = 120) {
   let at = 1000;
   const app = await createApp({ logger: false, ...(database ? { database } : {}), now: () => at });
   apps.push(app);
@@ -45,7 +45,7 @@ async function setup(database?: DatabaseConnection) {
         maxPerViewer: 5,
         windowMs: 120000,
       },
-      limits: { effectsPerEvent: 1, effectsPerMinute: 120 },
+      limits: { effectsPerEvent: 1, effectsPerMinute },
     };
     return repo.insertVersion({
       automationId: automation.id,
@@ -756,3 +756,89 @@ it('CAS rejects a rollback target whose previous approval was removed after prep
   }
 });
 
+it('retains the automation cosmetic budget through migration, compatible rollback and restart until the original window expires', async () => {
+  const database = openDatabase(':memory:');
+  migrateConnection(database);
+  try {
+    const f = await setup(database, 1);
+    const rename = f.version(
+      { ...definition, contribution: { command: '!splat', points: 1 } },
+      f.old.id,
+    );
+    const forward = await f.preview('immediate', migration, rename);
+    f.setAt(2000);
+    await f.approve(forward, rename);
+    const migrated = (await f.chat('budget-after-migration', '!splat'))[0];
+    expect(migrated?.code).toBe('ACCEPTED');
+    expect(migrated?.effects).toEqual([]);
+    const rollback = await f.preview('immediate', migration, f.repo.version(f.old.id)!);
+    await f.app.riff.studio.approveTransition(rollback.id, {
+      evidenceId: rollback.evidenceId,
+      artifactId: f.old.artifactId!,
+      expectedActiveVersionId: rename.id,
+      sessionId: rollback.sourceSessionId,
+      boundary: 'immediate',
+    });
+    const rolledBack = (await f.chat('budget-after-rollback', '!throw'))[0];
+    expect(rolledBack?.code).toBe('ACCEPTED');
+    expect(rolledBack?.effects).toEqual([]);
+    await f.app.close();
+    apps.splice(apps.indexOf(f.app), 1);
+    const restarted = await createApp({ logger: false, database, now: f.now });
+    apps.push(restarted);
+    const bob = (id: string, text: string) =>
+      restarted.riff.runtime.handleChat({
+        id,
+        text,
+        viewerId: 'bob',
+        viewerName: 'Bob',
+        channelId: 'channel',
+        roles: ['viewer'],
+        source: 'twitch',
+      });
+    await bob('bob-budget-join', '!blue');
+    const recovered = (await bob('budget-after-restart', '!throw'))[0];
+    expect(recovered?.code).toBe('ACCEPTED');
+    expect(recovered?.effects).toEqual([]);
+    f.setAt(61001);
+    const expired = (await bob('budget-window-expired', '!throw'))[0];
+    expect(expired?.code).toBe('ACCEPTED');
+    expect(expired?.effects).toHaveLength(1);
+    expect(
+      restarted.riff.repo
+        .admissionsSince(0)
+        .filter((row) => row.effects > 0)
+        .map((row) => row.at),
+    ).toEqual([1000, 61001]);
+  } finally {
+    await Promise.all(apps.splice(0).map((a) => a.close()));
+    database.close();
+  }
+});
+it('does not persist gameplay or spend cosmetic allowance when the stateful admission write fails', async () => {
+  const database = openDatabase(':memory:');
+  migrateConnection(database);
+  try {
+    const f = await setup(database, 2);
+    database.client.exec(
+      "CREATE TEMP TRIGGER fail_stateful_admission BEFORE INSERT ON admission_events WHEN NEW.event_id='failing-stateful-admission' BEGIN SELECT RAISE(ABORT,'disk full'); END",
+    );
+    const before = f.repo.session(f.automation.id)!.snapshot;
+    const failed = (await f.chat('failing-stateful-admission', '!throw'))[0];
+    expect(failed?.code).toBe('STOPPED');
+    expect(f.repo.session(f.automation.id)?.snapshot.scores).toEqual(before.scores);
+    expect(f.repo.hasAutomationEvent(f.automation.id, 'failing-stateful-admission')).toBe(false);
+    database.client.exec('DROP TRIGGER fail_stateful_admission');
+    f.app.riff.studio.resumeAutomation(f.automation.id);
+    const retried = (await f.chat('failing-stateful-admission', '!throw'))[0];
+    expect(retried?.code).toBe('ACCEPTED');
+    expect(retried?.effects).toHaveLength(1);
+    const capped = (await f.chat('last-stateful-allowance', '!throw'))[0];
+    expect(capped?.code).toBe('ACCEPTED');
+    expect(capped?.effects).toEqual([]);
+    expect(f.repo.admissionsSince(0).filter((row) => row.effects > 0)).toHaveLength(2);
+  } finally {
+    await Promise.all(apps.splice(0).map((a) => a.close()));
+    database.close();
+  }
+});

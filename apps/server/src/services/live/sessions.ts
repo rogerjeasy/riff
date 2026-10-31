@@ -200,7 +200,10 @@ export function createSessionControl(deps: {
       const original = repo.session(version.automationId);
       if (!original) throw new Error('Missing durable session');
       engine.restoreSession(original.snapshot);
-      if (repo.hasAutomationEvent(version.automationId, event.id)) {
+      if (
+        repo.hasAutomationEvent(version.automationId, event.id) ||
+        repo.hasAdmission(version.automationId, event.id)
+      ) {
         const decision: ExecutionDecision = {
           eventId: event.id,
           artifactId: engine.artifactId,
