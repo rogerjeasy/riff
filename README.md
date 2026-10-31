@@ -2,86 +2,109 @@
 
 Invent your next live experience together.
 
-This repository contains the development foundation for the approved Riff product: six TypeScript workspaces, installed dependencies, a local Fastify service, SQLite migrations, and separate console, overlay, and OBS dock entries. The complete F01–F40 scope remains in the [product documentation](docs/project-documentation.md).
+Riff turns a creator's sentence into a **working, controlled Twitch interaction**:
 
-The console now includes a **private Tomato Toss preview** backed by the supervised
-QuickJS execution engine. Synthetic chat events exercise host-enforced rolling
-quotas, duplicate protection and replay; accepted actions render private tomatoes.
-Runtime generation, Twitch authentication, approval, live activation and collaboration
-remain unimplemented. No credentials are needed for preview.
+> “Let viewers throw tomatoes with !tomato, limited to three throws per person in any rolling 60 seconds.”
 
-Try `!tomato` three times as Alice, then a fourth time; switch to Bob, replay a
-duplicate, or advance the replay clock by 60 seconds. Inspect the decision trace,
-artifact identity and seed. Stop clears the stage and cancels the run; reset starts
-a fresh rehearsal. The source is an explicitly labeled reviewed reference module.
-See [the execution contract](packages/sdk/SDK.md) and [implementation design](docs/superpowers/specs/2026-10-31-interaction-preview-design.md).
+**Describe → Test → Preview → Approve → Play.** Codex compiles the sentence at runtime
+into a handler, a permission manifest and declarative tests. The host independently
+verifies them in the same QuickJS sandbox that runs live events, shows the evidence in
+plain language, rehearses it privately, and activates only the exact artifact the
+creator approved. Real Twitch chat (EventSub) then drives it on an OBS overlay, with
+pause, rollback and an emergency stop always one click away.
 
-## Start here
-
-Run from this `riff` directory:
+## Try it in two minutes
 
 ```sh
-# This checkout already has local Node/pnpm support and dependencies installed.
-./scripts/pnpm db:migrate
-./scripts/pnpm dev
+./scripts/pnpm dev            # server :8787 + console :5173 (migrations run at boot)
 ```
 
-Open the console at <http://localhost:5173>, the inactive transparent overlay at <http://localhost:5173/overlay/>, or the dock at <http://localhost:5173/dock/>. Host health is at <http://127.0.0.1:8787/api/health>.
+Open <http://localhost:5173>:
 
-For a fresh checkout, install Node from `.nvmrc`, enable Corepack, and install the frozen lockfile first. See [setup instructions and environment requirements](docs/setup.md). Copy `.env.example` to `.env` only when changing defaults.
+1. **Describe** — press **Generate** on the prefilled Tomato Toss sentence.
+2. **Test** — read the approval card (when · what · who · how much · what passed), the
+   _what you asked vs. what will run_ table, the pipeline stages, every generated and
+   host-owned scenario, and the exact code and manifest.
+3. **Preview** — press **Run proof sequence** on the private stage: three throws land,
+   the fourth is blocked with a reason, Bob is unaffected, a redelivered message is
+   ignored, chat noise is ignored, and the allowance returns after the window.
+4. **Approve** — approval binds to the artifact hash and the live version you saw.
+5. **Play** — copy the overlay URL into an OBS browser source (1920×1080), connect
+   Twitch, and let chat type `!tomato`. Then press **Edit**, generate
+   _“Change the command to !splat, allow two throws per 30 seconds, subscribers only”_,
+   review the authority diff, approve, and roll back.
 
-## Workspace
+By default the server uses the deterministic **offline template compiler** (no model
+call, honestly labelled in the UI). To compile with **Codex at runtime**, sign in to the
+Codex CLI once (`codex login`) and set `RIFF_COMPILER_MODE=codex` in `.env`.
+
+Measured on this machine with Codex CLI 0.166.0 (`./scripts/pnpm compile:live … --edit …`):
+Tomato Toss compiled, verified and matched the intent in 39 s on the first attempt;
+the `!splat` / 30 s / subscribers-only edit in 63 s, also first attempt, with every
+stage and intent check passing.
+
+## How it is built
 
 ```text
-apps/
-  server/               Trusted HTTP host, services, adapters, workers, database
-  web/                  Console, overlay, dock, shared UI, effects, locales
-packages/
-  sdk/                  Dependency-free capability contract and policy constants
-  compiler/             Compilation contracts and validation pipeline ownership
-  sandbox/              QuickJS host and capability bridge ownership
-  twitch/               OAuth, EventSub, Helix and fixture ownership
-config/                 Workspace dependency graph and external tool inventory
-scripts/                Toolchain wrapper, checks, smoke test and tooling tests
-infra/                  Containers, local proxy, monitoring, backup/isolation plans
-docs/                   Product, technology, setup, decisions and implementation plans
-data/                   Ignored local SQLite files
+apps/web        Console (5-step studio), private rehearsal stage, OBS dock, read-only overlay
+apps/server     Fastify host: authoring queue, verification, approval, live runtime,
+                overlay broker, Twitch OAuth + EventSub, SQLite (Drizzle)
+packages/sdk    Dependency-free contract: events, manifest, effects, decision codes,
+                declarative scenarios, SDK guide and curated examples given to Codex
+packages/compiler  Codex output contract (strict JSON Schema), prompt workspace, intent
+                checks, offline compiler, compile orchestration (1 repair), queue
+packages/sandbox   QuickJS engine (warm worker, fresh runtime per event), admission,
+                static analysis, scenario runner, host policy suite, verification pipeline
+packages/twitch    EventSub WebSocket lifecycle, Helix, OAuth, chat normalization, fixtures
 ```
 
-Responsibility READMEs reserve the full product structure without introducing unused classes or pretending product features exist. Browser code communicates through HTTP/WS; it cannot import server packages. The server composes the four packages, compiler/sandbox depend only on the SDK internally, and the SDK has no runtime dependencies.
+**Trust model in one paragraph.** Codex never receives credentials, repository files or
+network tools: each compile runs in a fresh temp workspace holding only `TASK.md`,
+`SDK.md`, two `.d.ts` files and curated examples, a fresh `CODEX_HOME` with only the
+login, a read-only sandbox, and no web search. Its output is a strict JSON object; the
+host then runs manifest validation → restricted-syntax analysis → sandbox compile →
+the generated scenarios → a host-owned policy suite the compiler cannot edit, plus
+deterministic intent checks. Command matching, audience, per-viewer rolling windows,
+channel budgets and duplicate suppression are enforced by the host before guest code
+runs. Guest code runs in QuickJS with 64 MB memory, 50 ms CPU, 2 s wall time, 25 bridge
+calls and no ambient authority; any fault quarantines the version and discards its
+effects. Preview engines have no route to the overlay or Twitch; the overlay broker
+rejects non-live decisions by construction.
 
-## Common commands
+**Live controls.** Approval checks the artifact hash and the expected live version
+(stale reviews get 409). Edits and rollbacks keep viewer allowances. `Stop everything`
+(console, dock or `!riff panic` from the broadcaster or a moderator) flips an in-memory
+fence first, clears the overlay, persists second and stays stopped across restarts
+until explicitly resumed.
 
-Use `./scripts/pnpm` in this checkout, or `pnpm` after activating the pinned toolchain.
+## Twitch
 
-| Command                           | Purpose                                                                  |
-| --------------------------------- | ------------------------------------------------------------------------ |
-| `./scripts/pnpm run doctor`       | Required tools, conditional tool availability and dependency presence    |
-| `./scripts/pnpm dev`              | Server watch mode and Vite hot reload                                    |
-| `./scripts/pnpm check`            | Lint, package boundaries, types, host/tooling tests, focused secret scan |
-| `./scripts/pnpm format:check`     | Formatting check                                                         |
-| `./scripts/pnpm build`            | Build the packages, server and three browser entries                     |
-| `./scripts/pnpm check:bundles`    | Verify separate entries and inactive overlay isolation after build       |
-| `./scripts/pnpm smoke`            | Exercise Fastify and real SQLite through in-process HTTP injection       |
-| `./scripts/pnpm db:generate`      | Generate a migration after an intentional schema change                  |
-| `./scripts/pnpm db:migrate`       | Apply committed migrations to the configured database                    |
-| `./scripts/pnpm browsers:install` | Install the Chromium version required by Playwright                      |
-| `./scripts/pnpm test:e2e`         | Browser and axe accessibility checks; needs local sockets                |
-| `./scripts/pnpm security:audit`   | Query npm advisories for production dependencies                         |
-| `./scripts/pnpm security:secrets` | Gitleaks history scan; requires its CLI                                  |
-| `./scripts/pnpm setup:verify`     | Full foundation verification, including browsers                         |
+1. Create an app at <https://dev.twitch.tv/console/apps> with redirect URL
+   `http://localhost:8787/auth/twitch/callback`.
+2. Set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` and `RIFF_SECRET`
+   (`openssl rand -base64 32`) in `.env`, restart, and press **Connect Twitch**.
+   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+3. Without a Twitch app you can still exercise the full live path with the
+   [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
+   set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
+   automated test `apps/server/test/twitch-live.test.ts` drives the same path with the
+   documented EventSub protocol and fixtures.
 
-`doctor` is also a pnpm built-in; include **`run`** to select Riff's script.
+## Commands
 
-After `build`, `./scripts/pnpm start` serves the compiled interface and API together on port 8787. This remains a local foundation with no authentication or active automation routes.
+| Command                        | Purpose                                                             |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `./scripts/pnpm dev`           | Server watch mode and Vite hot reload                               |
+| `./scripts/pnpm check`         | Lint, boundaries, strict types, all unit/integration tests, secrets |
+| `./scripts/pnpm test:e2e`      | Chromium end-to-end flow with axe accessibility checks              |
+| `./scripts/pnpm compile:live`  | One real Codex compile (+ `--edit "…"`) through the full pipeline   |
+| `./scripts/pnpm build`         | Packages, server and the console, dock and overlay entries          |
+| `./scripts/pnpm check:bundles` | Proves the overlay bundle contains no console code                  |
+| `./scripts/pnpm smoke`         | Fastify + SQLite health smoke test                                  |
+| `./scripts/pnpm db:generate`   | Generate a migration after a schema change                          |
+| `./scripts/pnpm run doctor`    | Tool and dependency inventory                                       |
 
-## Engineering practices
+After `build`, `./scripts/pnpm start` serves the compiled UI and API on port 8787.
 
-- Central dependency catalog and lockfile; shared TypeScript, ESLint, formatting and test configuration.
-- Strict source types, runtime validation at input boundaries, injected dependencies and explicit resource disposal.
-- Tested package boundaries and a dependency-free SDK; external I/O belongs to the trusted host or Twitch package.
-- Shared console/dock presentation with a separate overlay build. Reuse follows actual shared behavior.
-- Host tests run under Vitest; generated automation fixtures are excluded. QuickJS loading is tested, but guest isolation is not implemented or certified.
-- GitHub Actions runs the checks without live integration credentials. No publish or deployment workflow is enabled.
-
-Read [AGENTS.md](AGENTS.md) for the engineering contract, [tech-stack.md](docs/tech-stack.md) for technology ownership, and [setup-status.md](docs/setup-status.md) for verified results and remaining environment requirements.
+Read [AGENTS.md](AGENTS.md) for the engineering contract, [the SDK guide](packages/sdk/SDK.md)
+for the exact contract Codex compiles against, and [setup](docs/setup.md) for installation.

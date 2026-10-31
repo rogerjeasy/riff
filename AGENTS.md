@@ -17,12 +17,9 @@ existing baseline from supporting selections and conditional deployment tools.
 The development foundation now exists; see [README](README.md),
 [setup instructions](docs/setup.md), and [verified setup status](docs/setup-status.md).
 Contracts for the full product below remain requirements, not implemented features.
-The host now exposes health, static UI and bounded private synthetic replay at
-`POST /api/preview`. SDK 0.2.0 and the supervised QuickJS preview engine support
-reviewed projectile handlers, rolling host quotas, deduplication and deterministic
-replay. Runtime compilation, approval/activation and live integrations remain
-unavailable. HTTP callers cannot provide executable source. See
-[the preview contract](packages/sdk/SDK.md).
+The first complete describe → test → preview → approve → play workflow is implemented
+(see "Current increment" at the end of this file). Contracts for the wider studio below
+remain requirements, not implemented features.
 
 When this file and your instincts disagree, this file wins. When this file and the
 official Twitch or OpenAI docs disagree, the docs win — then fix this file in the same
@@ -381,19 +378,16 @@ pnpm smoke            Fastify injection and SQLite foundation smoke test
 pnpm db:migrate       apply committed Drizzle migrations
 pnpm db:generate      generate migrations after a schema change
 pnpm check            lint, types, host/tooling tests and focused secret scan
+pnpm compile:live     one real Codex compile (+ --edit) through the full pipeline; never in CI
 pnpm run doctor       tool and dependency inventory (explicit run avoids pnpm built-in)
 ```
 
-`RIFF_COMPILER_MODE=mock` is the only accepted foundation compiler setting; even
-mock fixture compilation is not implemented yet. Live compiler tests, fixture
-recording, generated-code lint rules, seeded demos, and event-to-effect smoke tests
-are future scripts, not placeholder successful commands.
-
-`.env.example` is the current configuration inventory. Environment parsing in
-`apps/server/src/env.ts` validates loopback binding, explicit container binding
-consent, ports, log levels, database paths and inactive compiler mode.
-Defaults need no external credentials. Future integration fields stay blank.
-The only current database table is `channels`; migrate it explicitly with the CLI.
+`RIFF_COMPILER_MODE` is `mock` (deterministic offline template compiler, labelled in
+the UI, used by CI and e2e) or `codex` (Codex SDK at runtime). `.env.example` is the
+configuration inventory; `apps/server/src/env.ts` validates it (loopback binding,
+explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optional
+EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
+Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`.
 
 ---
 
@@ -411,29 +405,41 @@ For release:
 - README documents architecture, environment, commands, and how to run and record
   fixtures.
 
-## Current private preview increment
+## Current increment — describe → test → preview → approve → play
 
-`packages/sdk` 0.2.0 defines normalized chat events, manifests and the sole enabled
-capability `overlay` (projectile assets tomato/star). Manifest/event validation is
-currently in `packages/sandbox/src/contract.ts`; compiler schema integration and
-the three-way capability sync check ship with runtime authoring. No state/timer/chat
-capability is enabled. Unsupported manifests fail closed.
+Implemented end to end, with Tomato Toss as the reference interaction:
 
-`createPreviewEngine` runs fresh QuickJS workers with host-owned admission and no
-live sink. Calls/new expressions and escaping async faults are instrumented with
-reserved host observers; rejected or pending observed work quarantines the run.
-Limits additionally include 256 observed call results and 100 pending jobs per event.
-Trusted worker startup has a separate 10-second bound; the two-second handler wall
-clock starts at readiness. The 50 ms interrupt budget measures worker CPU usage.
-The existing pinned TypeScript dependency is also declared in the sandbox to parse
-and instrument guest source without regex rewriting. This is not the future
-generated-code lint/typecheck/bundling pipeline.
+- **SDK 0.3.0** (`packages/sdk`): chat events, permission manifest, `overlay` projectile
+  capability (tomato/star/heart), decision codes, allowance snapshots, live/preview
+  modes, declarative scenario tests, `SDK_GUIDE` (= committed `SDK.md`, sync-tested),
+  `RIFF_DTS`, curated examples. Command matching is trimmed and case-insensitive.
+- **Sandbox** (`packages/sandbox`): one warm worker per engine with the QuickJS module
+  loaded once and a brand-new runtime/context per event (≈2 ms/event warm); wall-clock
+  overruns kill the worker. Host admission (duplicate → command → audience → rolling
+  per-viewer window → automation and shared channel budgets) runs before guest code.
+  Admission state is injectable so live versions of one automation share counters.
+  `verifyCandidate` runs manifest → restricted syntax/least-privilege analysis →
+  compile → generated scenarios (≥3 with happy, edge and negative coverage) → host
+  policy suite derived only from the manifest. Reports are bounded to 4 KB for repair.
+- **Compiler** (`packages/compiler`): strict JSON Schema output (candidate | question |
+  unsupported), exact workspace files, prompt with fenced creator text, deterministic
+  intent checks (match/mismatch/assumed/preserved/changed), one repair round, 180 s
+  timeout, queue (1 per channel, 4 global, 3 waiting). Transport is injected.
+- **Server**: Codex transport (temp workspace + temp `CODEX_HOME` with only the login,
+  read-only sandbox, no network, no web search, minimal env), authoring service,
+  private replay (`POST /api/versions/:id/preview`), approval bound to artifact hash and
+  expected live version, pause/resume/rollback, panic/resume (in-memory first, persisted,
+  survives restart), quarantine on incident, overlay broker (live decisions only,
+  heartbeat, rotatable key), Twitch OAuth + sealed tokens + EventSub chat → live runtime.
+  Mutating routes require same-origin and `x-riff-request: 1`.
+- **Web**: five-step console, private rehearsal stage with personas and proof sequence,
+  approval card, authority diff and consent, live library, activity, OBS dock, and a
+  read-only overlay that validates messages and clears on heartbeat loss.
 
-`POST /api/preview` accepts only a seed and up to 64 validated synthetic events,
-executes the server-owned Tomato Toss reference and returns private decisions and
-effects. It keeps one active replay per app, rejects cross-site requests and unknown
-fields, and cancels the engine on client disconnect. No credentials are used. The
-console alone renders these effects in a private stage; the public overlay remains
-inactive. Client stop aborts the request, clears effects and fences late responses.
-Replay state is ephemeral and scoped to one request; no live durability or shared
-channel-wide broker is claimed.
+Deliberate deviations from the plan above, recorded here so they stay honest:
+generated tests are declarative scenarios (data run by the engine) rather than
+TypeScript test files; there is no esbuild/tsc stage because handlers are a single JS
+expression checked by the TypeScript parser; dedupe and rate windows live in memory
+per process (a restart starts fresh windows); the compiler's filesystem boundary is
+Codex's read-only sandbox in a temp directory, not a separate OS isolate. `founder`
+badges count as subscribers (`packages/twitch/src/normalize.ts`, UNVERIFIED).

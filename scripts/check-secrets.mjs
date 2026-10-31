@@ -18,7 +18,11 @@ const failures = [];
 for (const path of new Set(files)) {
   // Lockfiles contain public integrity hashes; these are not credentials.
   if (path.endsWith('pnpm-lock.yaml')) continue;
-  const content = await readFile(path, 'utf8');
+  // Tracked files deleted in the working tree have nothing left to scan.
+  const content = await readFile(path, 'utf8').catch((error) => {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  });
   if (patterns.some((pattern) => pattern.test(content))) failures.push(path);
 }
 if (failures.length) {
