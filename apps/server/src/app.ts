@@ -38,6 +38,7 @@ interface AppDependencies {
   secret?: string | null;
   twitch?: TwitchConfig | null;
   fetch?: FetchLike;
+  now?: () => number;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -71,7 +72,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
 
   const hub = createHub();
   const overlay = createOverlayBroker();
-  const runtime = createLiveRuntime({ repo, hub, overlay });
+  const runtime = createLiveRuntime({
+    repo,
+    hub,
+    overlay,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
   runtime.boot();
   const studio = createStudioService({ repo, hub, runtime, overlay });
   const authoring = createAuthoringService({

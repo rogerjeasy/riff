@@ -1,3 +1,4 @@
+import { sessionRepository } from './sessions.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, max } from 'drizzle-orm';
 import type { DatabaseConnection } from '../client.js';
@@ -16,6 +17,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
   const now = () => Date.now();
   return {
     channelId,
+    ...sessionRepository(connection, channelId),
     ensure(displayName: string) {
       db.insert(channels)
         .values({ id: channelId, displayName, createdAt: new Date() })

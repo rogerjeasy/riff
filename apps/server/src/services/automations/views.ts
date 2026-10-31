@@ -90,6 +90,14 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
     b.capabilities.join(', ') || 'none',
     b.capabilities.some((c) => !a.capabilities.includes(c)) ? 'more' : 'same',
   );
+  if (JSON.stringify(a.experience ?? null) !== JSON.stringify(b.experience ?? null))
+    changes.push({
+      field: 'experience',
+      label: 'Session rules (reset required)',
+      from: a.experience ? JSON.stringify(a.experience) : 'No shared session',
+      to: b.experience ? JSON.stringify(b.experience) : 'No shared session',
+      authority: 'same',
+    });
   if (from.source !== to.source)
     changes.push({
       field: 'source',

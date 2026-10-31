@@ -15,6 +15,13 @@
       "when": 1793454990087,
       "tag": "0001_loving_bloodscream",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793476735452,
+      "tag": "0002_durable_sessions",
+      "breakpoints": true
     }
   ]
 }

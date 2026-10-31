@@ -1,3 +1,9 @@
+import type {
+  ExperienceDefinition,
+  SessionSnapshot,
+  ChatEvent,
+  ExecutionDecision,
+} from '@riff/sdk';
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const channels = sqliteTable('channels', {
@@ -119,4 +125,64 @@ export const activity = sqliteTable(
     message: text('message').notNull(),
   },
   (table) => [index('activity_channel_at').on(table.channelId, table.at)],
+);
+
+/** Current durable round per automation; old journal identities survive reset. */
+export const experienceSessions = sqliteTable(
+  'experience_sessions',
+  {
+    automationId: text('automation_id')
+      .primaryKey()
+      .references(() => automations.id),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    id: text('id').notNull().unique(),
+    versionId: text('version_id')
+      .notNull()
+      .references(() => versions.id),
+    definition: text('definition', { mode: 'json' }).$type<ExperienceDefinition>().notNull(),
+    snapshot: text('snapshot', { mode: 'json' }).$type<SessionSnapshot>().notNull(),
+    revision: integer('revision').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('sessions_channel').on(table.channelId)],
+);
+export const sessionEvents = sqliteTable(
+  'session_events',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    sessionId: text('session_id').notNull(),
+    automationId: text('automation_id').notNull(),
+    versionId: text('version_id').notNull(),
+    eventId: text('event_id').notNull(),
+    at: integer('at').notNull(),
+    event: text('event', { mode: 'json' }).$type<ChatEvent>().notNull(),
+    code: text('code').notNull(),
+    revision: integer('revision').notNull(),
+  },
+  (table) => [
+    uniqueIndex('session_event_identity').on(table.channelId, table.sessionId, table.eventId),
+    uniqueIndex('session_automation_event_identity').on(
+      table.channelId,
+      table.automationId,
+      table.eventId,
+    ),
+  ],
+);
+export const sessionOutbox = sqliteTable(
+  'session_outbox',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    sessionId: text('session_id').notNull(),
+    automationId: text('automation_id').notNull(),
+    versionId: text('version_id').notNull(),
+    decision: text('decision', { mode: 'json' }).$type<ExecutionDecision>().notNull(),
+    viewer: text('viewer'),
+    at: integer('at').notNull(),
+    dispatchedAt: integer('dispatched_at'),
+  },
+  (table) => [index('session_outbox_channel').on(table.channelId, table.automationId)],
 );

@@ -1,3 +1,4 @@
+import { createSessionControl, experienceOf, sessionSeed } from './sessions.js';
 import {
   createAdmissionState,
   createEngine,
@@ -5,7 +6,12 @@ import {
   type AdmissionState,
   type ExecutionEngine,
 } from '@riff/sandbox';
-import { EFFECT_LIMITS, type ChatEvent, type PermissionManifest } from '@riff/sdk';
+import {
+  EFFECT_LIMITS,
+  type ChatEvent,
+  type PermissionManifest,
+  type ExecutionDecision,
+} from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -26,8 +32,13 @@ export function createLiveRuntime(deps: {
   repo: ChannelRepository;
   hub: Hub;
   overlay: OverlayBroker;
+  now?: () => number;
 }) {
   const { repo, hub, overlay } = deps;
+  const now = deps.now ?? Date.now;
+  const sessions = createSessionControl({ repo, hub, overlay, now });
+  let queue: Promise<unknown> = Promise.resolve();
+  let closed = false;
   const engines = new Map<string, { engine: ExecutionEngine; version: VersionRow }>();
   // Admission counters live per automation, not per version: edits and rollbacks
   // never hand a viewer a fresh allowance.
@@ -59,6 +70,7 @@ export function createLiveRuntime(deps: {
       return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
     });
     overlay.setInstructions(panic ? [] : lines);
+    sessions.publish(panic);
   }
   function quarantine(automationId: string, version: VersionRow, fault: string) {
     engines.get(automationId)?.engine.stop();
@@ -66,6 +78,7 @@ export function createLiveRuntime(deps: {
     try {
       repo.updateVersion(version.id, { status: 'quarantined', incident: fault });
       repo.updateAutomation(automationId, { status: 'paused' });
+      sessions.pause(automationId);
     } catch {
       /* The engine is already stopped; persistence is best effort. */
     }
@@ -84,12 +97,13 @@ export function createLiveRuntime(deps: {
   }
   function start(automationId: string, version: VersionRow) {
     engines.get(automationId)?.engine.stop();
+    const stored = experienceOf(version) ? sessions.recover(version) : null;
     const engine = createEngine(
       { source: version.source, manifest: version.manifest },
       {
-        seed: (Date.now() % 0xfffffff) + 1,
+        seed: stored ? sessionSeed(stored.id) : (now() % 0xfffffff) + 1,
         mode: 'live',
-        admission: admissionFor(automationId),
+        ...(stored ? { session: stored.snapshot } : { admission: admissionFor(automationId) }),
         channelBudget,
       },
     );
@@ -103,7 +117,98 @@ export function createLiveRuntime(deps: {
     refreshInstructions();
   }
 
-  return {
+  async function processChat(message: LiveChatMessage): Promise<ExecutionDecision[]> {
+    const text = message.text.trim().toLowerCase();
+    if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
+      if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
+        api.panic(`!riff panic by ${message.viewerName}`);
+      return [];
+    }
+    if (panic) return [];
+    lastAt = Math.max(lastAt, now());
+    const event = eventSchema.safeParse({
+      id: message.id,
+      channelId: message.channelId,
+      viewerId: message.viewerId,
+      roles: message.roles,
+      text: message.text,
+      at: lastAt,
+    });
+    if (!event.success) return [];
+    const fence = generation;
+    const results = [];
+    for (const [automationId, { engine, version }] of [...engines.entries()]) {
+      let decision: ExecutionDecision;
+      let sessionDelivered = 0;
+      try {
+        if (experienceOf(version)) {
+          const result = await sessions.process(
+            version,
+            engine,
+            event.data,
+            message.viewerName,
+            () => fence === generation && !panic && !closed,
+          );
+          decision = result.decision;
+          sessionDelivered = result.delivered;
+        } else decision = await engine.dispatch(event.data);
+      } catch {
+        generation++;
+        engine.stop();
+        engines.delete(automationId);
+        try {
+          repo.updateAutomation(automationId, { status: 'paused' });
+          sessions.pause(automationId);
+        } catch {
+          /* memory fence already applied */
+        }
+        refreshInstructions();
+        hub.publish('studio', null);
+        decision = {
+          eventId: event.data.id,
+          artifactId: engine.artifactId,
+          mode: 'live',
+          code: 'STOPPED',
+          reason:
+            'Session storage failed; progress and effects were not committed. Resume to retry.',
+          effects: [],
+          viewerId: event.data.viewerId,
+          at: event.data.at,
+          allowance: null,
+        };
+      }
+      results.push(decision);
+      if (decision.code === 'UNRELATED') continue;
+      if (decision.code === 'INCIDENT') {
+        quarantine(automationId, version, engine.incident?.fault ?? 'execution incident');
+        continue;
+      }
+      // A generation change (panic, swap, pause) while the handler ran fences its effects.
+      const delivered =
+        fence === generation && !panic
+          ? experienceOf(version)
+            ? sessionDelivered
+            : overlay.deliver(decision, message.viewerName)
+          : 0;
+      lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
+      publishActivity({
+        at: Date.now(),
+        kind: 'decision',
+        automationId,
+        versionId: version.id,
+        eventId: message.id,
+        viewer: message.viewerName,
+        code: fence === generation ? decision.code : 'STOPPED',
+        message:
+          decision.code === 'ACCEPTED'
+            ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} effect${delivered === 1 ? '' : 's'} sent to the overlay`
+            : decision.reason,
+      });
+    }
+    return results;
+  }
+
+  const api = {
     get panicked() {
       return panic;
     },
@@ -136,9 +241,15 @@ export function createLiveRuntime(deps: {
     pause(automationId: string) {
       generation++;
       stop(automationId);
+      sessions.pause(automationId);
+      overlay.clear('pause');
+      refreshInstructions();
     },
     resumeAutomation(automationId: string, version: VersionRow) {
-      if (!panic) start(automationId, version);
+      if (!panic) {
+        sessions.resume(automationId);
+        start(automationId, version);
+      }
     },
     panic(source: string) {
       panic = true; // in-memory first: nothing below can delay the stop
@@ -147,10 +258,24 @@ export function createLiveRuntime(deps: {
       engines.clear();
       overlay.clear('panic');
       overlay.setInstructions([]);
+      const panicAt = now();
       try {
-        repo.updateState({ panic: true, panicAt: Date.now() });
+        repo.updateState({ panic: true, panicAt });
       } catch {
-        /* Remain stopped even if persistence fails. */
+        /* Remain stopped in memory. */
+      }
+      // Never roll back a durable panic because a secondary session write fails.
+      // panicAt also lets explicit resume recover the frozen clock after a restart.
+      try {
+        for (const row of repo.sessions()) {
+          try {
+            sessions.pause(row.automationId, panicAt);
+          } catch {
+            /* Best effort; durable panic remains. */
+          }
+        }
+      } catch {
+        /* Reading sessions may also be degraded. */
       }
       publishActivity({
         at: Date.now(),
@@ -165,7 +290,17 @@ export function createLiveRuntime(deps: {
       hub.publish('studio', null);
     },
     resume() {
-      repo.updateState({ panic: false, panicAt: null });
+      const panicAt = repo.state().panicAt;
+      repo.atomic(() => {
+        for (const automation of repo.automations()) {
+          if (automation.status !== 'live') continue;
+          const current = repo.session(automation.id);
+          if (current?.snapshot.phase === 'running' && panicAt !== null)
+            sessions.pause(automation.id, panicAt);
+          sessions.resume(automation.id);
+        }
+        repo.updateState({ panic: false, panicAt: null });
+      });
       panic = false;
       publishActivity({
         at: Date.now(),
@@ -180,63 +315,65 @@ export function createLiveRuntime(deps: {
       for (const automation of repo.automations()) {
         if (automation.status !== 'live' || !automation.activeVersionId) continue;
         const version = repo.version(automation.activeVersionId);
-        if (version?.status === 'active') start(automation.id, version);
+        if (version?.status === 'active') {
+          sessions.resume(automation.id);
+          start(automation.id, version);
+        }
       }
       hub.publish('studio', null);
     },
-    /** Route one authenticated chat message through every live automation. */
-    async handleChat(message: LiveChatMessage) {
+    /** Serialize one channel, including state changes spanning multiple automations. */
+    handleChat(message: LiveChatMessage): Promise<ExecutionDecision[]> {
       const text = message.text.trim().toLowerCase();
       if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
         if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
           this.panic(`!riff panic by ${message.viewerName}`);
-        return [];
+        return Promise.resolve([]);
       }
-      if (panic) return [];
-      lastAt = Math.max(lastAt + 1, Date.now());
-      const event = eventSchema.safeParse({
-        id: message.id,
-        channelId: message.channelId,
-        viewerId: message.viewerId,
-        roles: message.roles,
-        text: message.text,
-        at: lastAt,
-      });
-      if (!event.success) return [];
       const fence = generation;
-      const results = [];
-      for (const [automationId, { engine, version }] of [...engines.entries()]) {
-        const decision = await engine.dispatch(event.data);
-        results.push(decision);
-        if (decision.code === 'UNRELATED') continue;
-        if (decision.code === 'INCIDENT') {
-          quarantine(automationId, version, engine.incident?.fault ?? 'execution incident');
-          continue;
+      const next = queue.then(() => (fence === generation && !closed ? processChat(message) : []));
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    tick(): Promise<void> {
+      const fence = generation;
+      const next = queue.then(() => {
+        if (fence !== generation || panic || closed) return;
+        for (const [automationId, { engine, version }] of engines) {
+          if (experienceOf(version)) sessions.tick(automationId, engine);
         }
-        // A generation change (panic, swap, pause) while the handler ran fences its effects.
-        const delivered =
-          fence === generation && !panic ? overlay.deliver(decision, message.viewerName) : 0;
-        lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
-        publishActivity({
-          at: Date.now(),
-          kind: 'decision',
-          automationId,
-          versionId: version.id,
-          eventId: message.id,
-          viewer: message.viewerName,
-          code: fence === generation ? decision.code : 'STOPPED',
-          message:
-            decision.code === 'ACCEPTED'
-              ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} effect${delivered === 1 ? '' : 's'} sent to the overlay`
-              : decision.reason,
-        });
-      }
-      return results;
+      });
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    prepareActivation(version: VersionRow, resetSession = false) {
+      sessions.configure(version, resetSession);
+      generation++;
+    },
+    resetSession(automationId: string, version: VersionRow) {
+      generation++;
+      stop(automationId);
+      repo.atomic(() => sessions.reset(version));
+      if (!panic && repo.automation(automationId)?.status === 'live') start(automationId, version);
+      refreshInstructions();
+      return repo.session(automationId)?.snapshot ?? null;
     },
     close() {
+      closed = true;
+      generation++;
+      clearInterval(timer);
       for (const { engine } of engines.values()) engine.stop();
       engines.clear();
     },
   };
+  const timer = setInterval(
+    () =>
+      void api.tick().catch(() => {
+        api.panic('session timer storage failure');
+      }),
+    250,
+  );
+  timer.unref();
+  return api;
 }
 export type LiveRuntime = ReturnType<typeof createLiveRuntime>;

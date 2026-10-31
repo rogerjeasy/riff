@@ -116,6 +116,7 @@ export function registerStudioRoutes(
       .object({
         artifactId: z.string().regex(/^[a-f0-9]{64}$/),
         expectedActiveVersionId: id.nullable(),
+        resetSession: z.boolean().optional(),
       })
       .strict()
       .safeParse(request.body);
@@ -127,6 +128,7 @@ export function registerStudioRoutes(
       const version = studio.approve(p.data.id, {
         artifactId: body.data.artifactId,
         activeVersionId: body.data.expectedActiveVersionId,
+        ...(body.data.resetSession === undefined ? {} : { resetSession: body.data.resetSession }),
       });
       return { versionId: version.id, status: version.status };
     } catch (error) {
@@ -151,12 +153,37 @@ export function registerStudioRoutes(
       try {
         if (action === 'pause') studio.pause(p.data.id);
         else if (action === 'resume') studio.resumeAutomation(p.data.id);
-        else studio.rollback(p.data.id);
+        else {
+          const consent = z
+            .object({ resetSession: z.boolean().optional() })
+            .strict()
+            .safeParse(request.body ?? {});
+          if (!consent.success)
+            return reply.code(400).send({ code: 'INVALID', message: 'Invalid rollback consent.' });
+          studio.rollback(p.data.id, consent.data.resetSession ?? false);
+        }
         return { ok: true };
       } catch (error) {
         return fail(reply, error);
       }
     });
+  app.post('/api/automations/:id/session/reset', async (request, reply) => {
+    const p = params.safeParse(request.params);
+    const body = z
+      .object({ confirm: z.literal(true) })
+      .strict()
+      .safeParse(request.body);
+    if (!p.success || !body.success)
+      return reply.code(400).send({
+        code: 'CONFIRM',
+        message: 'Confirm that current session progress and resources may be reset.',
+      });
+    try {
+      return { session: studio.resetSession(p.data.id) };
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
   app.post('/api/channel/panic', async () => {
     studio.panic('console stop button');
     return { ok: true, panic: true };

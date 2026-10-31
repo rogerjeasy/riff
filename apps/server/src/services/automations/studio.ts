@@ -1,3 +1,4 @@
+import { SessionConfigurationError, experienceOf } from '../live/sessions.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { LiveRuntime } from '../live/runtime.js';
@@ -56,8 +57,17 @@ export function createStudioService(deps: {
     return automation?.activeVersionId ? repo.version(automation.activeVersionId) : undefined;
   };
 
-  function goLive(version: VersionRow, reason: 'approve' | 'rollback') {
-    repo.activate(version.automationId, version.id);
+  function goLive(version: VersionRow, reason: 'approve' | 'rollback', resetSession = false) {
+    try {
+      repo.atomic(() => {
+        runtime.prepareActivation(version, resetSession);
+        repo.activate(version.automationId, version.id);
+      });
+    } catch (error) {
+      if (error instanceof SessionConfigurationError)
+        throw new StudioError('BLOCKED', error.message);
+      throw error;
+    }
     const fresh = mustVersion(version.id);
     runtime.activate(version.automationId, fresh);
     control(
@@ -80,6 +90,8 @@ export function createStudioService(deps: {
         const active = versions.find((v) => v.id === automation.activeVersionId);
         return {
           ...automation,
+          session:
+            active && experienceOf(active) ? (repo.session(automation.id)?.snapshot ?? null) : null,
           versions: versions.map((v) => versionView(v, active, runtime.panicked)),
           canRollback: versions.some((v) => v.status === 'superseded' && v.approvedAt),
         };
@@ -98,7 +110,10 @@ export function createStudioService(deps: {
      * Activate exactly the reviewed artifact. The caller must echo the artifact hash it
      * reviewed and the active version it expects to replace; anything stale is refused.
      */
-    approve(versionId: string, expected: { artifactId: string; activeVersionId: string | null }) {
+    approve(
+      versionId: string,
+      expected: { artifactId: string; activeVersionId: string | null; resetSession?: boolean },
+    ) {
       const version = mustVersion(versionId);
       const blockers = approvalBlockers(version, runtime.panicked);
       if (blockers.length) throw new StudioError('BLOCKED', blockers.join(' '));
@@ -110,13 +125,12 @@ export function createStudioService(deps: {
           'STALE',
           'The live version changed while you were reviewing. Review the new difference first.',
         );
-      return goLive(version, 'approve');
+      return goLive(version, 'approve', expected.resetSession);
     },
     pause(automationId: string) {
       const automation = mustAutomation(automationId);
       runtime.pause(automation.id);
       repo.updateAutomation(automation.id, { status: 'paused' });
-      deps.overlay.clear('pause');
       control(`Paused “${automation.title}”.`, automation.id, automation.activeVersionId, 'PAUSED');
       changed();
     },
@@ -139,7 +153,7 @@ export function createStudioService(deps: {
       changed();
     },
     /** Activate the most recent previously approved version; with none, pause instead. */
-    rollback(automationId: string) {
+    rollback(automationId: string, resetSession = false) {
       const automation = mustAutomation(automationId);
       const previous = repo
         .versions(automation.id)
@@ -155,7 +169,25 @@ export function createStudioService(deps: {
       }
       if (runtime.panicked)
         throw new StudioError('BLOCKED', 'Everything is stopped. Resume the channel first.');
-      return goLive(previous, 'rollback');
+      return goLive(previous, 'rollback', resetSession);
+    },
+    resetSession(automationId: string) {
+      const automation = mustAutomation(automationId);
+      const version = activeOf(automation.id);
+      if (runtime.panicked || !version || version.status !== 'active' || !experienceOf(version))
+        throw new StudioError(
+          'BLOCKED',
+          'Resume the channel and select a healthy approved stateful experience before resetting.',
+        );
+      const snapshot = runtime.resetSession(automationId, version);
+      control(
+        'Started a new session after explicit reset; previous scores and resources were cleared.',
+        automationId,
+        version.id,
+        'SESSION_RESET',
+      );
+      changed();
+      return snapshot;
     },
     discard(versionId: string) {
       const version = mustVersion(versionId);

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ExecutionDecision } from '@riff/sdk';
+import type { ExecutionDecision, ExperienceDefinition, SessionSnapshot } from '@riff/sdk';
 
 /** Versioned overlay protocol. The overlay ignores unknown types. */
 export type OverlayMessage =
@@ -12,7 +12,15 @@ export type OverlayMessage =
     }
   | { v: 1; type: 'instructions'; payload: { lines: string[] } }
   | { v: 1; type: 'clear'; payload: { reason: 'panic' | 'pause' | 'rotate' } }
+  | { v: 1; type: 'sessions'; payload: { sessions: SessionProjection[] } }
   | { v: 1; type: 'test'; payload: { at: number } };
+
+export interface SessionProjection {
+  automationId: string;
+  title: string;
+  definition: ExperienceDefinition;
+  snapshot: SessionSnapshot;
+}
 
 export interface OverlaySocket {
   send(data: string): void;
@@ -26,6 +34,7 @@ export interface OverlaySocket {
 export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
   const sockets = new Set<OverlaySocket>();
   let instructions: string[] = [];
+  let sessions: SessionProjection[] = [];
   const broadcast = (message: OverlayMessage) => {
     const data = JSON.stringify(message);
     for (const socket of sockets) {
@@ -54,6 +63,13 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
           payload: { lines: instructions },
         } satisfies OverlayMessage),
       );
+      socket.send(
+        JSON.stringify({ v: 1, type: 'sessions', payload: { sessions } } satisfies OverlayMessage),
+      );
+    },
+    setSessions(next: SessionProjection[]) {
+      sessions = structuredClone(next);
+      broadcast({ v: 1, type: 'sessions', payload: { sessions } });
     },
     detach(socket: OverlaySocket) {
       sockets.delete(socket);
@@ -77,6 +93,7 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       broadcast({ v: 1, type: 'instructions', payload: { lines: instructions } });
     },
     clear(reason: 'panic' | 'pause' | 'rotate') {
+      if (reason === 'panic') sessions = [];
       broadcast({ v: 1, type: 'clear', payload: { reason } });
     },
     testFrame() {

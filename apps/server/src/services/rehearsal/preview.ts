@@ -1,5 +1,5 @@
 import { createEngine } from '@riff/sandbox';
-import type { ChatEvent, ExecutionDecision } from '@riff/sdk';
+import type { ChatEvent, ExecutionDecision, SessionSnapshot } from '@riff/sdk';
 
 export interface PreviewResult {
   provenance: 'synthetic';
@@ -7,6 +7,7 @@ export interface PreviewResult {
   seed: number;
   decisions: ExecutionDecision[];
   durationMs: number;
+  session?: SessionSnapshot;
 }
 
 /**
@@ -43,6 +44,7 @@ export function createPreviewService(options: { maxConcurrent?: number } = {}) {
           seed,
           decisions,
           durationMs: Math.round(performance.now() - started),
+          ...(engine.session ? { session: engine.session } : {}),
         };
       } finally {
         engine.stop();
