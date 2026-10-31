@@ -278,3 +278,154 @@ export const sessionTransitions = sqliteTable(
   },
   (table) => [index('transitions_channel_automation').on(table.channelId, table.automationId)],
 );
+
+/** Audience proposals are inert data; creator selections authorize separate authoring. */
+export const proposals = sqliteTable(
+  'proposals',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    text: text('text').notNull(),
+    normalizedText: text('normalized_text').notNull(),
+    state: text('state', { enum: ['pending', 'shortlisted', 'hidden', 'selected'] }).notNull(),
+    revision: integer('revision').notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('proposal_normalized').on(t.channelId, t.normalizedText),
+    index('proposal_channel_state').on(t.channelId, t.state),
+  ],
+);
+export const proposalContributors = sqliteTable(
+  'proposal_contributors',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    proposalId: text('proposal_id')
+      .notNull()
+      .references(() => proposals.id),
+    accountId: text('account_id').notNull(),
+    displayName: text('display_name').notNull(),
+    eventId: text('event_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('proposal_contributor_identity').on(t.channelId, t.proposalId, t.accountId)],
+);
+export const proposalHistory = sqliteTable(
+  'proposal_history',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    channelId: text('channel_id').notNull(),
+    proposalId: text('proposal_id').notNull(),
+    actor: text('actor').notNull(),
+    action: text('action').notNull(),
+    revision: integer('revision').notNull(),
+    at: integer('at').notNull(),
+  },
+  (t) => [index('proposal_history_channel').on(t.channelId, t.proposalId, t.id)],
+);
+export const proposalGrants = sqliteTable(
+  'proposal_grants',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    accountId: text('account_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('proposal_grant_identity').on(t.channelId, t.accountId)],
+);
+export const proposalCredit = sqliteTable(
+  'proposal_credit',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    accountId: text('account_id').notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [uniqueIndex('proposal_credit_identity').on(t.channelId, t.accountId)],
+);
+/** Receipts also retain all suggestion attempts, including invalid/limited/grouped. */
+export const proposalReceipts = sqliteTable(
+  'proposal_receipts',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    eventId: text('event_id').notNull(),
+    accountId: text('account_id').notNull(),
+    kind: text('kind').notNull(),
+    text: text('text'),
+    proposalId: text('proposal_id'),
+    result: text('result', { mode: 'json' }).notNull(),
+    at: integer('at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('proposal_receipt_identity').on(t.channelId, t.eventId),
+    index('proposal_receipt_recent').on(t.channelId, t.kind, t.at),
+  ],
+);
+export const proposalBallots = sqliteTable(
+  'proposal_ballots',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    revision: integer('revision').notNull(),
+    createdAt: integer('created_at').notNull(),
+    deadlineAt: integer('deadline_at').notNull(),
+    closedAt: integer('closed_at'),
+  },
+  (t) => [index('proposal_ballot_channel').on(t.channelId, t.createdAt)],
+);
+export const proposalBallotOptions = sqliteTable(
+  'proposal_ballot_options',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    ballotId: text('ballot_id')
+      .notNull()
+      .references(() => proposalBallots.id),
+    proposalId: text('proposal_id')
+      .notNull()
+      .references(() => proposals.id),
+    option: integer('option').notNull(),
+  },
+  (t) => [uniqueIndex('proposal_ballot_option').on(t.channelId, t.ballotId, t.option)],
+);
+export const proposalVotes = sqliteTable(
+  'proposal_votes',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    ballotId: text('ballot_id')
+      .notNull()
+      .references(() => proposalBallots.id),
+    accountId: text('account_id').notNull(),
+    option: integer('option').notNull(),
+    eventId: text('event_id').notNull(),
+    at: integer('at').notNull(),
+  },
+  (t) => [
+    uniqueIndex('proposal_vote_identity').on(t.channelId, t.ballotId, t.accountId),
+    index('proposal_votes_ballot').on(t.channelId, t.ballotId, t.option),
+  ],
+);
+/** Immutable reviewed input plus an irreversible revocation marker. */
+export const proposalSelections = sqliteTable(
+  'proposal_selections',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id').notNull(),
+    proposalId: text('proposal_id')
+      .notNull()
+      .references(() => proposals.id),
+    proposalRevision: integer('proposal_revision').notNull(),
+    brief: text('brief').notNull(),
+    baseVersionId: text('base_version_id'),
+    createdAt: integer('created_at').notNull(),
+    revokedAt: integer('revoked_at'),
+  },
+  (t) => [index('proposal_selection_channel').on(t.channelId, t.proposalId)],
+);
