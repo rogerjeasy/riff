@@ -189,7 +189,10 @@ export function ProposalInbox({
       if (alive.current && (epoch === undefined || epoch === editorEpoch.current)) {
         setError(message(cause));
         if (cause instanceof ApiError && cause.status === 409) {
-          invalidateEditor();
+          // Save/generate failures are bound to this editor epoch. Moderation and
+          // ballot conflicts concern their own records; only fresh proposal data
+          // can invalidate whichever brief the creator is currently editing.
+          if (epoch !== undefined) invalidateEditor();
           void load();
         }
       }

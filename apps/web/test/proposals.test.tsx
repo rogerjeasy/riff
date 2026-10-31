@@ -410,3 +410,48 @@ it('offers a deliberate new immutable selection after terminal generation failur
     (screen.getByRole('button', { name: 'Generate selected brief' }) as HTMLButtonElement).disabled,
   ).toBe(true);
 });
+
+it.each(['moderation', 'ballot'] as const)(
+  'preserves a newer different brief after an unrelated delayed %s conflict',
+  async (kind) => {
+    let reject!: (reason: unknown) => void;
+    const list = snapshot([proposal('p1'), proposal('p2')]);
+    const ballot = {
+      id: 'b1',
+      revision: 4,
+      deadlineAt: Date.now() + 60000,
+      closedAt: null,
+      options: [],
+    };
+    const s = { ...list, ballots: kind === 'ballot' ? [ballot] : [] };
+    vi.spyOn(api, 'proposals').mockResolvedValue(s as never);
+    const pending = new Promise<never>((_resolve, fail) => {
+      reject = fail;
+    });
+    if (kind === 'moderation') vi.spyOn(api, 'moderateProposal').mockReturnValue(pending);
+    else vi.spyOn(api, 'closeProposalBallot').mockReturnValue(pending);
+    const p = { ...props(), studio: { ...props().studio, proposals: s } };
+    render(<ProposalInbox {...(p as unknown as Parameters<typeof ProposalInbox>[0])} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    if (kind === 'moderation') fireEvent.click(screen.getAllByRole('button', { name: 'Hide' })[0]!);
+    else fireEvent.click(screen.getByRole('button', { name: 'Close ballot' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Review brief' })[1]!);
+    fireEvent.change(screen.getByLabelText('Reviewed brief'), {
+      target: { value: 'Keep this new independently edited brief' },
+    });
+    await act(async () => reject(new ApiError('Revision changed.', 409, 'STALE')));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect((screen.getByLabelText('Reviewed brief') as HTMLTextAreaElement).value).toBe(
+      'Keep this new independently edited brief',
+    );
+    expect(api.proposals).toHaveBeenCalledTimes(2);
+  },
+);
