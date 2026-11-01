@@ -6,10 +6,24 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from 'quickjs-emscripten';
-import { HOST_LIMITS, PREDICTION_LIMITS, TIMER_LIMITS, type PredictionProposal, type TimerOp } from '@riff/sdk';
+import {
+  ACTION_CAPABILITY,
+  HOST_LIMITS,
+  PREDICTION_LIMITS,
+  TIMER_LIMITS,
+  TWITCH_ACTION_LIMITS,
+  type PredictionProposal,
+  type TimerOp,
+} from '@riff/sdk';
 import { z } from 'zod';
 import { sessionSnapshotSchema } from './session.js';
-import { artifactSchema, eventSchema, effectSchema, predictionProposalSchema } from './contract.js';
+import {
+  actionSchema,
+  artifactSchema,
+  eventSchema,
+  effectSchema,
+  predictionProposalSchema,
+} from './contract.js';
 import { timerEventSchema, timerOpSchema } from './timers.js';
 
 // One worker serves one engine (one artifact, one mode). The WASM module is loaded
@@ -30,6 +44,7 @@ const job = z
   })
   .strict();
 type Effect = z.infer<typeof effectSchema>;
+type Action = z.infer<typeof actionSchema>;
 
 function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
   const runtime = engine.newRuntime();
@@ -49,6 +64,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
   const timerOps: TimerOp[] = [];
   const pendingTimers = new Set(input.timers);
   const proposals: PredictionProposal[] = [];
+  const actions: Action[] = [];
   const observations: QuickJSHandle[] = [];
   let fault: string | null = null;
   let calls = 0;
@@ -79,7 +95,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
         fault ??= 'Used undeclared capability overlay';
         throw new Error('Capability or resource limit rejected');
       }
-      if (effects.length >= init.artifact.manifest.limits.effectsPerEvent) {
+      if (effects.length + actions.length >= init.artifact.manifest.limits.effectsPerEvent) {
         fault ??= 'Exceeded declared effects per event';
         throw new Error('Capability or resource limit rejected');
       }
@@ -128,6 +144,42 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
     });
     context.setProp(context.global, '__propose', propose);
     propose.dispose();
+    // Native Twitch actions are staged, never executed here: manifest → per-event limits.
+    // Channel budgets and Twitch hard caps are applied later by the live host only.
+    const act = context.newFunction('act', (value) => {
+      calls++;
+      const serialized = context.getString(value);
+      let action: Action;
+      try {
+        if (serialized.length > 2048) throw new Error('Payload too large');
+        action = actionSchema.parse(JSON.parse(serialized));
+      } catch {
+        fault ??= 'Native Twitch action failed validation';
+        throw new Error('Invalid action');
+      }
+      const capability = ACTION_CAPABILITY[action.kind];
+      if (calls > HOST_LIMITS.bridgeCallsPerEvent) {
+        fault ??= 'Bridge call budget exceeded';
+        throw new Error('Capability or resource limit rejected');
+      }
+      if (!init.artifact.manifest.capabilities.includes(capability)) {
+        fault ??= `Used undeclared capability ${capability}`;
+        throw new Error('Capability or resource limit rejected');
+      }
+      const sameFamily = actions.filter((a) => ACTION_CAPABILITY[a.kind] === capability).length;
+      if (
+        actions.length >= TWITCH_ACTION_LIMITS.perEvent ||
+        effects.length + actions.length >= init.artifact.manifest.limits.effectsPerEvent ||
+        (capability !== 'chat.announce' && sameFamily >= 1)
+      ) {
+        fault ??= 'Exceeded native Twitch actions per event';
+        throw new Error('Capability or resource limit rejected');
+      }
+      actions.push(action);
+      return context.undefined;
+    });
+    context.setProp(context.global, '__act', act);
+    act.dispose();
     const snapshot = context.newFunction('snapshot', () => {
       calls++;
       if (
@@ -181,6 +233,19 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
         const emit = __emit;
         const propose = __propose;
         delete globalThis.__propose;
+        const act = __act;
+        delete globalThis.__act;
+        const stage = value => act(JSON.stringify(value));
+        const polls = Object.freeze({
+          start: async poll => stage({...(poll && typeof poll === 'object' ? poll : {}), kind: 'poll.start'}),
+          end: async () => stage({kind: 'poll.end'}),
+        });
+        const chat = Object.freeze({
+          announce: async a => stage({...(a && typeof a === 'object' ? a : {}), kind: 'announce'}),
+        });
+        const shoutout = Object.freeze({
+          send: async target => stage({...(target && typeof target === 'object' ? target : {}), kind: 'shoutout'}),
+        });
         const snapshot = __sessionSnapshot;
         delete globalThis.__sessionSnapshot;
         const freeze = value => {
@@ -201,7 +266,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
           return (seed >>> 0) / 4294967296;
         }});
         const predictions = Object.freeze({propose: async value => propose(JSON.stringify(value))});
-        return Object.freeze({util, session, timer, predictions, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
+        return Object.freeze({util, session, timer, predictions, polls, chat, shoutout, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
       })();
       const event = Object.freeze(${JSON.stringify(input.event)});
       for (const fn of [function(){}, async function(){}, function*(){}, async function*(){}]) {
@@ -259,6 +324,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
       effects,
       timers: timerOps,
       proposals,
+      actions,
       cpuMicros: usage.user + usage.system,
       fault: null,
     };
@@ -268,6 +334,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
       effects: [],
       timers: [],
       proposals: [],
+      actions: [],
       cpuMicros: started ? (({ user, system }) => user + system)(threadCpuUsage(started)) : 0,
       fault: fault ?? (error instanceof Error ? error.message.slice(0, 160) : 'Execution failed'),
     };
@@ -289,6 +356,7 @@ parentPort?.on('message', (raw: unknown) => {
       effects: [],
       timers: [],
       proposals: [],
+      actions: [],
       cpuMicros: 0,
       fault: 'Invalid job',
     });

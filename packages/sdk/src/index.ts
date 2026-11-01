@@ -1,3 +1,11 @@
+import {
+  TWITCH_ACTION_CAPABILITIES,
+  type AnnouncementRequest,
+  type PollRequest,
+  type ShoutoutRequest,
+  type TwitchAction,
+} from './twitch-actions.js';
+
 /** Public SDK version. 0.4.0 adds host-owned stateful sessions; 0.3.0 remains supported. */
 export const SDK_VERSION = '0.4.0' as const;
 
@@ -22,7 +30,13 @@ export const HOST_LIMITS = Object.freeze({
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
-export const CAPABILITIES = ['overlay', 'session', 'timer', 'predictions'] as const;
+export const CAPABILITIES = [
+  'overlay',
+  'session',
+  'timer',
+  'predictions',
+  ...TWITCH_ACTION_CAPABILITIES,
+] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
 /**
@@ -281,6 +295,20 @@ export interface AutomationContext {
     /** Propose a prediction for the creator to open; never opens or settles one. Example: await riff.predictions.propose({title:'Win?',outcomes:['Yes','No'],windowSeconds:120}). */
     propose(proposal: PredictionProposal): Promise<void>;
   };
+  polls: {
+    /** Queue a host-validated Twitch poll. Example: await riff.polls.start({title:'Next game?',choices:['A','B'],durationSeconds:60}). */
+    start(poll: PollRequest): Promise<void>;
+    /** Queue ending the poll this channel's Riff started. Example: await riff.polls.end(). */
+    end(): Promise<void>;
+  };
+  chat: {
+    /** Queue a budgeted chat announcement. Example: await riff.chat.announce({message:'Round two!',color:'purple'}). */
+    announce(announcement: AnnouncementRequest): Promise<void>;
+  };
+  shoutout: {
+    /** Queue a shoutout to a creator-approved channel. Example: await riff.shoutout.send({login:'twitchdev'}). */
+    send(target: ShoutoutRequest): Promise<void>;
+  };
   util: {
     /** Recorded event time. Example: const at = riff.util.now(). */
     now(): number;
@@ -361,6 +389,8 @@ export interface ExecutionDecision {
   effects: ProjectileEffect[];
   /** Host-validated prediction proposals; present only when the handler proposed one. */
   proposals?: PredictionProposal[];
+  /** Staged native Twitch actions; present only when non-empty. Preview never sends them. */
+  actions?: TwitchAction[];
   mode: ExecutionMode;
   viewerId: string | null;
   at: number | null;
@@ -483,3 +513,4 @@ export interface PredictionProposal {
   outcomes: string[];
   windowSeconds: number;
 }
+export * from './twitch-actions.js';

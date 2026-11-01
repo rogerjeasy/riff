@@ -36,3 +36,8 @@ interval. Timers inside stateful experiences remain unsupported.
 Prompt pack `riff-compiler/9` combines the timer, Channel Points/Predictions and F31
 version 2 mechanics rules (burst, health/elimination, best-of-N, milestones) in one
 prompt; the curated examples add Shield Wall and Castle Siege.
+
+Prompt pack `riff-compiler/10` adds the F21/F23 native Twitch action rules (capabilities
+`polls`, `chat.announce`, `shoutout`) to the same prompt and removes polls and shoutouts
+from the unsupported list; the offline compiler chains native-action, session, Channel
+Points/Predictions and timer templates.

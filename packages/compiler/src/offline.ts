@@ -5,10 +5,13 @@ import { compileExperienceOffline } from './experience-output.js';
 import { compileTimerOffline } from './timer-output.js';
 import { extractTimerHint } from './timer-hints.js';
 import { compilePointsOffline } from './offline-points.js';
+import { compileTwitchActionOffline } from './twitch-intents.js';
 import type { CompilerTransport } from './transport.js';
 
+// Named timers, Channel Points, Predictions, polls, announcements and shoutouts are
+// supported and handled by their own offline compilers, so they are not listed here.
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|ban|timeout|shoutout|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|ban|timeout|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -126,6 +129,8 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     behavior: { when: '', what: '', who: '', howMuch: '' },
     assumptions: [],
   };
+  const native = compileTwitchActionOffline(request);
+  if (native) return native;
   const experience = compileExperienceOffline(request);
   const timed = !experience && extractTimerHint(request.intent) !== null;
   if (
@@ -138,7 +143,7 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds, polls and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions and named timers stated as “every N minutes” or “in N seconds”.',
+        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements and approved shoutouts.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;

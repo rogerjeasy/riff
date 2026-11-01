@@ -289,7 +289,7 @@ See the [service contract](../apps/server/src/services/chat-authoring/README.md)
 ## Named timers (F18) — November 1, 2026
 
 SDK capability `timer` (additive to 0.4.0) stages named one-shot or repeating timers
-from generated handlers; the host persists them in the migration 0015 `timers` table,
+from generated handlers; the host persists them in the migration 0016 `timers` table,
 fires them through the same engine admission, budgets and sandbox as chat, resumes
 them on boot (≤30 s overdue fires once with `missed`, older fires are skipped and
 logged) and cancels them on pause, panic, activation/rollback and quarantine. Preview,
@@ -305,7 +305,7 @@ live Twitch stream or OBS rendering of timer fires was exercised.
 `points.redeem` maps to `channel.channel_points_custom_reward_redemption.add` v1 with a
 doc-sourced fixture; Helix Create/Get/Update/Delete Custom Reward, Get/Update Redemption
 Status and Create/Get/End Prediction are zod-parsed against documented examples (creations
-are not retried on 5xx). Migration 0015 adds `channel_point_rewards`,
+are not retried on 5xx). Migration 0017 adds `channel_point_rewards`,
 `channel_point_redemptions` and `prediction_requests`. Feature consent is requested per
 panel; eligibility comes from Get Users `broadcaster_type`. SDK 0.4.0 adds the `predictions`
 proposal capability (bridge, d.ts and validator in sync) and `trigger.kind`/`trigger.reward`.
@@ -335,3 +335,21 @@ live Twitch round is claimed.
 Integration: version 2 mechanics actions ignore Channel Points redemptions exactly like
 version 1 sessions, and F30 insights group the seven new mechanics codes under one
 "Game rule" blocked reason.
+
+## Native Twitch polls, announcements and shoutouts — November 1, 2026
+
+F21/F23 add Helix Create/Get/End Poll, Send Chat Announcement and Send a Shoutout
+(verified against the Twitch API reference and Polls guide on November 1, 2026), the
+`polls`, `chat.announce` and `shoutout` SDK capabilities, per-feature OAuth consent, the
+`twitch_feature_state` table (migration 0018, renumbered from the branch's 0015 at merge) and a console **Twitch features** panel. Tests use msw and
+doc-sourced fixtures; no live Twitch poll, announcement or shoutout was sent from this
+environment. The raiders-only shoutout policy awaits an incoming-raid trigger.
+
+Integration (prompt pack `riff-compiler/10`): one prompt carries the timer, Channel
+Points, Predictions, version 2 mechanics and native-action rules. `/auth/twitch` accepts
+both `?features=channel-points,predictions` and `?feature=polls|announcements|shoutouts`
+and always keeps granted scopes. Native actions staged by a named-timer fire or a
+Channel Points redemption are dispatched like chat-triggered ones (a fire-staged action
+counts against the effect budget; sandbox test). Redemptions now also apply staged
+timers and prediction proposals. Helix poll, announcement and shoutout mutations use
+`{ retries: 0 }`.

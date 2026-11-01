@@ -20,6 +20,12 @@ export function registerTwitchRoutes(
         .send(
           'Twitch is not configured. Set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET and RIFF_SECRET.',
         );
+    // Native feature consent (F21/F23) is granted one feature at a time: ?feature=polls
+    const native = z
+      .object({ feature: z.enum(['polls', 'announcements', 'shoutouts']).optional() })
+      .safeParse(request.query);
+    if (!native.success)
+      return reply.code(400).type('text/plain').send('Unknown Twitch feature. Nothing changed.');
     // Optional feature consent (F22): ?features=channel-points,predictions
     const features = z
       .object({
@@ -32,7 +38,10 @@ export function registerTwitchRoutes(
       })
       .safeParse(request.query);
     return reply.redirect(
-      deps.twitch.beginAuthorization(features.success ? (features.data.features ?? []) : []),
+      deps.twitch.beginAuthorization([
+        ...(features.success ? (features.data.features ?? []) : []),
+        ...(native.data.feature ? [native.data.feature] : []),
+      ]),
     );
   });
   app.get('/auth/twitch/callback', async (request, reply) => {

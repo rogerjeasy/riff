@@ -33,6 +33,7 @@ import {
   type PermissionManifest,
   type ExecutionDecision,
   type PredictionProposal,
+  type TwitchAction,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import { transitionEvidenceId } from '../../db/repositories/transitions.js';
@@ -86,6 +87,11 @@ export function createLiveRuntime(deps: {
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
   onPredictionProposal?: (proposal: LivePredictionProposal) => void;
+  /** Host-side queue for staged polls, announcements and shoutouts (F21/F23). */
+  onTwitchActions?: (
+    actions: readonly TwitchAction[],
+    context: { automationId: string; viewer: string },
+  ) => Promise<void>;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -328,7 +334,7 @@ export function createLiveRuntime(deps: {
               viewerId: event.data.viewerId,
               at: event.data.at,
               code: decision.code,
-              effects: decision.effects.length,
+              effects: decision.effects.length + (decision.actions?.length ?? 0),
             });
         }
       } catch {
@@ -402,9 +408,28 @@ export function createLiveRuntime(deps: {
             ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
+      if (fence === generation && !panic)
+        queueTwitchActions(decision, automationId, message.viewerName);
     }
     await applyPending();
     return results;
+  }
+
+  /**
+   * Staged native Twitch actions leave the host only from a live, unfenced, accepted
+   * decision (chat, timer fire or redemption). They are queued, never awaited, so the
+   * serialized pipeline keeps moving. Callers check their own fence first.
+   */
+  function queueTwitchActions(decision: ExecutionDecision, automationId: string, viewer: string) {
+    if (
+      decision.code !== 'ACCEPTED' ||
+      !decision.actions?.length ||
+      panic ||
+      closed ||
+      decision.mode !== 'live'
+    )
+      return;
+    void deps.onTwitchActions?.(decision.actions, { automationId, viewer })?.catch(() => undefined);
   }
 
   /** Deliver due timers through the same engine, budgets and overlay fences as chat. */
@@ -442,6 +467,7 @@ export function createLiveRuntime(deps: {
     const fenced = panic || closed || current?.engine !== target.engine;
     const delivered = fenced ? 0 : overlay.deliver(decision, null, row.automationId, row.versionId);
     if (!fenced && decision.timers?.length) applyTimers(row.automationId, row.versionId, decision);
+    if (!fenced) queueTwitchActions(decision, row.automationId, `timer ${row.name}`);
     publishActivity({
       at: Date.now(),
       kind: 'decision',
@@ -523,6 +549,17 @@ export function createLiveRuntime(deps: {
     const delivered = live
       ? overlay.deliver(decision, input.viewerName, input.automationId, version.id)
       : 0;
+    // Redemptions keep every side effect a chat trigger has: timers, proposals and actions.
+    if (live && decision.timers?.length) applyTimers(input.automationId, version.id, decision);
+    if (live && decision.proposals?.length)
+      for (const proposal of decision.proposals)
+        deps.onPredictionProposal?.({
+          automationId: input.automationId,
+          versionId: version.id,
+          eventId: input.id,
+          proposal,
+        });
+    if (live) queueTwitchActions(decision, input.automationId, input.viewerName);
     lastEvent = { at: Date.now(), viewer: input.viewerName, code: decision.code };
     publishActivity({
       at: Date.now(),

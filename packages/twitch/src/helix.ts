@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { TwitchError, errorForStatus } from './errors.js';
+import { TwitchError, errorForStatus, type TwitchRefusalReason } from './errors.js';
 import { issuePaths, readJson, twitchMessageOf, type FetchLike } from './http.js';
 import { createChannelPointsApi, type ChannelPointsApi } from './helix/channel-points.js';
 import { createPredictionsApi, type PredictionsApi } from './helix/predictions.js';
@@ -86,12 +86,97 @@ export interface SendChatMessageResult {
 /** Docs: "The message is limited to a maximum of 500 characters." */
 export const MAX_CHAT_MESSAGE_LENGTH = 500;
 
+/**
+ * Documented request bounds for polls, announcements and shoutouts.
+ * Sources: https://dev.twitch.tv/docs/api/reference/#create-poll (title ≤ 60, 2–5 choices
+ * of ≤ 25, duration 15–1800 s), #send-chat-announcement (≤ 500 characters, one every
+ * 2 seconds) and #send-a-shoutout (once every 2 minutes; same target once every 60 minutes).
+ */
+export const TWITCH_FEATURE_LIMITS = Object.freeze({
+  poll: {
+    titleLength: 60,
+    choiceLength: 25,
+    choices: { min: 2, max: 5 },
+    durationSeconds: { min: 15, max: 1800 },
+  },
+  announcement: { messageLength: 500, intervalMs: 2000 },
+  shoutout: { globalCooldownMs: 2 * 60_000, sameTargetCooldownMs: 60 * 60_000 },
+});
+/** Docs: "Possible case-sensitive values are: blue green orange purple primary (default)". */
+export const ANNOUNCEMENT_COLORS = ['blue', 'green', 'orange', 'purple', 'primary'] as const;
+export type AnnouncementColor = (typeof ANNOUNCEMENT_COLORS)[number];
+/** Documented poll statuses (Get Polls response). */
+export const POLL_STATUSES = [
+  'ACTIVE',
+  'COMPLETED',
+  'TERMINATED',
+  'ARCHIVED',
+  'MODERATED',
+  'INVALID',
+] as const;
+export type PollStatus = (typeof POLL_STATUSES)[number];
+
+export interface CreatePollInput {
+  readonly broadcasterId: string;
+  readonly title: string;
+  readonly choices: readonly string[];
+  readonly durationSeconds: number;
+}
+export interface HelixPollChoice {
+  readonly id: string;
+  readonly title: string;
+  readonly votes: number;
+  readonly channelPointsVotes: number;
+}
+export interface HelixPoll {
+  readonly id: string;
+  readonly broadcasterId: string;
+  readonly title: string;
+  readonly choices: readonly HelixPollChoice[];
+  readonly status: PollStatus;
+  readonly durationSeconds: number;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+}
+export interface CreatePollResult {
+  readonly poll: HelixPoll;
+  /** True when an ambiguous failure was resolved by finding the poll already running. */
+  readonly recovered: boolean;
+}
+export interface SendAnnouncementInput {
+  readonly broadcasterId: string;
+  readonly moderatorId: string;
+  readonly message: string;
+  readonly color?: AnnouncementColor;
+}
+export interface SendShoutoutInput {
+  readonly fromBroadcasterId: string;
+  readonly toBroadcasterId: string;
+  readonly moderatorId: string;
+}
+
 export interface HelixClient extends ChannelPointsApi, PredictionsApi {
   /**
    * POST /chat/messages with a user access token carrying `user:write:chat`.
    * A mutation: it is attempted exactly once and never retried.
    */
   sendChatMessage(input: SendChatMessageInput): Promise<SendChatMessageResult>;
+  /** Start a poll; ambiguous failures are resolved by an idempotency read, never a blind retry. */
+  createPoll(input: CreatePollInput): Promise<CreatePollResult>;
+  /** Newest polls first, or exactly the requested ids (≤ 20). */
+  getPolls(query: {
+    broadcasterId: string;
+    ids?: readonly string[];
+    first?: number;
+  }): Promise<readonly HelixPoll[]>;
+  /** End an ACTIVE poll, keeping results visible (TERMINATED) or hiding them (ARCHIVED). */
+  endPoll(input: {
+    broadcasterId: string;
+    id: string;
+    status: 'TERMINATED' | 'ARCHIVED';
+  }): Promise<HelixPoll>;
+  sendChatAnnouncement(input: SendAnnouncementInput): Promise<void>;
+  sendShoutout(input: SendShoutoutInput): Promise<void>;
   createEventSubSubscription(
     input: CreateEventSubSubscriptionInput,
   ): Promise<CreateEventSubSubscriptionResult>;
@@ -145,6 +230,139 @@ const sendChatMessageResponse = z.looseObject({
     )
     .min(1),
 });
+
+// https://dev.twitch.tv/docs/api/reference/#get-polls (response body; shared by create/end)
+const pollSchema = z.looseObject({
+  id: z.string().min(1),
+  broadcaster_id: z.string().min(1),
+  title: z.string(),
+  choices: z.array(
+    z.looseObject({
+      id: z.string().min(1),
+      title: z.string(),
+      votes: z.number().int().nonnegative(),
+      channel_points_votes: z.number().int().nonnegative(),
+    }),
+  ),
+  status: z.enum(POLL_STATUSES),
+  duration: z.number().int(),
+  started_at: z.string(),
+  ended_at: z.string().nullable().optional(),
+});
+const pollListResponse = z.looseObject({ data: z.array(pollSchema) });
+type PollPayload = z.infer<typeof pollSchema>;
+const toPoll = (poll: PollPayload): HelixPoll => ({
+  id: poll.id,
+  broadcasterId: poll.broadcaster_id,
+  title: poll.title,
+  choices: poll.choices.map((choice) => ({
+    id: choice.id,
+    title: choice.title,
+    votes: choice.votes,
+    channelPointsVotes: choice.channel_points_votes,
+  })),
+  status: poll.status,
+  durationSeconds: poll.duration,
+  startedAt: poll.started_at,
+  endedAt: poll.ended_at ?? null,
+});
+
+const hasControl = (value: string) =>
+  [...value].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
+/** Length by code point, so an emoji counts once. */
+const length = (value: string) => [...value].length;
+const ID = /^[0-9]{1,32}$/;
+
+/** Refine a generic status error with the endpoint's documented refusal text. */
+function refine(error: unknown, endpoint: string): unknown {
+  if (!(error instanceof TwitchError) || error.detail.endpoint !== endpoint) return error;
+  const status = error.detail.status;
+  const text = (error.detail.twitchMessage ?? '').toLowerCase();
+  const as = (
+    code: TwitchError['code'],
+    message: string,
+    reason: TwitchRefusalReason,
+  ): TwitchError => new TwitchError(code, message, { ...error.detail, reason });
+  // All three endpoints document "The user access token is missing the … scope" as a 401.
+  if (status === 401 && text.includes('scope'))
+    return as(
+      'TWITCH_FORBIDDEN',
+      'Twitch says this feature was not granted. Grant it again from Twitch features.',
+      'missing_scope',
+    );
+  if (endpoint === 'POST /polls') {
+    if (status === 400 && text.includes('already has a poll'))
+      return as(
+        'TWITCH_REJECTED',
+        'A poll is already running on this channel. End it or wait for it to finish.',
+        'poll_active',
+      );
+    if (status === 400 && text.includes('automod'))
+      return as(
+        'TWITCH_REJECTED',
+        'Twitch AutoMod rejected a poll choice. Reword it and try again.',
+        'content_refused',
+      );
+    // UNVERIFIED: the reference does not document the response for channels that are not
+    // Affiliates or Partners; the Polls guide only states eligibility. Treat 403 as that.
+    if (status === 403)
+      return as(
+        'TWITCH_FORBIDDEN',
+        'Twitch polls are available to Affiliates and Partners only.',
+        'not_eligible',
+      );
+  }
+  if (endpoint === 'PATCH /polls' && status === 400 && text.includes('must be active'))
+    return as('TWITCH_REJECTED', 'That poll has already ended.', 'poll_not_active');
+  if (endpoint === 'POST /chat/announcements') {
+    if (status === 429)
+      return as(
+        'TWITCH_REJECTED',
+        'Twitch allows one announcement every 2 seconds. Wait a moment and try again.',
+        'cooldown',
+      );
+    if (status === 400 && text.includes('review'))
+      return as(
+        'TWITCH_REJECTED',
+        'Twitch did not accept this announcement text. Reword it and try again.',
+        'content_refused',
+      );
+  }
+  if (endpoint === 'POST /chat/shoutouts') {
+    if (status === 429)
+      return as(
+        'TWITCH_REJECTED',
+        'Shoutouts are on cooldown: one every 2 minutes, and the same channel once an hour.',
+        'cooldown',
+      );
+    if (status === 400 && text.includes('themselves'))
+      return as('TWITCH_REJECTED', 'A channel cannot shout itself out.', 'self_shoutout');
+    if (status === 400 && (text.includes('not streaming') || text.includes('viewers')))
+      return as(
+        'TWITCH_REJECTED',
+        'Shoutouts work only while you are live with at least one viewer.',
+        'not_live',
+      );
+    if (status === 403 && text.includes('not one of'))
+      return as(
+        'TWITCH_FORBIDDEN',
+        'The connected account is not a moderator of this channel.',
+        'not_moderator',
+      );
+    if (status === 403)
+      return as(
+        'TWITCH_FORBIDDEN',
+        'Twitch does not allow a shoutout to that channel.',
+        'target_refused',
+      );
+  }
+  if (status === 400)
+    return as('TWITCH_REJECTED', 'Twitch rejected the request as invalid.', 'invalid');
+  return error;
+}
+function refuse(message: string, endpoint: string): TwitchError {
+  return new TwitchError('TWITCH_INVALID_REQUEST', message, { endpoint, reason: 'invalid' });
+}
 
 /** Docs: "the sum total of the number of users you may look up is 100". */
 export const MAX_USERS_PER_REQUEST = 100;
@@ -237,7 +455,7 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
     });
   }
 
-  return {
+  const client: HelixClient = {
     async sendChatMessage(input) {
       const endpoint = 'POST /chat/messages';
       if (
@@ -354,7 +572,181 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
         createdAt: user.created_at,
       }));
     },
+
+    async createPoll(input) {
+      const endpoint = 'POST /polls';
+      const limits = TWITCH_FEATURE_LIMITS.poll;
+      const title = input.title.trim();
+      const choices = input.choices.map((choice) => choice.trim());
+      if (!ID.test(input.broadcasterId)) throw refuse('A broadcaster id is required.', endpoint);
+      if (!title || length(title) > limits.titleLength || hasControl(title))
+        throw refuse(`Poll questions need 1–${limits.titleLength} characters.`, endpoint);
+      if (choices.length < limits.choices.min || choices.length > limits.choices.max)
+        throw refuse(`Polls need ${limits.choices.min}–${limits.choices.max} choices.`, endpoint);
+      if (choices.some((c) => !c || length(c) > limits.choiceLength || hasControl(c)))
+        throw refuse(`Each poll choice needs 1–${limits.choiceLength} characters.`, endpoint);
+      if (new Set(choices.map((c) => c.toLowerCase())).size !== choices.length)
+        throw refuse('Poll choices must be different from each other.', endpoint);
+      if (
+        !Number.isInteger(input.durationSeconds) ||
+        input.durationSeconds < limits.durationSeconds.min ||
+        input.durationSeconds > limits.durationSeconds.max
+      )
+        throw refuse(
+          `Polls run ${limits.durationSeconds.min}–${limits.durationSeconds.max} seconds.`,
+          endpoint,
+        );
+      let payload: unknown;
+      try {
+        // A mutation: never retried blindly (AGENTS §2.4). Ambiguous outcomes are
+        // resolved below by reading the newest poll.
+        payload = await request(
+          'POST',
+          '/polls',
+          endpoint,
+          {
+            broadcaster_id: input.broadcasterId,
+            title,
+            choices: choices.map((choice) => ({ title: choice })),
+            duration: input.durationSeconds,
+          },
+          { retries: 0 },
+        );
+      } catch (error) {
+        if (!(error instanceof TwitchError) || error.code !== 'TWITCH_UNAVAILABLE')
+          throw refine(error, endpoint);
+        const [latest] = await client.getPolls({ broadcasterId: input.broadcasterId, first: 1 });
+        const same =
+          latest?.status === 'ACTIVE' &&
+          latest.title === title &&
+          latest.choices.length === choices.length &&
+          latest.choices.every((choice, i) => choice.title === choices[i]);
+        if (latest && same) return { poll: latest, recovered: true };
+        throw error;
+      }
+      const parsed = pollListResponse.safeParse(payload);
+      if (!parsed.success) throw invalid(endpoint, parsed.error);
+      const [poll] = parsed.data.data;
+      if (!poll)
+        throw new TwitchError(
+          'TWITCH_INVALID_RESPONSE',
+          'Twitch returned an unexpected response.',
+          { endpoint },
+        );
+      return { poll: toPoll(poll), recovered: false };
+    },
+
+    async getPolls(query) {
+      const endpoint = 'GET /polls';
+      const ids = query.ids ?? [];
+      if (!ID.test(query.broadcasterId)) throw refuse('A broadcaster id is required.', endpoint);
+      // Docs: "You may specify a maximum of 20 IDs"; page size 1–20.
+      if (ids.length > 20) throw refuse('At most 20 polls can be requested at once.', endpoint);
+      const params = new URLSearchParams({ broadcaster_id: query.broadcasterId });
+      for (const id of ids) params.append('id', id);
+      if (query.first !== undefined)
+        params.set('first', String(Math.min(20, Math.max(1, Math.trunc(query.first)))));
+      let payload: unknown;
+      try {
+        payload = await request('GET', `/polls?${params.toString()}`, endpoint);
+      } catch (error) {
+        throw refine(error, endpoint);
+      }
+      const parsed = pollListResponse.safeParse(payload);
+      if (!parsed.success) throw invalid(endpoint, parsed.error);
+      return parsed.data.data.map(toPoll);
+    },
+
+    async endPoll(input) {
+      const endpoint = 'PATCH /polls';
+      if (!ID.test(input.broadcasterId) || !input.id)
+        throw refuse('A broadcaster and poll id are required.', endpoint);
+      let payload: unknown;
+      try {
+        // Ending converges: an already-ended poll answers 400 "must be active", so a
+        // transient-failure retry cannot apply twice.
+        payload = await request('PATCH', '/polls', endpoint, {
+          broadcaster_id: input.broadcasterId,
+          id: input.id,
+          status: input.status,
+        });
+      } catch (error) {
+        throw refine(error, endpoint);
+      }
+      const parsed = pollListResponse.safeParse(payload);
+      if (!parsed.success) throw invalid(endpoint, parsed.error);
+      const [poll] = parsed.data.data;
+      if (!poll)
+        throw new TwitchError(
+          'TWITCH_INVALID_RESPONSE',
+          'Twitch returned an unexpected response.',
+          { endpoint },
+        );
+      return toPoll(poll);
+    },
+
+    async sendChatAnnouncement(input) {
+      const endpoint = 'POST /chat/announcements';
+      const message = input.message.trim();
+      if (!ID.test(input.broadcasterId) || !ID.test(input.moderatorId))
+        throw refuse('A broadcaster and moderator id are required.', endpoint);
+      // Twitch silently truncates longer text; refuse so the creator sees exactly what is sent.
+      if (
+        !message ||
+        length(message) > TWITCH_FEATURE_LIMITS.announcement.messageLength ||
+        hasControl(message)
+      )
+        throw refuse('Announcements need 1–500 characters without control characters.', endpoint);
+      if (input.color !== undefined && !ANNOUNCEMENT_COLORS.includes(input.color))
+        throw refuse('That announcement color is not available.', endpoint);
+      const params = new URLSearchParams({
+        broadcaster_id: input.broadcasterId,
+        moderator_id: input.moderatorId,
+      });
+      try {
+        // for_source_only is refused with a user access token (HTTP 400), so it is never
+        // sent. 429 is the announcement cooldown, and a 5xx may already have posted: no retry.
+        await request(
+          'POST',
+          `/chat/announcements?${params.toString()}`,
+          endpoint,
+          { message, ...(input.color ? { color: input.color } : {}) },
+          { retries: 0 },
+        );
+      } catch (error) {
+        throw refine(error, endpoint);
+      }
+    },
+
+    async sendShoutout(input) {
+      const endpoint = 'POST /chat/shoutouts';
+      if (
+        !ID.test(input.fromBroadcasterId) ||
+        !ID.test(input.toBroadcasterId) ||
+        !ID.test(input.moderatorId)
+      )
+        throw refuse('Shoutouts need valid broadcaster ids.', endpoint);
+      if (input.fromBroadcasterId === input.toBroadcasterId)
+        throw new TwitchError('TWITCH_INVALID_REQUEST', 'A channel cannot shout itself out.', {
+          endpoint,
+          reason: 'self_shoutout',
+        });
+      const params = new URLSearchParams({
+        from_broadcaster_id: input.fromBroadcasterId,
+        to_broadcaster_id: input.toBroadcasterId,
+        moderator_id: input.moderatorId,
+      });
+      try {
+        // 429 is a documented cooldown and a 5xx may already have applied: never retried.
+        await request('POST', `/chat/shoutouts?${params.toString()}`, endpoint, undefined, {
+          retries: 0,
+        });
+      } catch (error) {
+        throw refine(error, endpoint);
+      }
+    },
   };
+  return client;
 }
 
 export * from './helix/channel-points.js';

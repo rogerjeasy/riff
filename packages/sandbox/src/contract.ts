@@ -14,6 +14,9 @@ import {
   TRIGGER_KINDS,
   CHANNEL_POINTS_LIMITS,
   PREDICTION_LIMITS,
+  ANNOUNCEMENT_COLORS,
+  TWITCH_ACTION_CAPABILITIES,
+  TWITCH_ACTION_LIMITS,
   type DecisionCode,
 } from '@riff/sdk';
 
@@ -115,6 +118,23 @@ export const manifestSchema = z
         code: 'custom',
         message: 'Channel Points triggers and predictions require SDK 0.4.0',
       });
+    const native = manifest.capabilities.filter((c) =>
+      (TWITCH_ACTION_CAPABILITIES as readonly string[]).includes(c),
+    );
+    if (native.length && manifest.sdkVersion !== SDK_VERSION)
+      ctx.addIssue({
+        code: 'custom',
+        message: `Native Twitch capabilities require sdkVersion ${SDK_VERSION}`,
+      });
+    const privileged: readonly string[] = TWITCH_ACTION_LIMITS.privilegedAudience;
+    if (
+      (manifest.capabilities.includes('polls') || manifest.capabilities.includes('shoutout')) &&
+      manifest.trigger.audience.some((role) => !privileged.includes(role))
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Polls and shoutouts may only be triggered by moderators or the broadcaster',
+      });
   });
 export const artifactSchema = z
   .object({
@@ -178,6 +198,48 @@ export const effectSchema = z
     x: z.number().finite().min(0).max(1),
   })
   .strict();
+/** Staged native Twitch action; strict and bounded on both sides of the bridge. */
+const actionText = (max: number) =>
+  z.string().trim().min(1).max(max).refine(hasNoControlCharacters, 'Control characters forbidden');
+export const actionSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('poll.start'),
+      title: actionText(TWITCH_ACTION_LIMITS.poll.titleLength),
+      choices: z
+        .array(actionText(TWITCH_ACTION_LIMITS.poll.choiceLength))
+        .min(TWITCH_ACTION_LIMITS.poll.choices.min)
+        .max(TWITCH_ACTION_LIMITS.poll.choices.max)
+        .refine(
+          (list) => new Set(list.map((c) => c.toLowerCase())).size === list.length,
+          'Poll choices must be unique',
+        ),
+      durationSeconds: z
+        .number()
+        .int()
+        .min(TWITCH_ACTION_LIMITS.poll.durationSeconds.min)
+        .max(TWITCH_ACTION_LIMITS.poll.durationSeconds.max),
+    })
+    .strict(),
+  z.object({ kind: z.literal('poll.end') }).strict(),
+  z
+    .object({
+      kind: z.literal('announce'),
+      message: actionText(TWITCH_ACTION_LIMITS.announcement.messageLength),
+      color: z.enum(ANNOUNCEMENT_COLORS).default('primary'),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('shoutout'),
+      login: z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(new RegExp(TWITCH_ACTION_LIMITS.shoutout.loginPattern)),
+    })
+    .strict(),
+]);
 const decisionCodeSchema = z.enum(DECISION_CODES as [DecisionCode, ...DecisionCode[]]);
 export const scenarioStepSchema = z
   .object({

@@ -386,9 +386,15 @@ change an approved live layout.
    turn on **Chat authoring**, the next sign-in also asks for `user:write:chat` so Riff can
    post short system replies (approval codes, results) as you.
 
-   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
    Channel Points and Predictions ask separately, from their console panels, for
    `channel:manage:redemptions` and `channel:manage:predictions` (Affiliate/Partner only).
+
+   Native polls, chat announcements and shoutouts (F21/F23) each ask for their own scope
+   (`channel:manage:polls`, `moderator:manage:announcements`, `moderator:manage:shoutouts`)
+   only when you press **Grant on Twitch** in the console's **Twitch features** panel.
+   Polls need an Affiliate or Partner channel; shoutouts go only to channels your policy
+   approves. Automations request them through `riff.polls`, `riff.chat.announce` and
+   `riff.shoutout`; rehearsals simulate them and Stop everything ends Riff's poll.
 
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):

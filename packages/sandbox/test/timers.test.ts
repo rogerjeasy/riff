@@ -146,6 +146,35 @@ describe('timer.fired delivery', () => {
     engine.stop();
   });
 
+  it('carries native Twitch actions staged by a fire and counts them against the budget', async () => {
+    const source = `async (event, riff) => {
+      if (event.source === 'timer.fired') {
+        await riff.chat.announce({ message: 'Hydrate!' });
+        return;
+      }
+      await riff.timer.start('hydrate', 600000, { repeat: true });
+    }`;
+    const engine = createEngine(
+      {
+        source,
+        manifest: {
+          ...manifest,
+          capabilities: ['chat.announce', 'timer'],
+          limits: { effectsPerEvent: 1, effectsPerMinute: 1 },
+        },
+      },
+      { seed: 3 },
+    );
+    const fired = await engine.dispatchTimer(fire('a1', 10));
+    expect(fired.code).toBe('ACCEPTED');
+    expect(fired.effects).toHaveLength(0);
+    expect(fired.actions).toHaveLength(1);
+    expect(fired.actions?.[0]).toMatchObject({ kind: 'announce', message: 'Hydrate!' });
+    // The announcement spent the one effect this minute allows.
+    expect((await engine.dispatchTimer(fire('a2', 20))).code).toBe('CHANNEL_LIMIT');
+    engine.stop();
+  });
+
   it('refuses timer events for interactions without the timer capability', async () => {
     const engine = createEngine(
       {

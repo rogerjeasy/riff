@@ -69,6 +69,12 @@ import {
   type PredictionsService,
 } from './services/predictions/service.js';
 import { registerChannelPointsRoutes } from './routes/channel-points.js';
+import {
+  createTwitchFeatureService,
+  type TwitchFeatureService,
+} from './services/twitch-features/service.js';
+import { twitchFeaturesRepository } from './db/repositories/twitch-features.js';
+import { registerTwitchFeatureRoutes } from './routes/twitch-features.js';
 
 /** The studio is operator-local: one home channel per server process. */
 export const HOME_CHANNEL = 'home';
@@ -126,6 +132,7 @@ export interface RiffServices {
   rehearsal: ReturnType<typeof createRehearsalService>;
   scenes: ReturnType<typeof createSceneService>;
   twitch: ReturnType<typeof createTwitchConnection>;
+  twitchFeatures: TwitchFeatureService;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -189,9 +196,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   const chatAuthoringRef: { current?: ChatAuthoringService } = {};
   const pointsRef: { current?: ChannelPointsService } = {};
   const predictionsRef: { current?: PredictionsService } = {};
+  const twitchFeaturesRef: { current?: TwitchFeatureService } = {};
   const runtime = createLiveRuntime({
     onAuthorChat: (message) => chatAuthoringRef.current?.handle(message) ?? false,
     onPredictionProposal: (proposal) => predictionsRef.current?.propose(proposal),
+    onTwitchActions: (actions, context) =>
+      twitchFeaturesRef.current?.dispatch(actions, context) ?? Promise.resolve(),
     onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
     onStop: () => {
@@ -209,6 +219,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       // Best effort after the in-memory fence: pause rewards, refund queue, lock prediction.
       void pointsRef.current?.onPanic().catch(() => undefined);
       void predictionsRef.current?.onPanic().catch(() => undefined);
+      // Fences queued native actions in memory, then ends the poll Riff started.
+      void twitchFeaturesRef.current?.panic().catch(() => undefined);
       stopCollaboration();
     },
     repo,
@@ -358,6 +370,58 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   predictionsRef.current = predictions;
+  const twitchFeatures = createTwitchFeatureService({
+    storage: twitchFeaturesRepository(database, HOME_CHANNEL),
+    connection: twitch,
+    blocked: () => runtime.panicked,
+    automations: () =>
+      repo.automations().flatMap((automation) => {
+        const version = automation.activeVersionId
+          ? repo.version(automation.activeVersionId)
+          : null;
+        const manifest = version?.manifest as { capabilities?: string[] } | undefined;
+        return version
+          ? [
+              {
+                automationId: automation.id,
+                title: automation.title,
+                capabilities: manifest?.capabilities ?? [],
+                live: automation.status === 'live',
+              },
+            ]
+          : [];
+      }),
+    record: (entry) => {
+      let row;
+      try {
+        row = repo.record({
+          ...entry,
+          at: Date.now(),
+          versionId: null,
+          eventId: null,
+          viewer: null,
+        });
+      } catch {
+        row = null;
+      }
+      if (row) hub.publish('activity', row);
+    },
+    disable: (automationId) => {
+      try {
+        studio.pause(automationId);
+      } catch {
+        runtime.pause(automationId);
+      }
+    },
+    changed: () => hub.publish('studio', null),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  twitchFeaturesRef.current = twitchFeatures;
+  const twitchFeatureTimer = setInterval(
+    () => void twitchFeatures.tick().catch(() => undefined),
+    1000,
+  );
+  twitchFeatureTimer.unref();
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
   const production = createProductionService({
     database,
@@ -505,6 +569,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     }),
   );
   registerChannelPointsRoutes(app, { points: channelPoints, predictions });
+  registerTwitchFeatureRoutes(app, twitchFeatures);
   app.addHook('onReady', async () => {
     twitch.start();
     // Warm the verifier (TypeScript parser, QuickJS WASM, worker startup) off the
@@ -517,6 +582,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   app.addHook('onClose', async () => {
     chatAuthoring.close();
+    clearInterval(twitchFeatureTimer);
+    twitchFeatures.close();
     clearInterval(directorTimer);
     directorService.close();
     participation.close();
@@ -563,6 +630,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     rehearsal,
     scenes,
     twitch,
+    twitchFeatures,
   };
   return Object.assign(app as FastifyInstance, { riff: services });
 }

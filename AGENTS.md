@@ -396,15 +396,16 @@ signed HttpOnly, SameSite=Lax session cookie (Secure over HTTPS, 30 days, key de
 static files stay public. `POST /api/session/login` is rate-limited, and `?access=<token>` on
 any GET trades the dock link for a session. Unset, the console stays open for local use.
 Migrations run at server boot.
-Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
-`experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
-`admission_events`, `session_transitions`, `proposals`, `proposal_contributors`,
+Tables: `channels`, `channel_state`, `collaboration_connections`, `director_state`,
+`recipe_state`, `production_state`, `chat_authoring_state`, `participation_state`,
+`twitch_feature_state`, `automations`, `versions`, `compile_runs`, `activity`,
+`experience_sessions`, `session_events`, `admission_events`, `session_journal`,
+`session_outbox`, `session_transitions`, `proposals`, `proposal_contributors`,
 `proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
-`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `timers`.
-
-`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `channel_point_rewards`,
+`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `collaboration_sessions`,
+`collaboration_receipts`, `timers`, `channel_point_rewards`,
 `channel_point_redemptions`, `prediction_requests`.
 
 ---
@@ -950,7 +951,7 @@ allowance like an emitted effect. Live fires record `admission_events` (viewer k
 `timer:<name>`) with the dedupe id `timer:<row id>:<scheduledAt>` before overlay
 delivery, so a crash between the decision and re-arming never fires twice.
 
-Migration 0015 adds channel-scoped `timers` (automation, owning version, name,
+Migration 0016 adds channel-scoped `timers` (automation, owning version, name,
 interval, repeat, due time, creating event, fire count; unique per automation+name).
 The live runtime checks due rows on its existing 250 ms serialized tick. Restart
 policy, identical at boot and runtime: a fire up to 2 s late is on time; up to 30 s
@@ -1013,3 +1014,40 @@ POST `/api/channel-points/{refresh,rewards}`, `/rewards/:id`, `/rewards/:id/dele
 `/api/predictions`, `/refresh`, `/proposals/:id/{open,dismiss}`, `/end`. Prompt pack
 `riff-compiler/7` and the offline compiler support redemption and proposal intents and refuse
 model- or chat-decided settlement. No new dependency or environment variable.
+
+## Native Twitch polls, announcements and shoutouts — F21/F23
+
+SDK 0.4.0 additively adds capabilities `polls` (`riff.polls.start/end`), `chat.announce`
+(`riff.chat.announce`) and `shoutout` (`riff.shoutout.send`); existing 0.4.0/0.3.0
+artifacts keep identity. They stage `TwitchAction`s on `ExecutionDecision.actions`
+(present only when non-empty), each counting as an effect for effectsPerEvent,
+effectsPerMinute and viewer allowances; at most 2 per event, one poll call and one
+shoutout. The bridge validates bounds (Twitch: question ≤ 60, 2–5 unique choices ≤ 25,
+15–1800 s; announcement ≤ 500 without control characters; login `^[a-z0-9_]{1,25}$`) and
+faults on undeclared capabilities. Manifests with `polls`/`shoutout` must restrict audience
+to moderator/broadcaster. Constants live in `packages/sdk/src/twitch-actions.ts`.
+
+`packages/twitch/src/helix.ts` adds Create/Get/End Poll, Send Chat Announcement and Send
+a Shoutout with doc-sourced fixtures, endpoint-specific `reason`s and no mutation retry
+(Create Poll resolves ambiguous failures with a Get Polls idempotency read; 429s are
+cooldowns). `TWITCH_FEATURE_SCOPES` names one scope per feature; `/auth/twitch?feature=`
+requests it on top of existing grants. `services/twitch-features` owns the channel-scoped
+`twitch_feature_state` row (migration 0018): in-Riff toggles, Affiliate/Partner
+eligibility (Get Users `broadcaster_type`), shoutout policy (off, approved list resolved to
+ids, or raiders in the last hour), active poll, durable budgets/cooldowns and history.
+Order: consent/eligibility → channel budget (6 announcements/min, 12 polls/h, 10
+shoutouts/h) → Twitch hard caps (one poll, 2 s announcement interval, 2 min/60 min
+shoutout cooldowns) → one Helix call; refusals are typed `RiffError`s. A budget overrun by
+an automation pauses it and records an incident. Automations may end only polls they
+started. The live runtime queues actions from unfenced live decisions only; previews and
+rehearsals never reach the service. Panic fences queued actions, then ends Riff's poll.
+
+Private guarded routes: GET `/api/twitch/features`; POST `/api/twitch/features/toggle`,
+`/api/twitch/features/eligibility`, `/api/twitch/polls`, `/api/twitch/polls/end`,
+`/api/twitch/announcements`, `/api/twitch/shoutouts`, `/api/twitch/shoutouts/policy`.
+The console **Twitch features** panel shows per-feature grants, eligibility, live poll
+results and manual actions. Prompt pack `riff-compiler/7` (merged as `riff-compiler/10`); offline fixture
+`packages/compiler/fixtures/twitch-actions.json`. Known gaps: the "raiders only" policy is
+fed by `recordRaid`, which no `channel.raid` trigger calls yet; there is no overlay poll
+card (Twitch shows polls natively). One `// UNVERIFIED:` marker: the 403 response for
+polls on non-Affiliate channels is not documented.

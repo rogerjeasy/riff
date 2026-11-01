@@ -4,7 +4,7 @@ import { compileTimerOffline } from './timer-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/9';
+export const PROMPT_VERSION = 'riff-compiler/10';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -41,17 +41,21 @@ Decide the kind:
 - "question": a missing fact changes who may trigger it or how much it may do and
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
-- "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, bans, external sites, timers inside a session round, opening/settling
-  predictions directly, or Channel Points rewards for anything but triggering).
-  Named host timers ("every 10 minutes", "60 seconds after !start") ARE supported via
-  capability timer; a session round deadline is separate and host-owned. Give the reason
-  and the closest supported alternative. manifest/source null, tests [].
+- "unsupported": it needs a capability the SDK does not have (sending ordinary chat
+  messages or replies, sounds, bans, external sites, timers inside a session round,
+  opening/settling predictions directly, Channel Points rewards for anything but
+  triggering, or shoutouts to a channel named in chat). Named host timers ("every 10
+  minutes", "60 seconds after !start") ARE supported via capability timer; a session
+  round deadline/countdown is separate and host-owned. Twitch polls, chat announcements
+  and fixed-target shoutouts ARE supported (see below). Give the reason and the closest
+  supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit, riff.timer.start/cancel, riff.predictions.propose, riff.util, and
-  the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.timer.start/cancel, riff.predictions.propose, the native
+  Twitch actions riff.polls.start/end, riff.chat.announce and riff.shoutout.send,
+  riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no
+  comments needed.
 - Timers: a chat command starts them (there is no activation hook), so pick a command
   and audience (default broadcaster+moderator) and list them in assumptions. Branch on
   event.source === 'timer.fired' for the fire; restarting a name replaces it. Declare
@@ -68,6 +72,15 @@ Rules for candidates:
   outcomes, windowSeconds}) and capability "predictions". The creator opens it and alone
   picks the winner, locks or cancels; requests to auto-resolve, pick winners, or settle
   from chat are unsupported. A proposing step expects effects 0.
+- Native Twitch actions (capabilities "polls", "chat.announce", "shoutout") use
+  sdkVersion 0.4.0 and count as effects. Poll and shoutout triggers MUST restrict
+  audience to ["broadcaster"] or ["broadcaster","moderator"]; if the creator asks for a
+  wider audience, ask ONE question instead. Poll text must already fit Twitch limits
+  (question ≤ 60, 2–5 choices ≤ 25 characters, 15–1800 seconds); never truncate the
+  creator's words silently. Shoutout logins are fixed literals; the trigger is an exact
+  command, so a login typed after the command is never available. Name the channel's
+  approval requirement in assumptions. Announcements quote the creator's text exactly.
+  For a poll, set maxPerViewer 1 and windowMs to the poll duration in milliseconds.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.

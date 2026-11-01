@@ -14,3 +14,7 @@ timer. Host fires re-enter the same handler as `timer.fired` events through
 `riff.predictions.propose()` requires declared `predictions` authority, accepts one
 strictly validated proposal per event and only returns it in the decision; opening and
 settlement are creator actions in the host console.
+
+`riff.polls.start/end`, `riff.chat.announce` and `riff.shoutout.send` stage strict,
+bounded native Twitch actions (capabilities `polls`, `chat.announce`, `shoutout`). They are
+never executed in the isolate: the decision carries them and only the live host sends them.

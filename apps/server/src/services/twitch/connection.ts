@@ -13,11 +13,13 @@ import {
   normalizeChatMessage,
   refreshAccessToken,
   TRIGGERS,
+  TWITCH_FEATURE_SCOPES,
   validateAccessToken,
   type EventSubClient,
   type FetchLike,
   type HelixClient,
   type NormalizedRedemption,
+  type TwitchFeature as NativeTwitchFeature,
 } from '@riff/twitch';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -46,9 +48,12 @@ export type TwitchStatus =
   | { state: 'error'; login: string | null; message: string };
 /** Optional feature consent requested on top of chat (F22). */
 export type TwitchFeature = 'channel-points' | 'predictions';
-const FEATURE_SCOPES: Record<TwitchFeature, readonly string[]> = {
+/** Every consentable feature: F22 Channel Points/Predictions and F21/F23 native actions. */
+export type ConsentFeature = TwitchFeature | NativeTwitchFeature;
+const FEATURE_SCOPES: Record<ConsentFeature, readonly string[]> = {
   'channel-points': CHANNEL_POINTS_SCOPES,
   predictions: PREDICTION_SCOPES,
+  ...TWITCH_FEATURE_SCOPES,
 };
 /** Authenticated Helix access for host services; never handed to guest code. */
 export interface TwitchApi {
@@ -232,7 +237,11 @@ export function createTwitchConnection(deps: {
     get redemptions() {
       return redemptions;
     },
-    beginAuthorization(features: readonly TwitchFeature[] = []) {
+    /**
+     * Start OAuth. Previously granted scopes are always kept, and each optional feature
+     * (Channel Points, Predictions, polls, announcements, shoutouts) adds only its own scope.
+     */
+    beginAuthorization(features: readonly ConsentFeature[] = []) {
       if (!config) throw new Error('Twitch is not configured');
       const state = randomBytes(16).toString('base64url');
       pendingStates.set(state, Date.now() + 10 * 60_000);
@@ -251,6 +260,26 @@ export function createTwitchConnection(deps: {
         scopes,
         state,
         forceVerify: true,
+      });
+    },
+    /** Scopes on the sealed token; never the token itself. */
+    grantedScopes(): string[] {
+      return readTokens()?.scopes ?? [];
+    },
+    identity(): { userId: string; login: string | null } | null {
+      const state = repo.state();
+      return state.twitchUserId && readTokens()
+        ? { userId: state.twitchUserId, login: state.twitchLogin }
+        : null;
+    },
+    /** A Helix client on the broadcaster's token, or null when not connected. */
+    helix(): HelixClient | null {
+      if (!config || !sealer || !readTokens()) return null;
+      return createHelixClient({
+        clientId: config.clientId,
+        getAccessToken: accessToken,
+        fetch: doFetch,
+        ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
       });
     },
     async completeAuthorization(code: string, state: string) {

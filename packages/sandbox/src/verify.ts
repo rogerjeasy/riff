@@ -4,6 +4,7 @@ import {
   type AudienceRole,
   type Capability,
   type DecisionCode,
+  type ExecutionDecision,
   type PermissionManifest,
   type Scenario,
   type SessionSnapshot,
@@ -128,8 +129,15 @@ export function analyzeSource(source: string, manifest: PermissionManifest) {
       add('error', 'small-literals', 'Regular expressions are limited to 200 characters', node);
     if (ts.isStringLiteralLike(node) && node.text.length > 500)
       add('error', 'small-literals', 'String literals are limited to 500 characters', node);
-    if (ts.isPropertyAccessExpression(node) && CAPABILITIES.includes(node.name.text as Capability))
-      used.add(node.name.text as Capability);
+    if (ts.isPropertyAccessExpression(node)) {
+      // Dotted capabilities (`chat.announce`) are matched on the full member chain.
+      const dotted = ts.isPropertyAccessExpression(node.expression)
+        ? `${node.expression.name.text}.${node.name.text}`
+        : null;
+      if (dotted && CAPABILITIES.includes(dotted as Capability)) used.add(dotted as Capability);
+      else if (CAPABILITIES.includes(node.name.text as Capability))
+        used.add(node.name.text as Capability);
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -145,6 +153,11 @@ export function analyzeSource(source: string, manifest: PermissionManifest) {
     if (!used.has(capability))
       add('warning', 'least-privilege', `Declares \`${capability}\` but never uses it`);
   return { findings, capabilitiesUsed: [...used] };
+}
+
+/** Effects plus staged native Twitch actions: what a scenario step's `effects` counts. */
+export function outputCount(decision: Pick<ExecutionDecision, 'effects' | 'actions'>): number {
+  return decision.effects.length + (decision.actions?.length ?? 0);
 }
 
 /** Run declarative scenarios through fresh preview engines, one engine per scenario. */
@@ -189,14 +202,12 @@ export async function runScenarios(
         const timersMatch =
           !step.timers ||
           (step.timers.fired === fired.fired && step.timers.effects === fired.effects);
+        const actual = outputCount(decision);
         const passed =
           timersMatch &&
           matchesSessionAssertion(decision.session, step.session) &&
           decision.code === step.expect &&
-          (expectEffects === -2 ||
-            (expectEffects < 0
-              ? decision.effects.length > 0
-              : decision.effects.length === expectEffects));
+          (expectEffects === -2 || (expectEffects < 0 ? actual > 0 : actual === expectEffects));
         steps.push({
           id: step.id,
           viewer: step.viewer,
@@ -211,7 +222,7 @@ export async function runScenarios(
           ...(fired.fired || step.timers ? { timers: fired } : {}),
           ...(step.timers ? { expectTimers: step.timers } : {}),
           actual: decision.code,
-          actualEffects: decision.effects.length,
+          actualEffects: actual,
           passed,
         });
       }

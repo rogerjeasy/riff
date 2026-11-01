@@ -2,7 +2,7 @@
   "provenance": {
     "transport": "offline",
     "model": null,
-    "promptVersion": "riff-compiler/9",
+    "promptVersion": "riff-compiler/10",
     "note": "Deterministic version 2 mechanics template responses recorded locally; no live model call or credentials."
   },
   "records": [

@@ -123,6 +123,13 @@ export interface Decision {
   code: DecisionCode;
   reason: string;
   effects: Effect[];
+  /** Staged native Twitch actions (F21/F23); previews never send them. */
+  actions?: (
+    | { kind: 'poll.start'; title: string; choices: string[]; durationSeconds: number }
+    | { kind: 'poll.end' }
+    | { kind: 'announce'; message: string; color: string }
+    | { kind: 'shoutout'; login: string }
+  )[];
   mode: 'preview' | 'live';
   viewerId: string | null;
   at: number | null;

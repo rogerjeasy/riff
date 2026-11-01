@@ -76,6 +76,20 @@ export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
         ? 'muted'
         : 'warn';
 
+/** Plain-language description of one staged native Twitch action. */
+export function describeAction(action: NonNullable<Decision['actions']>[number]): string {
+  switch (action.kind) {
+    case 'poll.start':
+      return `would start the poll “${action.title}” (${action.choices.join(' / ')}) for ${action.durationSeconds} s`;
+    case 'poll.end':
+      return 'would end the running poll';
+    case 'announce':
+      return `would announce “${action.message}”`;
+    case 'shoutout':
+      return `would shout out @${action.login} (if your shoutout policy approves it)`;
+  }
+}
+
 /** One plain-language sentence explaining a host decision. */
 export function explain(
   decision: Decision,
@@ -89,6 +103,9 @@ export function explain(
   const asset = decision.effects[0]?.asset ?? 'effect';
   switch (decision.code) {
     case 'ACCEPTED':
+      // Rehearsals route native Twitch actions to a simulated sink; say what would happen.
+      if (decision.actions?.length && decision.mode === 'preview')
+        return `${viewer} typed ${t.command} — simulated Twitch, nothing sent: ${decision.actions.map(describeAction).join('; ')}.${n ? ` Plus ${n} visual effect${n === 1 ? '' : 's'}.` : ''}`;
       if (manifest.experience)
         return `${viewer}: ${decision.reason} ${decision.effects.length ? `${decision.effects.length} visual effect${decision.effects.length === 1 ? '' : 's'}.` : 'No visual effect.'}`;
       return `${viewer} typed ${t.command} — ${n === 1 ? `a ${asset} flies` : `${n} ${asset}s fly`}. ${a ? `${a.used} of ${a.max} used this ${formatWindow(t.windowMs)}.` : ''}`;

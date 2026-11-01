@@ -757,3 +757,11 @@ export const predictionRequests = sqliteTable(
     uniqueIndex('prediction_request_event').on(table.channelId, table.automationId, table.eventId),
   ],
 );
+
+/** F21/F23 native Twitch feature preferences, shoutout policy, active poll and budgets. */
+export const twitchFeatureState = sqliteTable('twitch_feature_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});

@@ -1,0 +1,457 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/10",
+    "note": "Deterministic offline template outputs for F21/F23 native Twitch actions. No live model request."
+  },
+  "cases": [
+    {
+      "request": {
+        "intent": "When I type !nextgame, start a Twitch poll \"What should we play next?\" with choices \"Speedrun\" and \"Hardcore\" for 2 minutes.",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.polls.start({ title: \"What should we play next?\", choices: [\"Speedrun\",\"Hardcore\"], durationSeconds: 120 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["polls"],
+          "trigger": {
+            "command": "!nextgame",
+            "audience": ["broadcaster"],
+            "maxPerViewer": 1,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 2
+          }
+        },
+        "tests": [
+          {
+            "name": "!nextgame stages the Twitch action",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "n1",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Use 2 waits for the window",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "l0",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "lover",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 10,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0
+              },
+              {
+                "id": "lback",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 120000,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgames",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "A redelivered message is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster"],
+                "text": "!nextgame",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Ordinary viewers cannot trigger it",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "r1",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "!nextgame",
+                "at": 0,
+                "expect": "AUDIENCE",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "You type !nextgame in chat",
+          "what": "Twitch poll “What should we play next?” (Speedrun / Hardcore) runs for 2 min",
+          "who": "Only you (the broadcaster)",
+          "howMuch": "One poll at a time; once per 2 min per person"
+        },
+        "assumptions": [
+          "Only you (the broadcaster) can use !nextgame.",
+          "Polls need an Affiliate or Partner channel and the polls grant in Twitch features."
+        ],
+        "kind": "candidate",
+        "title": "Channel Poll",
+        "summary": "!nextgame starts the Twitch poll “What should we play next?”."
+      }
+    },
+    {
+      "request": {
+        "intent": "When anyone types !hype, announce \"Hype train incoming!\" in chat in purple, once per person per minute.",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.chat.announce({ message: \"Hype train incoming!\", color: 'purple' });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["chat.announce"],
+          "trigger": {
+            "command": "!hype",
+            "audience": ["viewer"],
+            "maxPerViewer": 1,
+            "windowMs": 60000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 2
+          }
+        },
+        "tests": [
+          {
+            "name": "!hype stages the Twitch action",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "n1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Use 2 waits for the window",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "l0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "lover",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 10,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0
+              },
+              {
+                "id": "lback",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 60000,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hypes",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "A redelivered message is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hype",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone types !hype in chat",
+          "what": "A chat announcement says “Hype train incoming!”",
+          "who": "Everyone in chat",
+          "howMuch": "Up to 1 per person in any 1 min; at most 6 announcements a minute channel-wide"
+        },
+        "assumptions": [],
+        "kind": "candidate",
+        "title": "Chat Announcement",
+        "summary": "!hype posts a highlighted chat announcement."
+      }
+    },
+    {
+      "request": {
+        "intent": "When I or my mods type !so, shout out @twitchdev.",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.shoutout.send({ login: \"twitchdev\" });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["shoutout"],
+          "trigger": {
+            "command": "!so",
+            "audience": ["broadcaster", "moderator"],
+            "maxPerViewer": 1,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 2
+          }
+        },
+        "tests": [
+          {
+            "name": "!so stages the Twitch action",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "n1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Use 2 waits for the window",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "l0",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "lover",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 10,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0
+              },
+              {
+                "id": "lback",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 120000,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!sos",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "A redelivered message is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "moderator"],
+                "text": "!so",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Ordinary viewers cannot trigger it",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "r1",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "!so",
+                "at": 0,
+                "expect": "AUDIENCE",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "You or a moderator types !so in chat",
+          "what": "Twitch shows a shoutout card for @twitchdev",
+          "who": "Only you and your moderators",
+          "howMuch": "Once every 2 minutes; the same channel at most once an hour (Twitch limits)"
+        },
+        "assumptions": [
+          "Only you and your moderators can use !so.",
+          "@twitchdev must be on your approved shoutout list in Twitch features."
+        ],
+        "kind": "candidate",
+        "title": "Channel Shoutout",
+        "summary": "!so shouts out @twitchdev."
+      }
+    }
+  ]
+}
