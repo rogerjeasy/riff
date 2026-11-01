@@ -1,3 +1,4 @@
+import type { RegressionEvidence } from '../console/rehearsal/contracts.js';
 import type { ProposalSnapshot } from '../console/proposals/contracts.js';
 import type { Community } from '../community/schema.js';
 /** Wire types mirrored from the server. Validated at the boundary in api.ts. */
@@ -124,6 +125,7 @@ export interface Finding {
   line: number | null;
 }
 export interface Verification {
+  rehearsal?: RegressionEvidence[];
   ok: boolean;
   artifactId: string | null;
   stages: Stage[];
@@ -164,6 +166,7 @@ export interface Version {
   behavior: { when: string; what: string; who: string; howMuch: string };
   assumptions: string[];
   evidence: {
+    rehearsal?: RegressionEvidence[];
     verification: Verification;
     intent: IntentCheck[];
     migration?: { source: string; ok: boolean; snapshots: string[]; failure: string | null };

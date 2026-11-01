@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  scenarioSchema,
+  scenarioRecordSchema,
+  rehearsalRunSchema,
+  regressionSchema,
+  type RehearsalScenario,
+  type presets,
+} from '../console/rehearsal/contracts.js';
 import { communitySchema } from '../community/schema.js';
 import {
   proposalSchema,
@@ -195,7 +203,7 @@ async function transitionRequest(url: string, body: unknown): Promise<Transition
 }
 
 async function request<T>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   url: string,
   body?: unknown,
   signal?: AbortSignal,
@@ -205,7 +213,7 @@ async function request<T>(
     response = await fetch(url, {
       method,
       headers:
-        method === 'POST' ? { 'Content-Type': 'application/json', 'x-riff-request': '1' } : {},
+        method !== 'GET' ? { 'Content-Type': 'application/json', 'x-riff-request': '1' } : {},
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       ...(signal ? { signal } : {}),
     });
@@ -230,6 +238,144 @@ async function request<T>(
 }
 
 export const api = {
+  async rehearsalScenarios(signal?: AbortSignal) {
+    return z
+      .object({ scenarios: z.array(scenarioRecordSchema).max(50) })
+      .strict()
+      .parse(await request('GET', '/api/rehearsals/scenarios', undefined, signal)).scenarios;
+  },
+  async rehearsalSave(
+    input:
+      | { name: string; scenario: RehearsalScenario }
+      | { name: string; recording: { versionId: string; sessionId: string; seed: number } },
+    saved?: { id: string; revision: number },
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ scenario: scenarioRecordSchema })
+      .strict()
+      .parse(
+        await request(
+          saved ? 'PUT' : 'POST',
+          `/api/rehearsals/scenarios${saved ? '/' + encodeURIComponent(saved.id) : ''}`,
+          { ...input, ...(saved ? { expectedRevision: saved.revision } : {}) },
+          signal,
+        ),
+      ).scenario;
+  },
+  rehearsalDeleteScenario: (id: string, expectedRevision: number, signal?: AbortSignal) =>
+    request(
+      'DELETE',
+      `/api/rehearsals/scenarios/${encodeURIComponent(id)}`,
+      { expectedRevision },
+      signal,
+    ),
+  async rehearsalPreset(
+    versionId: string,
+    preset: (typeof presets)[number],
+    seed: number,
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ scenario: scenarioSchema })
+      .strict()
+      .parse(await request('POST', '/api/rehearsals/presets', { versionId, preset, seed }, signal))
+      .scenario;
+  },
+  async rehearsalRecording(
+    versionId: string,
+    sessionId: string,
+    seed: number,
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ scenario: scenarioSchema })
+      .strict()
+      .parse(
+        await request('POST', '/api/rehearsals/recordings', { versionId, sessionId, seed }, signal),
+      ).scenario;
+  },
+  async rehearsalRun(
+    id: string,
+    input: {
+      expectedRevision: number;
+      versionId: string;
+      compareVersionId?: string;
+      through?: number;
+      freshStart?: boolean;
+    },
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ run: rehearsalRunSchema })
+      .strict()
+      .parse(
+        await request(
+          'POST',
+          `/api/rehearsals/scenarios/${encodeURIComponent(id)}/run`,
+          input,
+          signal,
+        ),
+      ).run;
+  },
+  async rehearsalMinimize(
+    id: string,
+    side: 'primary' | 'compare',
+    checkId: string,
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ run: rehearsalRunSchema })
+      .strict()
+      .parse(
+        await request(
+          'POST',
+          `/api/rehearsals/runs/${encodeURIComponent(id)}/minimize`,
+          { side, checkId },
+          signal,
+        ),
+      ).run;
+  },
+  async rehearsalRegressions(signal?: AbortSignal) {
+    return z
+      .object({ regressions: z.array(regressionSchema).max(50) })
+      .strict()
+      .parse(await request('GET', '/api/rehearsals/regressions', undefined, signal)).regressions;
+  },
+  async rehearsalSaveRegression(
+    name: string,
+    runId: string,
+    checkId: string,
+    signal?: AbortSignal,
+  ) {
+    return z
+      .object({ regression: regressionSchema })
+      .strict()
+      .parse(await request('POST', '/api/rehearsals/regressions', { name, runId, checkId }, signal))
+      .regression;
+  },
+  rehearsalDeleteRegression: (id: string, signal?: AbortSignal) =>
+    request('DELETE', `/api/rehearsals/regressions/${encodeURIComponent(id)}`, {}, signal),
+  async rehearsalRerun(id: string, versionId: string, signal?: AbortSignal) {
+    return z
+      .object({ run: rehearsalRunSchema })
+      .strict()
+      .parse(
+        await request(
+          'POST',
+          `/api/rehearsals/regressions/${encodeURIComponent(id)}/run`,
+          { versionId },
+          signal,
+        ),
+      ).run;
+  },
+  rehearsalRepair: (id: string, intent: string, signal?: AbortSignal) =>
+    request<Run>(
+      'POST',
+      `/api/rehearsals/regressions/${encodeURIComponent(id)}/repair`,
+      { intent },
+      signal,
+    ),
   async proposals(
     input: { state?: Proposal['state']; offset: number; limit: number },
     signal?: AbortSignal,
