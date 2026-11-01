@@ -1,5 +1,6 @@
+import type { ProductionBotKind } from '@riff/sdk';
 import { digest, eventSchema } from './contract.js';
-import { explain, type Runtime } from './runtime.js';
+import { BOT_KINDS, explain, toolName, toolOf, type Runtime } from './runtime.js';
 
 const MAX_PENDING = 16;
 
@@ -32,12 +33,25 @@ export function createEvents(rt: Runtime) {
     });
   }
 
-  async function receive(raw: unknown) {
+  async function receive(raw: unknown, tool: ProductionBotKind = 'streamerbot') {
+    const tName = toolName[tool];
+    if (
+      raw &&
+      typeof raw === 'object' &&
+      (raw as { unauthenticated?: unknown }).unauthenticated === true
+    ) {
+      const name = String((raw as { eventName?: unknown }).eventName ?? '').slice(0, 120);
+      rt.record(
+        'DENIED',
+        `Ignored ${tName} event "${name}": its Riff event key was missing or did not match.`,
+      );
+      return;
+    }
     const parsed = eventSchema.safeParse(raw);
     if (!parsed.success) {
       rt.record(
         'DENIED',
-        'Ignored a Streamer.bot event without valid Riff causal metadata (args.riff).',
+        `Ignored a ${tName} event without valid Riff causal metadata (args.riff).`,
       );
       return;
     }
@@ -49,12 +63,12 @@ export function createEvents(rt: Runtime) {
     const skip = (code: string, why: string) => rt.record(code, `Event ${label} ${why}`);
     try {
       rt.assertRunning();
-      if (!state.bot || rt.connections.streamerbot.status !== 'connected')
-        return skip('IGNORED', 'was ignored because Streamer.bot is not connected.');
-      if (state.busy.streamerbot)
-        return skip('BUSY', 'was not applied because the Streamer.bot connection is changing.');
+      if (!rt.botFor(tool) || rt.connections[tool].status !== 'connected')
+        return skip('IGNORED', `was ignored because ${tName} is not connected.`);
+      if (state.busy[tool])
+        return skip('BUSY', `was not applied because the ${tName} connection is changing.`);
       const s = rt.read(),
-        mapping = s.mappings.find((m) => m.eventName === eventName);
+        mapping = s.mappings.find((m) => m.eventName === eventName && toolOf(m) === tool);
       if (!mapping) return skip('IGNORED', 'was ignored: no approved mapping uses this event.');
       if (meta.origin === s.origin)
         return skip('IGNORED', 'was ignored: it came from this Riff instance (loop protection).');
@@ -68,7 +82,7 @@ export function createEvents(rt: Runtime) {
           'BUSY',
           `was not applied: ${MAX_PENDING} external controls are already pending.`,
         );
-      const stamp = rt.stampFor('streamerbot', true);
+      const stamp = rt.stampFor(tool, true);
       rt.currentVersion(mapping.versionId);
       if (!claim(meta.eventId, meta.causalId))
         return skip(
@@ -93,57 +107,55 @@ export function createEvents(rt: Runtime) {
   }
 
   async function observe() {
-    if (
-      state.closed ||
-      deps.blocked() ||
-      observing ||
-      state.busy.streamerbot ||
-      !state.bot ||
-      rt.connections.streamerbot.status !== 'connected'
-    )
-      return;
-    const client = state.bot,
-      stamp = rt.stampFor('streamerbot', true);
+    if (state.closed || deps.blocked() || observing) return;
     observing = true;
     try {
-      for (const mapping of rt.read().mappings) {
-        if (!mapping.actionId) continue;
-        const action =
-          rt.connections.streamerbot.actions.find((a) => a.id === mapping.actionId)?.name ??
-          mapping.actionId;
-        try {
-          rt.fence(stamp);
-          const v = rt.currentVersion(mapping.versionId),
-            session = deps.repo.session(v.automationId);
-          if (session?.snapshot.phase !== 'finished' || session.versionId !== v.id) continue;
-          const id = `finish:${digest({ session: session.snapshot.id, mapping: mapping.id, version: v.id })}`;
-          // Unlike recent incoming event receipts, a finished round stays finished.
-          // Retain its claim until this mapping sees a different round, including
-          // uncertain write results; elapsed time never replays an external effect.
-          const first = rt.mutate((s) => {
-            if (s.completed[mapping.id] === session.snapshot.id) return false;
-            s.completed[mapping.id] = session.snapshot.id;
-            return true;
-          });
-          if (!first || !claim(id, id)) continue;
-          rt.fence(stamp);
-          await client.invoke(mapping.actionId, {
-            riff: { eventId: id, causalId: id, origin: rt.read().origin, hops: 1, at: rt.now() },
-          });
-          rt.fence(stamp);
-          rt.record(
-            'SENT',
-            `Ran Streamer.bot action "${action}" once because ${titled(v.id)} finished its round.`,
-          );
-        } catch (error) {
-          rt.record(
-            'UNAVAILABLE',
-            `Streamer.bot action "${action}" for a finished round was not confirmed: ${explain(error, 'Streamer.bot did not accept it.')} It will not be retried.`,
-          );
-        }
-      }
+      for (const tool of BOT_KINDS) await observeTool(tool);
     } finally {
       observing = false;
+    }
+  }
+
+  async function observeTool(tool: ProductionBotKind) {
+    const client = rt.botFor(tool);
+    if (!client || state.busy[tool] || rt.connections[tool].status !== 'connected') return;
+    const stamp = rt.stampFor(tool, true),
+      tName = toolName[tool];
+    for (const mapping of rt.read().mappings) {
+      if (!mapping.actionId || toolOf(mapping) !== tool) continue;
+      const action =
+        rt.connections[tool].actions.find((a) => a.id === mapping.actionId)?.name ??
+        mapping.actionId;
+      try {
+        rt.fence(stamp);
+        const v = rt.currentVersion(mapping.versionId),
+          session = deps.repo.session(v.automationId);
+        if (session?.snapshot.phase !== 'finished' || session.versionId !== v.id) continue;
+        const id = `finish:${digest({ session: session.snapshot.id, mapping: mapping.id, version: v.id })}`;
+        // Unlike recent incoming event receipts, a finished round stays finished.
+        // Retain its claim until this mapping sees a different round, including
+        // uncertain write results; elapsed time never replays an external effect.
+        const first = rt.mutate((s) => {
+          if (s.completed[mapping.id] === session.snapshot.id) return false;
+          s.completed[mapping.id] = session.snapshot.id;
+          return true;
+        });
+        if (!first || !claim(id, id)) continue;
+        rt.fence(stamp);
+        await client.invoke(mapping.actionId, {
+          riff: { eventId: id, causalId: id, origin: rt.read().origin, hops: 1, at: rt.now() },
+        });
+        rt.fence(stamp);
+        rt.record(
+          'SENT',
+          `Ran ${tName} action "${action}" once because ${titled(v.id)} finished its round.`,
+        );
+      } catch (error) {
+        rt.record(
+          'UNAVAILABLE',
+          `${tName} action "${action}" for a finished round was not confirmed: ${explain(error, `${tName} did not accept it.`)} It will not be retried.`,
+        );
+      }
     }
   }
 

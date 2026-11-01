@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { ProductionMapping } from '@riff/sdk';
 import type { z } from 'zod';
 import { ProductionError, digest, importSchema, mappingsSchema } from './contract.js';
-import type { Runtime } from './runtime.js';
+import { BOT_KINDS, toolName, toolOf, type Runtime } from './runtime.js';
 
 const MAX_LINES = 100;
 const NATIVE_UNSUPPORTED =
-  'Only riff-production version 1 mapping JSON is supported. Native tool exports, C#, shell, plugins and scripts are not executed or silently migrated.';
+  'Only riff-production version 1 mapping JSON is supported here. Use “Import from another tool” to read Streamer.bot, Firebot or OBS exports as reviewable drafts; C#, shell, plugins and scripts are never executed or silently migrated.';
 const NOTHING_STAGED = 'Nothing was staged. The approved mappings are unchanged.';
 
 /** Plain-language reasons a riff-production document failed the bounded schema. */
@@ -40,28 +40,30 @@ export function createMappings(rt: Runtime) {
     const title = deps.repo.version(id)?.title;
     return title ? `version "${title}"` : `unknown version ${id.slice(0, 8)}`;
   };
-  const actionLabel = (id: string) =>
-    `"${rt.connections.streamerbot.actions.find((a) => a.id === id)?.name ?? id}"`;
+  const actionLabel = (m: Pick<ProductionMapping, 'tool'>, id: string) =>
+    `"${rt.connections[toolOf(m)].actions.find((a) => a.id === id)?.name ?? id}"`;
+  const via = (m: ProductionMapping) => (toolOf(m) === 'firebot' ? ' (Firebot)' : '');
   const behaviour = (m: ProductionMapping) =>
-    `${m.control} ${versionLabel(m.versionId)}${m.actionId ? `; when its round finishes, run ${actionLabel(m.actionId)}` : ''}`;
-  const enabledAction = (id: string) =>
-    rt.connections.streamerbot.actions.some((a) => a.id === id && a.enabled);
+    `${m.control} ${versionLabel(m.versionId)}${m.actionId ? `; when its round finishes, run ${actionLabel(m, m.actionId)}` : ''}`;
+  const enabledAction = (m: ProductionMapping, id: string) =>
+    rt.connections[toolOf(m)].actions.some((a) => a.id === id && a.enabled);
 
   function differences(current: ProductionMapping[], incoming: ProductionMapping[]) {
     const lines: string[] = [];
     for (const m of incoming) {
       const old = current.find((c) => c.id === m.id);
       if (!old) {
-        lines.push(`Add "${m.eventName}" → ${behaviour(m)}.`);
+        lines.push(`Add "${m.eventName}"${via(m)} → ${behaviour(m)}.`);
         continue;
       }
       const changes = [
         old.eventName !== m.eventName && `event "${old.eventName}" → "${m.eventName}"`,
+        toolOf(old) !== toolOf(m) && `${toolName[toolOf(old)]} → ${toolName[toolOf(m)]}`,
         old.control !== m.control && `${old.control} → ${m.control}`,
         old.versionId !== m.versionId &&
           `${versionLabel(old.versionId)} → ${versionLabel(m.versionId)}`,
         old.actionId !== m.actionId &&
-          `finished-round action ${old.actionId ? actionLabel(old.actionId) : 'none'} → ${m.actionId ? actionLabel(m.actionId) : 'none'}`,
+          `finished-round action ${old.actionId ? actionLabel(old, old.actionId) : 'none'} → ${m.actionId ? actionLabel(m, m.actionId) : 'none'}`,
       ].filter(Boolean);
       if (changes.length) lines.push(`Change "${old.eventName}": ${changes.join('; ')}.`);
     }
@@ -81,9 +83,9 @@ export function createMappings(rt: Runtime) {
         `Mapping "${m.id}" (${m.eventName}): ${versionLabel(m.versionId)} is not a current, healthy, approved version in this channel.`,
       );
     }
-    if (m.actionId && !enabledAction(m.actionId))
+    if (m.actionId && !enabledAction(m, m.actionId))
       out.push(
-        `Mapping "${m.id}" (${m.eventName}): action "${m.actionId}" is missing or disabled on the connected Streamer.bot.`,
+        `Mapping "${m.id}" (${m.eventName}): action "${m.actionId}" is missing or disabled on the connected ${toolName[toolOf(m)]}.`,
       );
     return out;
   }
@@ -95,6 +97,7 @@ export function createMappings(rt: Runtime) {
           mappings,
           unsupported,
           connection: rt.state.session.streamerbot,
+          firebot: rt.state.session.firebot,
           nonce: randomUUID(),
         }),
         mappings,
@@ -109,8 +112,9 @@ export function createMappings(rt: Runtime) {
   }
   function assertIdle() {
     rt.assertRunning();
-    if (rt.state.busy.streamerbot)
-      throw new ProductionError('BUSY', 'Wait for the current Streamer.bot operation.');
+    for (const kind of BOT_KINDS)
+      if (rt.state.busy[kind])
+        throw new ProductionError('BUSY', `Wait for the current ${toolName[kind]} operation.`);
   }
 
   return {
@@ -123,9 +127,17 @@ export function createMappings(rt: Runtime) {
     },
     approve(hash: string) {
       assertIdle();
-      if (!rt.state.bot || rt.connections.streamerbot.status !== 'connected')
-        throw new ProductionError('UNAVAILABLE', 'Connect Streamer.bot before approval.');
+      const live = (kind: (typeof BOT_KINDS)[number]) =>
+        !!rt.botFor(kind) && rt.connections[kind].status === 'connected';
       const review = rt.read().mappingReview;
+      const needed = review?.mappings.length
+        ? [...new Set(review.mappings.map(toolOf))]
+        : BOT_KINDS.some(live)
+          ? []
+          : ['streamerbot' as const];
+      const missing = needed.find((kind) => !live(kind));
+      if (missing)
+        throw new ProductionError('UNAVAILABLE', `Connect ${toolName[missing]} before approval.`);
       if (!review || review.digest !== hash || review.unsupported.length)
         throw new ProductionError('STALE', 'Review the exact supported mappings before approval.');
       const [problem] = review.mappings.flatMap(problems);
@@ -156,6 +168,30 @@ export function createMappings(rt: Runtime) {
         s.mappingReview = null;
       });
       return rt.view();
+    },
+    /**
+     * Stage imported bridge drafts on top of the approved set (same id replaces).
+     * Never approves; problems block approval exactly like a reviewed import.
+     */
+    stageDrafts(drafts: ProductionMapping[]) {
+      assertIdle();
+      const current = rt.read().mappings;
+      const merged = [...current.filter((m) => !drafts.some((d) => d.id === m.id)), ...drafts];
+      const clash = drafts.find((d) =>
+        merged.some((m) => m.id !== d.id && m.eventName === d.eventName),
+      );
+      if (clash)
+        throw new ProductionError(
+          'INVALID',
+          `The event "${clash.eventName}" is already used by another mapping. Remove that mapping first.`,
+        );
+      const parsed = mappingsSchema.safeParse(merged);
+      if (!parsed.success)
+        throw new ProductionError(
+          'INVALID',
+          `At most 20 mappings can be reviewed; ${merged.length} would result. Draft fewer bridges.`,
+        );
+      return stage(parsed.data, parsed.data.flatMap(problems));
     },
     importConfiguration(raw: unknown) {
       assertIdle();
