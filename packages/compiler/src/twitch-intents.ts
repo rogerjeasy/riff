@@ -19,7 +19,7 @@ export function nativeActionIntent(intent: string): 'poll' | 'announce' | 'shout
 }
 
 const quoted = (text: string) =>
-  [...text.matchAll(/["“]([^"”]{1,120})["”]/g)].map((m) => (m[1] ?? "").trim()).filter(Boolean);
+  [...text.matchAll(/["“]([^"”]{1,120})["”]/g)].map((m) => (m[1] ?? '').trim()).filter(Boolean);
 const literal = (value: unknown) => JSON.stringify(value);
 const PRIVILEGED: AudienceRole[] = ['broadcaster'];
 
@@ -216,7 +216,7 @@ export function compileTwitchActionOffline(request: CompileRequest): CompileOutp
       },
       tests: steps(command, audience, 1, windowMs),
       behavior: {
-        when: `${audience.includes("moderator") ? "You or a moderator types" : "You type"} ${command} in chat`,
+        when: `${audience.includes('moderator') ? 'You or a moderator types' : 'You type'} ${command} in chat`,
         what: `Twitch poll “${title}” (${choices.join(' / ')}) runs for ${describeWindow(durationSeconds * 1000)}`,
         who,
         howMuch: `One poll at a time; once per ${describeWindow(windowMs)} per person`,
@@ -304,7 +304,7 @@ export function compileTwitchActionOffline(request: CompileRequest): CompileOutp
     },
     tests: steps(command, audience, 1, windowMs),
     behavior: {
-      when: `${audience.includes("moderator") ? "You or a moderator types" : "You type"} ${command} in chat`,
+      when: `${audience.includes('moderator') ? 'You or a moderator types' : 'You type'} ${command} in chat`,
       what: `Twitch shows a shoutout card for @${login}`,
       who,
       howMuch: 'Once every 2 minutes; the same channel at most once an hour (Twitch limits)',

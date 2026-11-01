@@ -31,6 +31,7 @@ import {
   type ChatEvent,
   type PermissionManifest,
   type ExecutionDecision,
+  type TwitchAction,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import { transitionEvidenceId } from '../../db/repositories/transitions.js';
@@ -62,6 +63,11 @@ export function createLiveRuntime(deps: {
   onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
+  /** Host-side queue for staged polls, announcements and shoutouts (F21/F23). */
+  onTwitchActions?: (
+    actions: readonly TwitchAction[],
+    context: { automationId: string; viewer: string },
+  ) => Promise<void>;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -264,7 +270,7 @@ export function createLiveRuntime(deps: {
               viewerId: event.data.viewerId,
               at: event.data.at,
               code: decision.code,
-              effects: decision.effects.length,
+              effects: decision.effects.length + (decision.actions?.length ?? 0),
             });
         }
       } catch {
@@ -326,6 +332,18 @@ export function createLiveRuntime(deps: {
             ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
+      // Staged native Twitch actions leave the host only from a live, unfenced decision.
+      // They are queued, never awaited, so the serialized chat pipeline keeps moving.
+      if (
+        decision.code === 'ACCEPTED' &&
+        decision.actions?.length &&
+        fence === generation &&
+        !panic &&
+        decision.mode === 'live'
+      )
+        void deps
+          .onTwitchActions?.(decision.actions, { automationId, viewer: message.viewerName })
+          ?.catch(() => undefined);
     }
     await applyPending();
     return results;

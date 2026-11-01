@@ -21,14 +21,10 @@
         "manifest": {
           "sdkVersion": "0.4.0",
           "experience": null,
-          "capabilities": [
-            "polls"
-          ],
+          "capabilities": ["polls"],
           "trigger": {
             "command": "!nextgame",
-            "audience": [
-              "broadcaster"
-            ],
+            "audience": ["broadcaster"],
             "maxPerViewer": 1,
             "windowMs": 120000
           },
@@ -45,9 +41,7 @@
               {
                 "id": "n1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -62,9 +56,7 @@
               {
                 "id": "l0",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -73,9 +65,7 @@
               {
                 "id": "lover",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 10,
                 "expect": "VIEWER_LIMIT",
@@ -84,9 +74,7 @@
               {
                 "id": "lback",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 120000,
                 "expect": "ACCEPTED",
@@ -101,9 +89,7 @@
               {
                 "id": "c1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "hello chat",
                 "at": 0,
                 "expect": "UNRELATED",
@@ -112,9 +98,7 @@
               {
                 "id": "c2",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgames",
                 "at": 1,
                 "expect": "UNRELATED",
@@ -129,9 +113,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -140,9 +122,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster"
-                ],
+                "roles": ["broadcaster"],
                 "text": "!nextgame",
                 "at": 5,
                 "expect": "DUPLICATE",
@@ -157,9 +137,7 @@
               {
                 "id": "r1",
                 "viewer": "carol",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!nextgame",
                 "at": 0,
                 "expect": "AUDIENCE",
@@ -198,14 +176,10 @@
         "manifest": {
           "sdkVersion": "0.4.0",
           "experience": null,
-          "capabilities": [
-            "chat.announce"
-          ],
+          "capabilities": ["chat.announce"],
           "trigger": {
             "command": "!hype",
-            "audience": [
-              "viewer"
-            ],
+            "audience": ["viewer"],
             "maxPerViewer": 1,
             "windowMs": 60000
           },
@@ -222,9 +196,7 @@
               {
                 "id": "n1",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -239,9 +211,7 @@
               {
                 "id": "l0",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -250,9 +220,7 @@
               {
                 "id": "lover",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 10,
                 "expect": "VIEWER_LIMIT",
@@ -261,9 +229,7 @@
               {
                 "id": "lback",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 60000,
                 "expect": "ACCEPTED",
@@ -278,9 +244,7 @@
               {
                 "id": "c1",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "hello chat",
                 "at": 0,
                 "expect": "UNRELATED",
@@ -289,9 +253,7 @@
               {
                 "id": "c2",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hypes",
                 "at": 1,
                 "expect": "UNRELATED",
@@ -306,9 +268,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -317,9 +277,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!hype",
                 "at": 5,
                 "expect": "DUPLICATE",
@@ -355,15 +313,10 @@
         "manifest": {
           "sdkVersion": "0.4.0",
           "experience": null,
-          "capabilities": [
-            "shoutout"
-          ],
+          "capabilities": ["shoutout"],
           "trigger": {
             "command": "!so",
-            "audience": [
-              "broadcaster",
-              "moderator"
-            ],
+            "audience": ["broadcaster", "moderator"],
             "maxPerViewer": 1,
             "windowMs": 120000
           },
@@ -380,10 +333,7 @@
               {
                 "id": "n1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -398,10 +348,7 @@
               {
                 "id": "l0",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -410,10 +357,7 @@
               {
                 "id": "lover",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 10,
                 "expect": "VIEWER_LIMIT",
@@ -422,10 +366,7 @@
               {
                 "id": "lback",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 120000,
                 "expect": "ACCEPTED",
@@ -440,10 +381,7 @@
               {
                 "id": "c1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "hello chat",
                 "at": 0,
                 "expect": "UNRELATED",
@@ -452,10 +390,7 @@
               {
                 "id": "c2",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!sos",
                 "at": 1,
                 "expect": "UNRELATED",
@@ -470,10 +405,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 0,
                 "expect": "ACCEPTED",
@@ -482,10 +414,7 @@
               {
                 "id": "d1",
                 "viewer": "alice",
-                "roles": [
-                  "broadcaster",
-                  "moderator"
-                ],
+                "roles": ["broadcaster", "moderator"],
                 "text": "!so",
                 "at": 5,
                 "expect": "DUPLICATE",
@@ -500,9 +429,7 @@
               {
                 "id": "r1",
                 "viewer": "carol",
-                "roles": [
-                  "viewer"
-                ],
+                "roles": ["viewer"],
                 "text": "!so",
                 "at": 0,
                 "expect": "AUDIENCE",

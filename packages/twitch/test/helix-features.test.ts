@@ -145,7 +145,9 @@ describe('Create Poll', () => {
   });
 
   it('accepts the documented bounds exactly', async () => {
-    server.use(http.post(`${BASE}/polls`, () => HttpResponse.json(fixture('helix.create-poll.json'))));
+    server.use(
+      http.post(`${BASE}/polls`, () => HttpResponse.json(fixture('helix.create-poll.json'))),
+    );
     const { poll } = TWITCH_FEATURE_LIMITS;
     await expect(
       client().createPoll({
@@ -423,7 +425,11 @@ describe('Send a Shoutout', () => {
   });
 
   it.each([
-    [400, 'The broadcaster is not streaming live or does not have one or more viewers.', 'not_live'],
+    [
+      400,
+      'The broadcaster is not streaming live or does not have one or more viewers.',
+      'not_live',
+    ],
     [403, "The user in moderator_id is not one of the broadcaster's moderators.", 'not_moderator'],
     [403, 'The broadcaster may not send the specified broadcaster a Shoutout.', 'target_refused'],
     [
@@ -431,7 +437,11 @@ describe('Send a Shoutout', () => {
       'The broadcaster exceeded the number of Shoutouts they may send the same broadcaster within a given window.',
       'cooldown',
     ],
-    [401, 'The user access token must include the moderator:manage:shoutouts scope.', 'missing_scope'],
+    [
+      401,
+      'The user access token must include the moderator:manage:shoutouts scope.',
+      'missing_scope',
+    ],
   ] as const)('maps %i "%s" to %s without retrying', async (status, message, reason) => {
     let calls = 0;
     server.use(

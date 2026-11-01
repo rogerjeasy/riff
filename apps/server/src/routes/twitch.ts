@@ -12,7 +12,7 @@ export function registerTwitchRoutes(
   app: FastifyInstance,
   deps: { twitch: TwitchConnection; publicUrl: string },
 ) {
-  app.get('/auth/twitch', async (_request, reply) => {
+  app.get('/auth/twitch', async (request, reply) => {
     if (!deps.twitch.configured)
       return reply
         .code(503)
@@ -20,7 +20,13 @@ export function registerTwitchRoutes(
         .send(
           'Twitch is not configured. Set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET and RIFF_SECRET.',
         );
-    return reply.redirect(deps.twitch.beginAuthorization());
+    // Feature consent is granted one feature at a time (polls, announcements, shoutouts).
+    const query = z
+      .object({ feature: z.enum(['polls', 'announcements', 'shoutouts']).optional() })
+      .safeParse(request.query);
+    if (!query.success)
+      return reply.code(400).type('text/plain').send('Unknown Twitch feature. Nothing changed.');
+    return reply.redirect(deps.twitch.beginAuthorization(query.data.feature));
   });
   app.get('/auth/twitch/callback', async (request, reply) => {
     const query = z

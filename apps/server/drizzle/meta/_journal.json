@@ -106,6 +106,13 @@
       "when": 1793560624935,
       "tag": "0014_production_participation",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1793570238366,
+      "tag": "0015_chubby_epoch",
+      "breakpoints": true
     }
   ]
 }

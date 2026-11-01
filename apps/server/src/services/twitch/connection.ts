@@ -9,9 +9,12 @@ import {
   normalizeChatMessage,
   refreshAccessToken,
   TRIGGERS,
+  TWITCH_FEATURE_SCOPES,
   validateAccessToken,
   type EventSubClient,
   type FetchLike,
+  type HelixClient,
+  type TwitchFeature,
 } from '@riff/twitch';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -167,16 +170,42 @@ export function createTwitchConnection(deps: {
       return status;
     },
     configured: Boolean(config && sealer),
-    beginAuthorization() {
+    /**
+     * Start OAuth. A feature grant asks only for that feature's scope on top of what was
+     * already granted, so each feature is consented to separately and nothing is lost.
+     */
+    beginAuthorization(feature?: TwitchFeature) {
       if (!config) throw new Error('Twitch is not configured');
       const state = randomBytes(16).toString('base64url');
       pendingStates.set(state, Date.now() + 10 * 60_000);
+      const kept = feature ? (readTokens()?.scopes ?? []) : [];
+      const extra = feature ? TWITCH_FEATURE_SCOPES[feature] : [];
       return buildAuthorizeUrl({
         clientId: config.clientId,
         redirectUri: config.redirectUri,
-        scopes: CHAT_READ_SCOPES,
+        scopes: [...new Set([...CHAT_READ_SCOPES, ...kept, ...extra])],
         state,
         forceVerify: true,
+      });
+    },
+    /** Scopes on the sealed token; never the token itself. */
+    grantedScopes(): string[] {
+      return readTokens()?.scopes ?? [];
+    },
+    identity(): { userId: string; login: string | null } | null {
+      const state = repo.state();
+      return state.twitchUserId && readTokens()
+        ? { userId: state.twitchUserId, login: state.twitchLogin }
+        : null;
+    },
+    /** A Helix client on the broadcaster's token, or null when not connected. */
+    helix(): HelixClient | null {
+      if (!config || !sealer || !readTokens()) return null;
+      return createHelixClient({
+        clientId: config.clientId,
+        getAccessToken: accessToken,
+        fetch: doFetch,
+        ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
       });
     },
     async completeAuthorization(code: string, state: string) {

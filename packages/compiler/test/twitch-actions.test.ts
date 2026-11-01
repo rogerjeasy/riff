@@ -51,7 +51,12 @@ describe('native Twitch actions in the compiler', () => {
     });
     expect(output.manifest).toMatchObject({
       capabilities: ['polls'],
-      trigger: { command: '!nextgame', audience: ['broadcaster'], maxPerViewer: 1, windowMs: 120_000 },
+      trigger: {
+        command: '!nextgame',
+        audience: ['broadcaster'],
+        maxPerViewer: 1,
+        windowMs: 120_000,
+      },
     });
     expect(output.source).toContain('durationSeconds: 120');
     expect(output.source).toContain('["Speedrun","Hardcore"]');
@@ -64,7 +69,10 @@ describe('native Twitch actions in the compiler', () => {
     });
     expect(output.kind).toBe('candidate');
     expect(output.source).toContain('["pizza","tacos"]');
-    expect((output.manifest as ManifestView).trigger.audience).toEqual(['broadcaster', 'moderator']);
+    expect((output.manifest as ManifestView).trigger.audience).toEqual([
+      'broadcaster',
+      'moderator',
+    ]);
     expect(compileOffline({ intent: 'Start a poll with !poll', base: null }).kind).toBe('question');
   });
 
