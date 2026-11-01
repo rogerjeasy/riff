@@ -3,6 +3,8 @@ import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
 import { CODE_LABEL, shortHash } from '../format.js';
+import type { RegressionEvidence } from '../rehearsal/contracts.js';
+import { describeCheck } from '../rehearsal/labels.js';
 
 const INTENT_BADGE: Record<string, [string, string]> = {
   match: ['✓ Matches what you said', 'good'],
@@ -122,48 +124,9 @@ function EvidenceCard(props: EvidenceProps) {
       </dl>
 
       {(version.evidence.rehearsal ?? verification.rehearsal)?.length ? (
-        <details className="block">
-          <summary>Independent saved regression checks</summary>
-          <p className="note">
-            Exact set pinned when generation started, including records since deleted. These host
-            checks contribute to verification and approval blockers.
-          </p>
-          {(version.evidence.rehearsal ?? verification.rehearsal ?? []).map((check) => (
-            <section key={check.regressionId} aria-label={`Regression ${check.regressionId}`}>
-              <h3>
-                <span className={`badge ${check.ok ? 'good' : 'bad'}`}>
-                  {check.ok ? 'Passed' : 'Failed'}
-                </span>{' '}
-                <span>{check.regressionId}</span>
-              </h3>
-              <p className="mono">
-                Origin version {check.originVersionId} · artifact{' '}
-                {shortHash(check.originArtifactId)} · scenario {shortHash(check.scenarioHash)}
-              </p>
-              {check.failure && <p className="answer bad">{check.failure}</p>}
-              {check.result ? (
-                <>
-                  <p>
-                    {check.result.through}/{check.result.totalSteps} steps · seed{' '}
-                    {check.result.seed} · {check.result.provenance.kind} · evidence{' '}
-                    {shortHash(check.result.evidenceHash)}
-                  </p>
-                  <ul>
-                    {check.result.checks.map((item) => (
-                      <li key={item.id}>
-                        {item.category === 'invariant' ? 'Host invariant' : 'Creator expectation'} ·{' '}
-                        {item.status}: {item.summary} · {item.id} · expected {String(item.expected)}
-                        , actual {String(item.actual)}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : (
-                <p>Independent replay unavailable; see the verification failure.</p>
-              )}
-            </section>
-          ))}
-        </details>
+        <RegressionEvidenceList
+          checks={version.evidence.rehearsal ?? verification.rehearsal ?? []}
+        />
       ) : null}
 
       {version.evidence.intent.length > 0 && (
@@ -519,5 +482,75 @@ function ScenarioList({ title, results }: { title: string; results: ScenarioResu
         ))}
       </ul>
     </div>
+  );
+}
+
+/** Saved regressions pinned for this candidate: plain verdicts first, exact record on demand. */
+function RegressionEvidenceList({ checks }: { checks: RegressionEvidence[] }) {
+  const failed = checks.filter((c) => !c.ok).length;
+  return (
+    <details className="block regression-evidence" open={failed > 0}>
+      <summary>
+        Saved regressions{' '}
+        <span className={`badge ${failed ? 'bad' : 'good'}`}>
+          {failed
+            ? `${failed} of ${checks.length} failed`
+            : `${checks.length} of ${checks.length} passed`}
+        </span>
+      </summary>
+      <p className="note">
+        Riff replayed every saved regression for this interaction against this exact candidate. The
+        set was pinned when generation started, including any deleted since. A failure blocks
+        approval.
+      </p>
+      {checks.map((check) => {
+        const result = check.result;
+        const expectations = result?.checks.filter((c) => c.category === 'expectation') ?? [];
+        const safety = result?.checks.filter((c) => c.category === 'invariant') ?? [];
+        return (
+          <section key={check.regressionId} aria-label={`Regression ${check.regressionId}`}>
+            <h3>
+              <span className={`badge ${check.ok ? 'good' : 'bad'}`}>
+                {check.ok ? 'Passed' : 'Failed'}
+              </span>{' '}
+              {result
+                ? `${result.totalSteps} step${result.totalSteps === 1 ? '' : 's'} · ${expectations.filter((c) => c.status === 'passed').length} of ${expectations.length} expectations met · ${safety.filter((c) => c.status === 'passed').length} of ${safety.length} safety checks`
+                : 'Could not replay'}
+            </h3>
+            {check.failure && <p className="answer bad">{check.failure}</p>}
+            {result ? (
+              <ul>
+                {result.checks
+                  .filter((c) => c.category === 'expectation' || c.status === 'failed')
+                  .map((item) => (
+                    <li key={item.id} data-tone={item.status === 'failed' ? 'bad' : 'good'}>
+                      {item.status === 'passed' ? '✓' : '✗'} {describeCheck(item, result)}{' '}
+                      <span className="muted">({item.summary})</span>
+                    </li>
+                  ))}
+              </ul>
+            ) : (
+              <p>Independent replay unavailable; see the verification failure.</p>
+            )}
+            <details>
+              <summary>Exact record</summary>
+              <p className="mono">
+                Regression {check.regressionId}
+                <br />
+                Origin version {check.originVersionId} · artifact{' '}
+                {shortHash(check.originArtifactId)} · scenario {shortHash(check.scenarioHash)}
+                {result && (
+                  <>
+                    <br />
+                    {result.through}/{result.totalSteps} steps · seed {result.seed} ·{' '}
+                    {result.provenance.kind} · evidence {shortHash(result.evidenceHash)}
+                  </>
+                )}
+              </p>
+            </details>
+          </section>
+        );
+      })}
+    </details>
   );
 }

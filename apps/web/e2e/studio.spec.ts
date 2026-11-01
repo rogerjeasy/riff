@@ -156,3 +156,34 @@ test('offline stateful examples rehearse shared scores, resources, deadline and 
   await expect(cooperative.locator('.session-hud')).toContainText('Community: 5 / 5');
   await expect(cooperative.locator('.session-hud')).toContainText('Goal reached');
 });
+
+test('scenario studio plays one private replay with live scores and an accessible verdict', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.getByLabel('Describe the interaction in one or two sentences')).toBeVisible();
+  const newIdea = page.getByRole('button', { name: 'New idea', exact: true });
+  if (await newIdea.isVisible()) await newIdea.click();
+  await page.getByRole('button', { name: 'Tomato Battle', exact: true }).click();
+  await page.getByRole('button', { name: /^Generate/ }).click();
+  const rehearsal = page.getByRole('region', { name: /Rehearse “Tomato Battle”/ });
+  await expect(rehearsal).toBeVisible({ timeout: 30000 });
+  await rehearsal.getByRole('tab', { name: /Scenario studio/ }).click();
+  await rehearsal.getByLabel('Preset').selectOption('deadline');
+  await rehearsal.getByRole('button', { name: 'Load preset' }).click();
+  await expect(rehearsal.getByText('Not saved yet')).toBeVisible();
+  // Play saves the inputs, replays once, then animates frames with scores on the stage.
+  await rehearsal.getByRole('button', { name: 'Play' }).click();
+  await expect(rehearsal.locator('.stage-score')).toContainText('Red 1');
+  await expect(rehearsal.getByText(/Step 4 of 4/)).toBeVisible({ timeout: 10000 });
+  await expect(rehearsal.locator('.stage-score')).toContainText('Red wins');
+  await expect(rehearsal.getByText(/Saved · revision 0/)).toBeVisible();
+  await expect(rehearsal.getByRole('region', { name: 'Rehearsal result' })).toContainText(
+    'Expectation met',
+  );
+  await expect(
+    rehearsal.getByRole('button', { name: /Go to step 4/ }).getByText('Round finished'),
+  ).toBeVisible();
+  expect((await new AxeBuilder({ page }).include('.rehearsal').analyze()).violations).toEqual([]);
+});

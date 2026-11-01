@@ -158,7 +158,7 @@ async function open() {
       onRun={started}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Scenario studio/ }));
   await screen.findByRole('option', { name: 'My scenario · revision 2' });
   fireEvent.change(screen.getByLabelText('Saved scenario'), { target: { value: 's1' } });
 }
@@ -187,7 +187,7 @@ it('loads, injects roles and expectations, saves revisions and refuses stale wor
   );
   fireEvent.change(screen.getByLabelText('Scenario name'), { target: { value: 'Keep this work' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
-  await screen.findByText(/Scenario revision changed/);
+  await screen.findByText(/changed elsewhere/);
   expect((screen.getByLabelText('Scenario name') as HTMLInputElement).value).toBe('Keep this work');
   expect(previewed).not.toHaveBeenCalled();
 });
@@ -208,7 +208,7 @@ it('steps, seeks, resets and marks only a full exact primary replay previewed', 
       expect.any(AbortSignal),
     ),
   );
-  expect(screen.getByText(/Logical time: 0 ms/)).toBeTruthy();
+  expect(screen.getByText(/Logical time 0:00\.0/)).toBeTruthy();
 });
 it('compares synchronized prefixes with fresh start and never grants preview credit', async () => {
   await open();
@@ -231,7 +231,7 @@ it('compares synchronized prefixes with fresh start and never grants preview cre
     ),
   );
   expect(previewed).not.toHaveBeenCalled();
-  await screen.findByText(/1 differing frames at synchronized cursor 2/);
+  await screen.findByText(/1 step differs from Toss v2/);
   expect(screen.getByText(/Not migration approval evidence/)).toBeTruthy();
 });
 it('ignores cancelled late responses and leaves the new timeline untouched', async () => {
@@ -294,7 +294,7 @@ it('reduces a selected failed check, saves independently, reruns and requires re
   const run = { id: 'compile1', stage: 'queued' } as Run;
   vi.spyOn(api, 'rehearsalRepair').mockResolvedValue(run);
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
-  await screen.findByText(/Expected 2 effects, observed 1/);
+  await screen.findByRole('button', { name: 'Fix this failure' });
   fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: 'expect:count' } });
   fireEvent.click(screen.getByRole('button', { name: 'Reduce selected failure' }));
   await screen.findByText(/Budget stopped/);
@@ -346,7 +346,7 @@ it('shows the exact pinned regression set in candidate evidence', () => {
       onDiscard={async () => undefined}
     />,
   );
-  expect(screen.getByText('deleted-but-pinned')).toBeTruthy();
+  expect(screen.getByText(/Regression deleted-but-pinned/)).toBeTruthy();
   expect(screen.getByText(/Pinned expectation failed/)).toBeTruthy();
   expect(screen.getByText(/Expected 2 effects, observed 1/)).toBeTruthy();
 });
@@ -391,7 +391,7 @@ it('imports and durably saves host recordings before edits, then reloads and run
       onPreviewed={previewed}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Scenario studio/ }));
   await screen.findByRole('option', { name: 'My scenario · revision 2' });
   fireEvent.change(screen.getByLabelText('Preset'), { target: { value: 'crowd-burst' } });
   fireEvent.click(screen.getByRole('button', { name: 'Load preset' }));
@@ -457,7 +457,65 @@ it('imports and durably saves host recordings before edits, then reloads and run
   );
   expect(previewed).not.toHaveBeenCalled();
 });
-it('plays successive fresh prefixes and pause cancels an in-flight operation', async () => {
+it('plays a whole replay from one host run, then fetches exact state only when paused', async () => {
+  const framed = (through: number) => {
+    const value = replay(through);
+    value.result.timeline = scenario.steps.slice(0, through).map((step, i) => ({
+      through: i + 1,
+      key: step.key,
+      kind: step.kind,
+      at: i * 1000,
+      decision:
+        step.kind === 'chat'
+          ? {
+              eventId: step.event.id,
+              artifactId: artifact,
+              code: 'ACCEPTED' as const,
+              reason: 'Accepted.',
+              effects: [{ kind: 'projectile' as const, asset: 'tomato' as const, x: 0.5 }],
+              mode: 'preview' as const,
+              viewerId: 'alice',
+              at: 0,
+              allowance: null,
+            }
+          : null,
+      stateDigest: 'd'.repeat(64),
+      summary: null,
+    }));
+    return value;
+  };
+  vi.mocked(api.rehearsalRun).mockImplementation(async (_id, input) => framed(input.through ?? 2));
+  const launch = vi.spyOn(projectile, 'launch');
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Play' }));
+  await waitFor(() =>
+    expect(screen.getByLabelText('Timeline cursor').getAttribute('value')).toBe('1'),
+  );
+  // One complete replay drives playback; frames animate without another host request.
+  expect(api.rehearsalRun).toHaveBeenCalledTimes(1);
+  expect(api.rehearsalRun).toHaveBeenLastCalledWith(
+    's1',
+    expect.objectContaining({ through: 2 }),
+    expect.any(AbortSignal),
+  );
+  expect(launch).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ asset: 'tomato' }),
+  );
+  expect(screen.getByText('Thrown', { selector: '.step-tags .badge' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+  await waitFor(() =>
+    expect(api.rehearsalRun).toHaveBeenLastCalledWith(
+      's1',
+      expect.objectContaining({ through: 1 }),
+      expect.any(AbortSignal),
+    ),
+  );
+  expect(api.rehearsalRun).toHaveBeenCalledTimes(2);
+  // Only the complete passing replay can grant preview credit.
+  expect(previewed).toHaveBeenCalledTimes(1);
+});
+it('falls back to successive fresh prefixes without frames and pause cancels an in-flight operation', async () => {
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Play' }));
   await waitFor(
@@ -469,8 +527,35 @@ it('plays successive fresh prefixes and pause cancels an in-flight operation', a
       ),
     { timeout: 2000 },
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
-  expect(previewed).not.toHaveBeenCalled();
+  let resolve!: (value: RehearsalRun) => void;
+  vi.mocked(api.rehearsalRun).mockReturnValueOnce(
+    new Promise((r) => {
+      resolve = r;
+    }),
+  );
+  await waitFor(() => expect(api.rehearsalRun).toHaveBeenCalledTimes(3), { timeout: 2000 });
+  const signal = vi.mocked(api.rehearsalRun).mock.calls[2]?.[2];
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel operation' }));
+  expect(signal?.aborted).toBe(true);
+  resolve(replay(2));
+  expect(previewed).toHaveBeenCalledTimes(1);
+});
+it('saves unsaved inputs before running so every replay binds a stored revision', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
+  expect(screen.getByText('Unsaved changes')).toBeTruthy();
+  const next = { ...saved, revision: 3, scenario: { ...scenario, steps: [...scenario.steps] } };
+  vi.mocked(api.rehearsalSave).mockResolvedValueOnce(next);
+  fireEvent.click(screen.getByRole('button', { name: /Run to end/ }));
+  await waitFor(() =>
+    expect(api.rehearsalRun).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ expectedRevision: 3, through: 2 }),
+      expect.any(AbortSignal),
+    ),
+  );
+  expect(api.rehearsalSave).toHaveBeenCalledTimes(1);
+  await screen.findByText('Saved · revision 3');
 });
 it('aborts version navigation so late evidence cannot mark the new artifact previewed', async () => {
   let resolve!: (value: RehearsalRun) => void;
@@ -480,7 +565,7 @@ it('aborts version navigation so late evidence cannot mark the new artifact prev
     }),
   );
   const view = render(<Rehearsal version={version} versions={[version]} onPreviewed={previewed} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Scenario studio/ }));
   await screen.findByRole('option', { name: 'My scenario · revision 2' });
   fireEvent.change(screen.getByLabelText('Saved scenario'), { target: { value: 's1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
@@ -582,9 +667,9 @@ it('hands a returned repair immediately to the existing app authoring run store'
     },
   );
   render(<App />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(await screen.findByRole('tab', { name: /Scenario studio/ }));
   await screen.findByRole('option', { name: 'Repair this mismatch' });
-  fireEvent.click(screen.getByText('Immutable regression library and repair'));
+  fireEvent.click(screen.getByText('Saved regressions'));
   fireEvent.change(screen.getByLabelText('Saved regression'), { target: { value: 'g1' } });
   fireEvent.change(screen.getByLabelText('Repair intent'), { target: { value: repairIntent } });
   fireEvent.click(screen.getByLabelText('I reviewed this regression and repair intent'));
@@ -606,7 +691,7 @@ it('surfaces recording, comparison and channel capacity failures without droppin
     ),
   );
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
-  await screen.findByText(/INCOMPATIBLE_SESSION/);
+  await screen.findByText(/does not fit this version/);
   expect(screen.getByText(/Stored revision 2/)).toBeTruthy();
   vi.mocked(api.rehearsalSave).mockRejectedValueOnce(
     new ApiError('Scenario capacity reached.', 429, 'LIMIT'),
@@ -615,7 +700,7 @@ it('surfaces recording, comparison and channel capacity failures without droppin
     target: { value: 'Keep my scenario' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
-  await screen.findByText(/LIMIT: Scenario capacity reached/);
+  await screen.findByText(/library is full/);
   expect((screen.getByLabelText('Scenario name') as HTMLInputElement).value).toBe(
     'Keep my scenario',
   );
@@ -646,9 +731,9 @@ it('keeps normal delivery identities distinct after save, studio reopen and relo
     'event_step_2',
     'event_step_4',
   ]);
-  fireEvent.click(screen.getByRole('button', { name: 'Return to quick proof' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Quick proof/ }));
   vi.mocked(api.rehearsalScenarios).mockResolvedValue([stored]);
-  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Scenario studio/ }));
   await screen.findByRole('option', { name: 'My scenario · revision 2' });
   fireEvent.change(screen.getByLabelText('Saved scenario'), { target: { value: 's1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
@@ -676,7 +761,7 @@ function openWithDeferredLibrary() {
   vi.mocked(api.rehearsalScenarios).mockReturnValueOnce(scenarios.promise);
   vi.mocked(api.rehearsalRegressions).mockReturnValueOnce(regressions.promise);
   render(<Rehearsal version={version} versions={[version]} onPreviewed={previewed} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  fireEvent.click(screen.getByRole('tab', { name: /Scenario studio/ }));
   return { scenarios, regressions };
 }
 async function createDuringBootstrap() {
@@ -721,7 +806,7 @@ it('preserves successfully saved scenario and regression when older bootstrap sn
   vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(regression);
   vi.mocked(api.rehearsalRegressions).mockResolvedValue([regression]);
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
-  await screen.findByText(/Expected 2 effects, observed 1/);
+  await screen.findByRole('button', { name: 'Fix this failure' });
   fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: failed.id } });
   fireEvent.click(screen.getByRole('button', { name: 'Reduce selected failure' }));
   await screen.findByText(/Reduction finished/);
@@ -754,7 +839,7 @@ it('ignores an obsolete bootstrap failure after a successful scenario save', asy
   });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
-  expect(screen.getByText(/Saved inputs returned by the host/)).toBeTruthy();
+  expect(screen.getByText(/Earlier replay results were cleared/)).toBeTruthy();
 });
 function existingRegression(): Regression {
   return {
@@ -852,7 +937,7 @@ async function saveNewRegressionFromUi() {
   vi.spyOn(api, 'rehearsalMinimize').mockResolvedValue(reduced);
   vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(added);
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
-  await screen.findByText(/Expected 2 effects, observed 1/);
+  await screen.findByRole('button', { name: 'Fix this failure' });
   fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: failed.id } });
   fireEvent.click(screen.getByRole('button', { name: 'Reduce selected failure' }));
   await screen.findByText(/Reduction finished/);
@@ -977,7 +1062,7 @@ it.each(['sanitized-recording', 'synthetic-derivative'] as const)(
       new ApiError('That rehearsal item is unavailable.', 404, 'NOT_FOUND'),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
-    await screen.findByText(/NOT_FOUND/);
+    await screen.findByText(/no longer exists/);
     expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('44');
     expect(screen.getByText(/synthetic derivative \(on save\)/)).toBeTruthy();
   },

@@ -245,18 +245,31 @@ export function Rehearsal(props: {
         </span>
       </header>
 
-      <button
-        className="button small"
-        type="button"
-        aria-expanded={advanced}
-        disabled={!version}
-        onClick={() => {
-          reset();
-          setAdvanced((current) => !current);
-        }}
-      >
-        {advanced ? 'Return to quick proof' : 'Open interactive studio'}
-      </button>
+      <div className="rehearsal-modes" role="tablist" aria-label="Rehearsal mode">
+        {(
+          [
+            [false, 'Quick proof', 'Click to send chat as test viewers'],
+            [true, 'Scenario studio', 'Saved scenarios, timeline, comparisons and regressions'],
+          ] as const
+        ).map(([mode, title, detail]) => (
+          <button
+            key={title}
+            type="button"
+            role="tab"
+            id={`rehearsal-tab-${mode ? 'studio' : 'quick'}`}
+            aria-selected={advanced === mode}
+            disabled={!version}
+            onClick={() => {
+              if (advanced === mode) return;
+              reset();
+              setAdvanced(mode);
+            }}
+          >
+            <strong>{title}</strong>
+            <small>{detail}</small>
+          </button>
+        ))}
+      </div>
       {advanced && version && (
         <InteractiveStudio
           key={`${version.id}:${version.artifactId}`}
