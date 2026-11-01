@@ -240,7 +240,7 @@ export function createSceneService(deps: {
             `Shares screen space with “${other.title}”. On stream Riff keeps all text readable: shared instructions combine into one panel, a scoreboard moves to free space in its area, and effects pass behind the other text.`,
           );
       }
-    return { ...current, sharing: sharing.slice(0, 16) };
+    return { ...current, sharing: [...new Set(sharing)].slice(0, 16) };
   }
   function publish() {
     const frames: SceneProjection[] = [];
