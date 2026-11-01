@@ -406,10 +406,13 @@ export function CollaborationPanel({
   const activeMember = memberState === 'connected' || memberState === 'paused';
   const disabled = !!pending || panic || !fresh || !status?.configured;
   const review = memberState === 'review' ? status?.member.review : null;
-  const reviewKey = review ? `${review.contract.digest}:${review.roleId}` : null;
-  useEffect(() => {
-    setConsentFor(null);
-  }, [reviewKey, status?.ready, status?.channelId]);
+  // Consent is bound to exactly what was reviewed. Any change to the agreement, role,
+  // readiness or channel yields a different key, so earlier consent no longer matches.
+  // Derived rather than reset in an effect: an effect could run after the creator ticks
+  // the box and silently untick it.
+  const reviewKey = review
+    ? `${review.contract.digest}:${review.roleId}:${String(status?.ready)}:${status?.channelId ?? ''}`
+    : null;
   const editRole = (index: number, patch: Partial<SharedRole>) =>
     setRoles((current) => current.map((role, i) => (i === index ? { ...role, ...patch } : role)));
   const invalidRoles = !rolesSchema.safeParse(roles).success;

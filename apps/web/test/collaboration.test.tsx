@@ -111,6 +111,26 @@ it('requires explicit consent to the exact reviewed agreement before approving',
     expect(approve).toHaveBeenCalledWith('a'.repeat(64), expect.any(AbortSignal)),
   );
 });
+it('keeps consent through routine refreshes and drops it when readiness changes', async () => {
+  const state = status();
+  const statusSpy = vi.spyOn(collaborationApi, 'status').mockResolvedValue(state);
+  render(<CollaborationPanel versions={[]} panic={false} />);
+  fireEvent.click(screen.getByText('Shared channels'));
+  await screen.findByText('Synthetic private replay');
+  const consent = () =>
+    screen.getByLabelText(
+      'I approve this exact version, my role, and the public fields shown above',
+    ) as HTMLInputElement;
+  fireEvent.click(consent());
+  expect(consent().checked).toBe(true);
+  // A poll returning the same review (a fresh object, as the server sends) keeps consent.
+  statusSpy.mockResolvedValue(structuredClone(state));
+  await waitFor(() => expect(statusSpy.mock.calls.length).toBeGreaterThan(2), { timeout: 5000 });
+  expect(consent().checked).toBe(true);
+  // A change to what was reviewed invalidates consent without any effect timing.
+  statusSpy.mockResolvedValue({ ...structuredClone(state), ready: false });
+  await waitFor(() => expect(consent().checked).toBe(false), { timeout: 5000 });
+}, 12000);
 it('shows disabled configuration and never offers implicit approval while offline', async () => {
   const state = status();
   state.configured = false;

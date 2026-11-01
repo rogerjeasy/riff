@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Check, Fingerprint } from '../panel-kit.js';
 import type { ProductionState } from './contracts.js';
 
@@ -25,9 +25,11 @@ export function ObsSetup({
   const [inputName, setName] = useState(review?.inputName ?? 'Riff audience overlay');
   const [width, setWidth] = useState(review?.width ?? 1920);
   const [height, setHeight] = useState(review?.height ?? 1080);
-  const [visible, setVisible] = useState(false);
+  const [visibleFor, setVisibleFor] = useState<string | null>(null);
   const connected = state.connections.obs.status === 'connected';
-  useEffect(() => setVisible(false), [review?.digest, review?.status]);
+  // Confirmation is bound to the exact review and stage, never reset by a later effect.
+  const visibleKey = review ? `${review.digest}:${review.status}` : null;
+  const visible = visibleFor !== null && visibleFor === visibleKey;
   const same =
     !!review &&
     review.sceneName === sceneName &&
@@ -184,7 +186,7 @@ export function ObsSetup({
                 <input
                   type="checkbox"
                   checked={visible}
-                  onChange={(e) => setVisible(e.target.checked)}
+                  onChange={(e) => setVisibleFor(e.target.checked ? visibleKey : null)}
                 />
                 <span>I can see the Riff test frame in the selected OBS scene.</span>
               </label>
