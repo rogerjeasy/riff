@@ -5,6 +5,8 @@ const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
 const count = z.number().int().nonnegative();
 const at = count.max(Number.MAX_SAFE_INTEGER - 7_200_000);
+// Host-derived allowance deadlines can exceed the input headroom while remaining safe.
+const responseAt = count.max(Number.MAX_SAFE_INTEGER);
 export const decisionCodes = [
   'ACCEPTED',
   'UNRELATED',
@@ -147,7 +149,7 @@ const decisionSchema = z
     viewerId: id.nullable(),
     at: at.nullable(),
     allowance: z
-      .object({ used: count, max: count, windowMs: count, nextAt: at.nullable() })
+      .object({ used: count, max: count, windowMs: count, nextAt: responseAt.nullable() })
       .strict()
       .nullable(),
   })

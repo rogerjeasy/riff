@@ -106,3 +106,105 @@ it('accepts the exact normalized role/time domain, and rejects result byte overf
   };
   expect(resultSchema.safeParse(result).success).toBe(false);
 });
+it('accepts computed host allowance deadlines beyond input headroom but within the safe integer response domain', async () => {
+  const at = 9007199247540991,
+    nextAt = 9007199247600991;
+  const scenario = {
+    version: 1,
+    seed: 42,
+    initialAt: 0,
+    initialSession: null,
+    steps: [
+      {
+        kind: 'chat',
+        key: 'one',
+        event: {
+          id: 'e1',
+          channelId: 'rehearsal',
+          viewerId: 'alice',
+          roles: ['viewer'],
+          text: '!tomato',
+          at,
+        },
+      },
+    ],
+    expectations: [],
+    provenance: { kind: 'synthetic' },
+  };
+  const decision = {
+    eventId: 'e1',
+    artifactId: 'a'.repeat(64),
+    code: 'ACCEPTED',
+    reason: 'Accepted',
+    effects: [],
+    mode: 'preview',
+    viewerId: 'alice',
+    at,
+    allowance: { used: 1, max: 3, windowMs: 60000, nextAt },
+  };
+  const result = {
+    contractVersion: 1,
+    artifactId: 'a'.repeat(64),
+    scenarioHash: 'b'.repeat(64),
+    evidenceHash: 'c'.repeat(64),
+    seed: 42,
+    initialAt: 0,
+    provenance: { kind: 'synthetic' },
+    through: 1,
+    totalSteps: 1,
+    status: 'passed',
+    timeline: [{ through: 1, key: 'one', kind: 'chat', at, decision, stateDigest: 'd'.repeat(64) }],
+    cursor: { at, session: null, stateDigest: 'd'.repeat(64), decision },
+    checks: [],
+  };
+  const run = {
+    id: 'run1',
+    scenarioId: 's1',
+    scenarioRevision: 0,
+    versionId: 'v1',
+    artifactId: 'a'.repeat(64),
+    compareVersionId: null,
+    compareArtifactId: null,
+    scenario,
+    result,
+    comparison: null,
+    differences: [],
+    freshStart: false,
+    minimization: null,
+    createdAt: 0,
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({ ok: true, json: async () => ({ run }) })),
+  );
+  const parsed = await api.rehearsalRun('s1', { expectedRevision: 0, versionId: 'v1' });
+  expect(parsed.result.cursor.decision?.allowance?.nextAt).toBe(9007199247600991);
+  expect(
+    scenarioSchema.safeParse({
+      ...scenario,
+      steps: [{ ...scenario.steps[0], event: { ...scenario.steps[0]?.event, at: nextAt } }],
+    }).success,
+  ).toBe(false);
+  expect(
+    resultSchema.safeParse({
+      ...result,
+      cursor: {
+        ...result.cursor,
+        decision: {
+          ...decision,
+          allowance: { ...decision.allowance, nextAt: Number.MAX_SAFE_INTEGER },
+        },
+      },
+    }).success,
+  ).toBe(true);
+  for (const invalid of [-1, Number.MAX_SAFE_INTEGER + 1])
+    expect(
+      resultSchema.safeParse({
+        ...result,
+        cursor: {
+          ...result.cursor,
+          decision: { ...decision, allowance: { ...decision.allowance, nextAt: invalid } },
+        },
+      }).success,
+    ).toBe(false);
+});
