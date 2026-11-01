@@ -4,9 +4,11 @@ import {
   type AudienceRole,
   type ProjectileAsset,
   type ExperienceDefinition,
+  type EventTrigger,
 } from '@riff/sdk';
 
 import { extractExperienceHints, type MechanicHints } from './experience-hints.js';
+import { extractEventHints } from './event-hints.js';
 import { extractTimerHint, timerOfSource, type TimerHint } from './timer-hints.js';
 
 /** Normalized version 2 facts, comparable between creator text and canonical rules. */
@@ -52,7 +54,8 @@ export type IntentAspect =
   | 'objective'
   | 'timer'
   | 'reward'
-  | 'mechanics';
+  | 'mechanics'
+  | 'event';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -164,6 +167,7 @@ export interface ManifestView {
     windowMs: number;
     kind?: 'chat.command' | 'points.redeem' | undefined;
     reward?: string | null | undefined;
+    event?: EventTrigger | null | undefined;
   };
 }
 
@@ -392,6 +396,27 @@ export function checkIntent(
         stated.every((fact) => actual.includes(fact)) &&
           (stated.length > 0 || !sessionHints.mechanics.mentioned || actual.length > 0),
       ]);
+  }
+  // F19: the Twitch event family and threshold are explicit facts like a command.
+  const eventHints = extractEventHints(intent);
+  if (eventHints || t.event || p?.event) {
+    const eventText = (event: EventTrigger | null | undefined) =>
+      event ? `${event.kind} ≥ ${event.minimum}` : 'chat command';
+    const statedEvent = eventHints
+      ? eventHints.minimum === null
+        ? eventHints.kind
+        : `${eventHints.kind} ≥ ${eventHints.minimum}`
+      : null;
+    rows.push([
+      'event',
+      'Twitch event',
+      statedEvent,
+      eventText(t.event),
+      p ? eventText(p.event) : null,
+      !eventHints ||
+        (t.event?.kind === eventHints.kind &&
+          (eventHints.minimum === null || eventHints.minimum === t.event.minimum)),
+    ]);
   }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({
     aspect,

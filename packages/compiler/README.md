@@ -41,3 +41,8 @@ Prompt pack `riff-compiler/10` adds the F21/F23 native Twitch action rules (capa
 `polls`, `chat.announce`, `shoutout`) to the same prompt and removes polls and shoutouts
 from the unsupported list; the offline compiler chains native-action, session, Channel
 Points/Predictions and timer templates.
+
+Prompt pack `riff-compiler/11` adds the F19 Twitch event-trigger rules (`trigger.event`
+with the reserved `@kind` command, per-step `twitch`) and curated cheer/raid examples;
+the strict schema now carries `trigger.kind`, `trigger.reward` and `trigger.event` together,
+and the validator rejects a trigger that sets both `points.redeem` and `event`.

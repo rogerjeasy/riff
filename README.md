@@ -396,6 +396,11 @@ change an approved live layout.
    approves. Automations request them through `riff.polls`, `riff.chat.announce` and
    `riff.shoutout`; rehearsals simulate them and Stop everything ends Riff's poll.
 
+   Event-triggered interactions (F19) add consent only when you choose it in the
+   **Twitch event triggers** panel: `channel:read:subscriptions` for new subs, gifted
+   subs and resubs, `bits:read` for cheers; incoming raids need no extra scope. Riff
+   subscribes to an event family only while an approved live interaction uses it.
+
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The

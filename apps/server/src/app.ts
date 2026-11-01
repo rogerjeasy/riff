@@ -331,6 +331,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       });
     },
     wantsChatWrite: () => chatAuthoringRef.current?.enabled() ?? false,
+    onRaid: (raider) => {
+      void twitchFeaturesRef.current?.recordRaid(raider).catch((error: unknown) => {
+        app.log.warn({ err: error }, 'recording a raid failed');
+      });
+    },
+    hostTriggers: () => (twitchFeaturesRef.current?.wantsRaids() ? ['raid'] : []),
   });
   const chatAuthoring = createChatAuthoringService({
     storage: chatAuthoringRepository(database, HOME_CHANNEL),

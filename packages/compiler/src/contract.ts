@@ -9,7 +9,47 @@ import {
   SESSION_LIMITS,
   TRIGGER_LIMITS,
   TRIGGER_KINDS,
+  EVENT_TRIGGER_LIMITS,
+  SUBSCRIPTION_TIERS,
+  TWITCH_EVENT_KINDS,
 } from '@riff/sdk';
+
+/** F19 strict JSON fragments: the event trigger and a synthetic Twitch event step. */
+const EVENT_TRIGGER_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'minimum'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        minimum: {
+          type: 'integer',
+          minimum: EVENT_TRIGGER_LIMITS.minimum.min,
+          maximum: EVENT_TRIGGER_LIMITS.minimum.max,
+        },
+      },
+    },
+  ],
+} as const;
+const TWITCH_STEP_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'amount', 'tier', 'anonymous', 'gift'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        amount: { type: 'integer', minimum: 1, maximum: EVENT_TRIGGER_LIMITS.amountMax },
+        tier: { type: ['string', 'null'], enum: [...SUBSCRIPTION_TIERS, null] },
+        anonymous: { type: 'boolean' },
+        gift: { type: 'boolean' },
+      },
+    },
+  ],
+} as const;
 
 /** Bounded quoted host evidence; never merged into creator-intent extraction. */
 const rehearsalContextSchema = z
@@ -318,7 +358,15 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             trigger: {
               type: 'object',
               additionalProperties: false,
-              required: ['command', 'audience', 'maxPerViewer', 'windowMs', 'kind', 'reward'],
+              required: [
+                'command',
+                'audience',
+                'maxPerViewer',
+                'windowMs',
+                'kind',
+                'reward',
+                'event',
+              ],
               properties: {
                 command: { type: 'string' },
                 audience: { type: 'array', items: { type: 'string', enum: [...AUDIENCE_ROLES] } },
@@ -326,6 +374,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 windowMs: { type: 'integer' },
                 kind: { type: 'string', enum: [...TRIGGER_KINDS] },
                 reward: { type: ['string', 'null'], maxLength: 45 },
+                event: EVENT_TRIGGER_JSON,
               },
             },
             limits: {
@@ -371,6 +420,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 'session',
                 'timers',
                 'kind',
+                'twitch',
               ],
               properties: {
                 id: { type: 'string' },
@@ -395,6 +445,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                   ],
                 },
                 kind: { type: ['string', 'null'], enum: ['points.redeem', null] },
+                twitch: TWITCH_STEP_JSON,
                 session: {
                   anyOf: [
                     { type: 'null' },

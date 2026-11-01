@@ -48,6 +48,7 @@ const ADVICE: Record<BlockedReason, string> = {
   capacity: 'the gameplay queue was full; consider a lower command cadence',
   mechanics:
     'these were blocked by the round mechanics, as designed; check the rules are clear on stream',
+  'below-minimum': 'consider a lower minimum if smaller cheers, gifts or raids should count',
   error: 'review the activity feed for details',
 };
 

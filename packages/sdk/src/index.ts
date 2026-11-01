@@ -5,6 +5,7 @@ import {
   type ShoutoutRequest,
   type TwitchAction,
 } from './twitch-actions.js';
+import type { EventTrigger, TwitchEventDetail } from './events.js';
 
 /** Public SDK version. 0.4.0 adds host-owned stateful sessions; 0.3.0 remains supported. */
 export const SDK_VERSION = '0.4.0' as const;
@@ -76,6 +77,8 @@ export interface ChatEvent {
   at: number;
   /** Absent for chat. `points.redeem`: a linked Channel Points redemption; text is the viewer input. */
   kind?: RedemptionKind | undefined;
+  /** Set only for Twitch platform events (F19); chat messages omit it or carry null. */
+  twitch?: TwitchEventDetail | null | undefined;
 }
 /** Internal host trigger source `timer.fired`; never a Twitch transport event. */
 export interface TimerEvent {
@@ -114,6 +117,8 @@ export interface PermissionManifest {
     kind?: TriggerKind | undefined;
     /** Reward title the creator links for `points.redeem`; null/absent for chat. */
     reward?: string | null | undefined;
+    /** F19: run on a Twitch event instead of chat; command is then eventTriggerCommand(kind). */
+    event?: EventTrigger | null | undefined;
   };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
@@ -345,7 +350,8 @@ export type DecisionCode =
   | 'BURST_COUNTED'
   | 'BURST_ACTIVE'
   | 'BURST_LIMIT'
-  | 'ROUND_INTERMISSION';
+  | 'ROUND_INTERMISSION'
+  | 'BELOW_MINIMUM';
 export const DECISION_CODES: readonly DecisionCode[] = [
   'ACCEPTED',
   'UNRELATED',
@@ -371,6 +377,7 @@ export const DECISION_CODES: readonly DecisionCode[] = [
   'BURST_ACTIVE',
   'BURST_LIMIT',
   'ROUND_INTERMISSION',
+  'BELOW_MINIMUM',
 ];
 /** Viewer allowance after admission, for explanations. */
 export interface AllowanceSnapshot {
@@ -421,6 +428,8 @@ export interface ScenarioStep {
   at: number;
   /** Reuse an earlier step's id to model a duplicate delivery. */
   id: string;
+  /** F19: a labeled synthetic Twitch event instead of a chat message. */
+  twitch?: TwitchEventDetail | null | undefined;
   expect: DecisionCode;
   /** Exact number of effects expected for this step. */
   effects: number;
@@ -436,6 +445,7 @@ export interface Scenario {
 }
 export const SCENARIO_LIMITS = Object.freeze({ minScenarios: 3, maxScenarios: 12, maxSteps: 24 });
 export * from './guide.js';
+export * from './events.js';
 
 /** Host-reviewed activation boundary; stopped requires an already paused session. */
 export type SessionTransitionBoundary = 'immediate' | 'round-end' | 'stopped';

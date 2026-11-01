@@ -58,7 +58,30 @@ export const CODE_LABEL: Record<DecisionCode, string> = {
   BURST_ACTIVE: 'Shield active',
   BURST_LIMIT: 'Burst limit',
   ROUND_INTERMISSION: 'Between rounds',
+  BELOW_MINIMUM: 'Below minimum',
 };
+
+const EVENT_TRIGGER_TEXT: Record<
+  NonNullable<Manifest['trigger']['event']>['kind'],
+  (minimum: number) => string
+> = {
+  subscribe: () => 'Someone subscribes',
+  gift: (n) => (n > 1 ? `Someone gifts ${n}+ subs` : 'Someone gifts subs'),
+  resub: (n) => (n > 1 ? `Someone resubscribes for ${n}+ months` : 'Someone resubscribes'),
+  cheer: (n) => `Someone cheers ${n}+ bits`,
+  raid: (n) => (n > 1 ? `A raid of ${n}+ viewers arrives` : 'A raid arrives'),
+};
+/** What starts an interaction, in plain words: a chat command or a Twitch event (F19). */
+export function triggerSummary(manifest: Pick<Manifest, 'trigger'>): string {
+  const event = manifest.trigger.event;
+  return event
+    ? EVENT_TRIGGER_TEXT[event.kind](event.minimum)
+    : `Someone types ${manifest.trigger.command}`;
+}
+/** Overlay instruction line; event triggers tell viewers what to do instead of a command. */
+export function triggerInstruction(manifest: Pick<Manifest, 'trigger'>): string {
+  return manifest.trigger.event ? triggerSummary(manifest) : `Type ${manifest.trigger.command}`;
+}
 export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
   code === 'ACCEPTED' ||
   code === 'APPROVED' ||
@@ -102,10 +125,14 @@ export function explain(
   const a = decision.allowance;
   const asset = decision.effects[0]?.asset ?? 'effect';
   switch (decision.code) {
+    case 'BELOW_MINIMUM':
+      return `${viewer}’s ${t.event?.kind ?? 'event'} is below the ${t.event?.minimum ?? ''} minimum, so nothing ran.`;
     case 'ACCEPTED':
       // Rehearsals route native Twitch actions to a simulated sink; say what would happen.
       if (decision.actions?.length && decision.mode === 'preview')
-        return `${viewer} typed ${t.command} — simulated Twitch, nothing sent: ${decision.actions.map(describeAction).join('; ')}.${n ? ` Plus ${n} visual effect${n === 1 ? '' : 's'}.` : ''}`;
+        return `${t.event ? `${triggerSummary(manifest)} (${viewer})` : `${viewer} typed ${t.command}`} — simulated Twitch, nothing sent: ${decision.actions.map(describeAction).join('; ')}.${n ? ` Plus ${n} visual effect${n === 1 ? '' : 's'}.` : ''}`;
+      if (t.event)
+        return `${triggerSummary(manifest)} (${viewer}) — ${n === 1 ? `a ${asset} flies` : `${n} ${asset}s fly`}. ${a ? `${a.used} of ${a.max} used this ${formatWindow(t.windowMs)}.` : ''}`;
       if (manifest.experience)
         return `${viewer}: ${decision.reason} ${decision.effects.length ? `${decision.effects.length} visual effect${decision.effects.length === 1 ? '' : 's'}.` : 'No visual effect.'}`;
       return `${viewer} typed ${t.command} — ${n === 1 ? `a ${asset} flies` : `${n} ${asset}s fly`}. ${a ? `${a.used} of ${a.max} used this ${formatWindow(t.windowMs)}.` : ''}`;
@@ -114,6 +141,7 @@ export function explain(
     case 'AUDIENCE':
       return `${viewer} can’t trigger this — only ${audienceLabel(t.audience)} can.`;
     case 'UNRELATED':
+      if (t.event) return `That isn’t a ${t.event.kind}, so this interaction ignored it.`;
       return `“${text.slice(0, 40)}” isn’t ${t.command}, so it was ignored.`;
     case 'DUPLICATE':
       return 'The same chat message arrived twice. It counted once and threw nothing extra.';

@@ -1,0 +1,137 @@
+/* F19 Twitch event triggers: availability/consent panel and the private rehearsal simulator. */
+.twitch-events {
+  display: grid;
+  gap: 14px;
+}
+.twitch-events-list {
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+}
+.twitch-events-list[aria-busy='true'] {
+  opacity: 0.75;
+}
+.twitch-event {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.twitch-event[data-state='missing-consent'] {
+  border-color: rgb(245 196 81 / 0.35);
+}
+.twitch-event[data-state='failed'],
+.twitch-event[data-state='revoked'] {
+  border-color: rgb(255 120 120 / 0.4);
+}
+.twitch-event-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.twitch-event-name {
+  font-weight: 700;
+  font-size: 14px;
+}
+.twitch-event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.twitch-event-side {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.twitch-events-consent {
+  display: grid;
+  gap: 10px;
+}
+.twitch-events-grant {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+/* Rehearsal simulator: sits above the chat input on the private stage. */
+.twitch-sim {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed var(--line-strong);
+  background: rgb(169 184 255 / 0.05);
+  min-width: 0;
+}
+.twitch-sim:disabled {
+  opacity: 0.6;
+}
+.twitch-sim legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.twitch-sim .note {
+  margin: 0;
+}
+.twitch-sim-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 12px;
+}
+.twitch-sim label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.twitch-sim input[type='number'] {
+  width: 9rem;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: #110f17;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.twitch-sim input[type='number']:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.twitch-sim input[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+.twitch-sim label.twitch-sim-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding-bottom: 6px;
+}
+.twitch-sim-tag {
+  font-size: 11px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .twitch-events-list[aria-busy='true'] {
+    transition: none;
+  }
+}

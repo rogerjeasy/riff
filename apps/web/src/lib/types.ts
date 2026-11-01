@@ -1,6 +1,7 @@
 import type { RegressionEvidence } from '../console/rehearsal/contracts.js';
 import type { ProposalSnapshot } from '../console/proposals/contracts.js';
 import type { Community } from '../community/schema.js';
+import type { TwitchEventKind } from '../console/twitch/contracts.js';
 /** Wire types mirrored from the server. Validated at the boundary in api.ts. */
 export type Role = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
 export type Asset = 'tomato' | 'star' | 'heart';
@@ -28,7 +29,8 @@ export type DecisionCode =
   | 'BURST_COUNTED'
   | 'BURST_ACTIVE'
   | 'BURST_LIMIT'
-  | 'ROUND_INTERMISSION';
+  | 'ROUND_INTERMISSION'
+  | 'BELOW_MINIMUM';
 /** Definition version 2 rules; each block is null/[] when unused. */
 export interface ExperienceMechanics {
   match: { rounds: number; intermissionMs: number } | null;
@@ -148,6 +150,8 @@ export interface Manifest {
     /** F22: `points.redeem` triggers run on linked Channel Points redemptions only. */
     kind?: 'chat.command' | 'points.redeem';
     reward?: string | null;
+    /** F19: set when the interaction runs on a Twitch event instead of chat. */
+    event?: { kind: TwitchEventKind; minimum: number } | null;
   };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }

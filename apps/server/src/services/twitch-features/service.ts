@@ -637,6 +637,10 @@ export function createTwitchFeatureService(deps: {
       deps.changed();
       return snapshot();
     },
+    /** True when the shoutout policy needs incoming raid notifications. */
+    wantsRaids(): boolean {
+      return load().shoutout.mode === 'raiders';
+    },
     /** Remember an authenticated incoming raid for the "raiders only" shoutout policy. */
     async recordRaid(raider: { id: string; login: string; displayName: string }) {
       await exclusive(() => {

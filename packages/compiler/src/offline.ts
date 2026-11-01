@@ -6,10 +6,11 @@ import { compileTimerOffline } from './timer-output.js';
 import { extractTimerHint } from './timer-hints.js';
 import { compilePointsOffline } from './offline-points.js';
 import { compileTwitchActionOffline } from './twitch-intents.js';
+import { compileEventOffline } from './event-output.js';
 import type { CompilerTransport } from './transport.js';
 
-// Named timers, Channel Points, Predictions, polls, announcements and shoutouts are
-// supported and handled by their own offline compilers, so they are not listed here.
+// Named timers, Channel Points, Predictions, polls, announcements, shoutouts and Twitch
+// event triggers are supported and handled by their own offline compilers, so they are not listed here.
 const UNSUPPORTED =
   /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|ban|timeout|webhook|http|website)\b/i;
 
@@ -143,10 +144,12 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements and approved shoutouts.',
+        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements, approved shoutouts and sub, gift, resub, cheer and raid triggers.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;
+  const event = compileEventOffline(request);
+  if (event) return event;
   const points = compilePointsOffline(request);
   if (points) return points;
   const timer = compileTimerOffline(request);

@@ -407,6 +407,8 @@ Tables: `channels`, `channel_state`, `collaboration_connections`, `director_stat
 `rehearsal_regressions`, `scene_heads`, `scene_revisions`, `collaboration_sessions`,
 `collaboration_receipts`, `timers`, `channel_point_rewards`,
 `channel_point_redemptions`, `prediction_requests`.
+Twitch event triggers (F19) add routes `GET /api/twitch/triggers` and the optional
+`/auth/twitch?triggers=<family,...>` consent query; no table.
 
 ---
 
@@ -1047,7 +1049,49 @@ Private guarded routes: GET `/api/twitch/features`; POST `/api/twitch/features/t
 `/api/twitch/announcements`, `/api/twitch/shoutouts`, `/api/twitch/shoutouts/policy`.
 The console **Twitch features** panel shows per-feature grants, eligibility, live poll
 results and manual actions. Prompt pack `riff-compiler/7` (merged as `riff-compiler/10`); offline fixture
-`packages/compiler/fixtures/twitch-actions.json`. Known gaps: the "raiders only" policy is
-fed by `recordRaid`, which no `channel.raid` trigger calls yet; there is no overlay poll
-card (Twitch shows polls natively). One `// UNVERIFIED:` marker: the 403 response for
-polls on non-Affiliate channels is not documented.
+`packages/compiler/fixtures/twitch-actions.json`. The "raiders only" policy is fed by
+`recordRaid`, called from the normalized `channel.raid` path (F19); while that policy is
+selected the connection subscribes to raids even with no raid interaction live. There is
+no overlay poll card (Twitch shows polls natively). One `// UNVERIFIED:` marker: the 403
+response for polls on non-Affiliate channels is not documented.
+
+## Sub, gift, resub, cheer and raid triggers — F19
+
+`triggers.ts` maps the platform trigger names `subscribe`, `gift`, `resub`, `cheer` and
+`raid` to `channel.subscribe`, `channel.subscription.gift`,
+`channel.subscription.message`, `channel.cheer` and `channel.raid` (all v1; raids use
+`to_broadcaster_user_id`), each with a documentation fixture, condition fields, scopes
+(`channel:read:subscriptions`, `bits:read`, none for raids) and a consent family. The SDK
+`TWITCH_EVENT_KINDS` equal those names; a server test keeps them in sync.
+`normalizeTwitchEvent` validates payloads with zod, keeps anonymous gifts/cheers anonymous
+(`viewerId` `anonymous`), clamps amounts and sanitizes viewer text (§4).
+
+SDK 0.4.0 manifests may declare `trigger.event {kind, minimum}`; `trigger.command` must
+then equal the reserved non-chat token `@kind`, audience is `['viewer']` and experience is
+null. This is additive: chat artifacts keep their identity. Handlers read
+`event.twitch {kind, amount, tier, anonymous, gift}`. The engine admits platform events
+through the shared path (dedupe → kind/UNRELATED → `BELOW_MINIMUM` → per-viewer window →
+channel budget); chat interactions ignore platform events and rounds never receive them.
+`hostScenarios` derives an independent event suite. Strict compiler output requires
+nullable `trigger.event` and per-step `twitch`; prompt pack `riff-compiler/7` (merged as
+`riff-compiler/11`) documents the
+triggers and embeds `cheer-shower`/`raid-welcome` examples; the offline compiler handles
+event intents, stating projectile stand-ins for confetti or banners.
+
+The server subscribes to a family on the current EventSub session only while a live
+interaction uses it and the token carries its scope; Twitch-directed reconnects keep
+subscriptions, fresh sessions recreate them, and a revoked family is marked without
+stopping chat. `runtime.handleTwitchEvent` uses the chat queue, durable admission, budgets
+and panic fences, and never reaches reserved commands, proposals, help or shared sessions.
+Previews and rehearsal presets use labeled synthetic Twitch events, never EventSub
+transport messages. The console's Twitch event triggers panel shows availability, use,
+missing consent and subscription state with scoped consent links; the private stage adds a
+synthetic event simulator. Recipe adaptation of event triggers is not supported yet.
+
+Trigger sources are modelled two ways: F22 Channel Points use `trigger.kind:
+'points.redeem'` + `trigger.reward`, F19 platform events use `trigger.event`. Both are
+supported; the manifest validator rejects a trigger that sets both, and engines never
+admit a Twitch event for chat or Channel Points triggers. Unifying them under one
+`trigger.kind` is a pending design decision. `/auth/twitch` accepts `?features=`
+(Channel Points/Predictions), `?feature=` (polls/announcements/shoutouts) and
+`?triggers=` (event families) together and always keeps granted scopes.

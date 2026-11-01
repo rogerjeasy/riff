@@ -38,8 +38,15 @@ native Twitch actions: an owner-only poll, a viewer-triggered announcement and a
 fixed-target shoutout. The compiler test replays them byte for byte and the server
 capability-sync test verifies each through the sandbox pipeline. No live model call.
 
+`event-triggers.json` records the deterministic offline F19 outputs for prompt pack 7
+(cheer, raid, gift, subscribe and resub intents, including "rain confetti" and "welcome
+banner" requests whose missing effects are stated as projectile stand-ins). No live model
+call.
+
 `riff-compiler/8`: merges the timer and Channel Points/Predictions rules into one prompt pack; the two recorded fixtures above were re-labelled with no content change.
 
 `riff-compiler/9`: merges the F31 version 2 mechanics rules into the timer and Channel Points/Predictions pack; `named-timers.json`, `channel-points-predictions.json`, `stateful-mechanics.json` and `rehearsal-repair.json` were re-labelled with no content change.
 
 `riff-compiler/10`: merges the F21/F23 polls, announcements and shoutouts rules into the same pack; `twitch-actions.json` and every fixture re-labelled for pack 9 were re-labelled again with no content change.
+
+`riff-compiler/11`: merges the F19 Twitch event-trigger rules and curated cheer/raid examples into the same pack; `event-triggers.json` and every fixture re-labelled for pack 10 were re-labelled again with no content change.

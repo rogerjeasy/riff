@@ -22,6 +22,7 @@ export const BLOCKED_REASONS = [
   'duplicate',
   'capacity',
   'mechanics',
+  'below-minimum',
   'error',
 ] as const;
 export type BlockedReason = (typeof BLOCKED_REASONS)[number];
@@ -48,6 +49,7 @@ export const REASON_OF: Record<Exclude<DecisionCode, 'ACCEPTED' | 'UNRELATED'>, 
   BURST_ACTIVE: 'mechanics',
   BURST_LIMIT: 'mechanics',
   ROUND_INTERMISSION: 'mechanics',
+  BELOW_MINIMUM: 'below-minimum',
   INVALID_EVENT: 'error',
   INCIDENT: 'error',
 };
@@ -63,6 +65,7 @@ export const REASON_LABEL: Record<BlockedReason, string> = {
   duplicate: 'Duplicate delivery',
   capacity: 'Gameplay queue full',
   mechanics: 'Game rule (eliminated, locked, burst or round break)',
+  'below-minimum': 'Twitch event below the minimum',
   error: 'Invalid event or incident',
 };
 

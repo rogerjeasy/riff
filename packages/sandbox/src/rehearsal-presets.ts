@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ChatEvent, DecisionCode, PermissionManifest } from '@riff/sdk';
 import { artifactSchema } from './contract.js';
+import { syntheticTwitchEvent } from './verify.js';
 import {
   RehearsalError,
   rehearsalScenarioSchema,
@@ -70,13 +71,18 @@ export function createRehearsalPreset(
     roles = manifest.trigger.audience,
   ): ChatEvent => {
     const key = `step-${steps.length + 1}`;
+    // F19: event triggers rehearse with labeled synthetic Twitch events at the threshold,
+    // never fabricated EventSub transport messages.
+    const trigger = manifest.trigger.event;
+    const synthetic = trigger && text === manifest.trigger.command;
     const event = {
       id: `${preset}-${key}`,
       channelId: 'rehearsal',
       viewerId,
       roles: [...roles],
-      text,
+      text: synthetic ? '' : text,
       at: ++clock,
+      ...(synthetic ? { twitch: syntheticTwitchEvent(trigger.kind, trigger.minimum) } : {}),
     };
     steps.push({ kind: 'chat', key, event });
     if (expected) expectations.push({ id: key, stepKey: key, kind: 'decision', value: expected });

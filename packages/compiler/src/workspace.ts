@@ -1,10 +1,11 @@
 import { EXAMPLES, HOST_LIMITS, RIFF_DTS, RIFF_TEST_DTS, SDK_GUIDE, SDK_VERSION } from '@riff/sdk';
 import { compileExperienceOffline } from './experience-output.js';
 import { compileTimerOffline } from './timer-output.js';
+import { compileEventOffline } from './event-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/10';
+export const PROMPT_VERSION = 'riff-compiler/11';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -28,7 +29,17 @@ const TIMER_EXAMPLES = TIMER_INTENTS.map((intent, index) => {
   if (!output) throw new Error('A curated timer example must produce a compiler output');
   return { name: index === 0 ? 'hydration-reminder' : 'countdown-celebration', intent, ...output };
 });
-const CURATED = [...EXAMPLES, ...EXPERIENCE_EXAMPLES, ...TIMER_EXAMPLES];
+// F19 curated event examples, produced by the same deterministic templates as offline mode.
+const EVENT_INTENTS = [
+  ['cheer-shower', 'When someone cheers 100+ bits, rain stars across the overlay.'],
+  ['raid-welcome', 'When we get raided, welcome the raiders with a burst of stars.'],
+] as const;
+const EVENT_EXAMPLES = EVENT_INTENTS.map(([name, intent]) => {
+  const output = compileEventOffline({ intent, base: null });
+  if (!output) throw new Error('A curated event example must produce a compiler output');
+  return { name, intent, ...output };
+});
+const CURATED = [...EXAMPLES, ...EXPERIENCE_EXAMPLES, ...TIMER_EXAMPLES, ...EVENT_EXAMPLES];
 
 const TASK_RULES = `You are Riff's runtime compiler. A Twitch creator described an audience
 interaction. Turn it into ONE structured JSON object matching the output schema.
@@ -42,13 +53,15 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending ordinary chat
-  messages or replies, sounds, bans, external sites, timers inside a session round,
-  opening/settling predictions directly, Channel Points rewards for anything but
+  messages or replies, sounds, follows, bans, external sites, timers inside a session
+  round, opening/settling predictions directly, Channel Points rewards for anything but
   triggering, or shoutouts to a channel named in chat). Named host timers ("every 10
   minutes", "60 seconds after !start") ARE supported via capability timer; a session
   round deadline/countdown is separate and host-owned. Twitch polls, chat announcements
-  and fixed-target shoutouts ARE supported (see below). Give the reason and the closest
-  supported alternative. manifest/source null, tests [].
+  and fixed-target shoutouts ARE supported (see below). New subscriptions, gifted subs,
+  resubs, cheers (bits) and incoming raids ARE supported as event triggers (see "Twitch
+  event triggers" in SDK.md). Give the reason and the closest supported alternative.
+  manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
@@ -154,6 +167,22 @@ Rules for candidates:
   is available. The host independently validates empty, populated, exhausted, paused and
   finished states, and later revalidates current live progress at exact approval.
   Incompatible score/team/objective changes require explicit full reset, never rewrite scores.
+- Twitch event triggers (subs, gifts, resubs, cheers, raids): set trigger.event
+  {kind, minimum} and trigger.command '@'+kind; trigger.kind "chat.command" and reward
+  null; audience ['viewer']; experience null; capabilities ['overlay'] (add
+  "chat.announce" only when an announcement is asked for; polls and shoutouts need a
+  moderator/broadcaster chat trigger, so they cannot be event-triggered). minimum is the stated threshold (bits, gifted subs, resub
+  months, raid viewers) or 1 when unstated; subscribe always uses 1. Pick a
+  conventional maxPerViewer (5 per 60000 ms) and list it in assumptions. Read the
+  amount from event.twitch.amount and cap any scaled burst at effectsPerEvent.
+  Effects are projectiles only: confetti, banners or text become a stated burst of
+  stars/hearts in assumptions, never an invented effect. Event scenario steps carry
+  twitch {kind, amount, tier, anonymous, gift}; chat steps carry twitch:null. Include
+  BELOW_MINIMUM when minimum > 1 and an ordinary chat message expecting UNRELATED.
+  behavior.when is plain language, e.g. "Someone cheers 100+ bits".
+- Chat and Channel Points interactions set trigger.event null and every step's twitch
+  null; event-trigger steps use kind null. Never combine trigger.event with
+  trigger.kind "points.redeem" (the validator rejects it).
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {

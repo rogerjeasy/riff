@@ -29,11 +29,14 @@ import {
 } from '@riff/sandbox';
 import {
   EFFECT_LIMITS,
+  describeTrigger,
   type ChatEvent,
   type PermissionManifest,
   type ExecutionDecision,
   type PredictionProposal,
   type TwitchAction,
+  type TwitchEventDetail,
+  type TwitchEventKind,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import { transitionEvidenceId } from '../../db/repositories/transitions.js';
@@ -68,6 +71,34 @@ export interface LivePredictionProposal {
   versionId: string;
   eventId: string;
   proposal: PredictionProposal;
+}
+
+/** A Twitch platform event (F19), already normalized from authenticated EventSub. */
+export interface LiveTwitchEvent {
+  id: string;
+  channelId: string;
+  viewerId: string;
+  viewerName: string;
+  text: string;
+  twitch: TwitchEventDetail;
+  source: 'twitch';
+}
+const TIER_LABEL = { '1000': 'Tier 1', '2000': 'Tier 2', '3000': 'Tier 3' } as const;
+/** Activity wording for an accepted platform event. */
+export function twitchActivity(event: TwitchEventDetail): string {
+  const tier = event.tier ? ` (${TIER_LABEL[event.tier]})` : '';
+  switch (event.kind) {
+    case 'subscribe':
+      return event.gift ? `received a gifted sub${tier}` : `subscribed${tier}`;
+    case 'gift':
+      return `gifted ${event.amount} sub${event.amount === 1 ? '' : 's'}${tier}`;
+    case 'resub':
+      return `resubscribed for ${event.amount} month${event.amount === 1 ? '' : 's'}${tier}`;
+    case 'cheer':
+      return `cheered ${event.amount} bit${event.amount === 1 ? '' : 's'}`;
+    case 'raid':
+      return `raided with ${event.amount} viewer${event.amount === 1 ? '' : 's'}`;
+  }
 }
 
 /**
@@ -147,6 +178,7 @@ export function createLiveRuntime(deps: {
         return `Redeem “${t.reward ?? ''}” with Channel Points · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       const who = t.audience.includes('viewer') ? '' : ` (${describeAudience(t.audience)})`;
       const experience = experienceOf(version);
+      if (t.event) return describeTrigger(t);
       if (!experience)
         return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       // Rounds spend a lifetime allowance and may need a team first; never imply a
@@ -295,18 +327,33 @@ export function createLiveRuntime(deps: {
       at: lastAt,
     });
     if (!event.success) return [];
+    return admit(event.data, message.viewerName, message.id);
+  }
+
+  /**
+   * Run one normalized input through every live engine: the same durable admission,
+   * budget, incident and overlay path for chat and Twitch platform events (F19).
+   */
+  async function admit(
+    data: ChatEvent,
+    viewerName: string,
+    messageId: string,
+  ): Promise<ExecutionDecision[]> {
+    const event = { data };
     const fence = generation;
     const results = [];
     for (const [automationId, { engine, version }] of [...engines.entries()]) {
       let decision: ExecutionDecision;
       let sessionDelivered = 0;
       try {
+        // Rounds are chat gameplay; platform events never enter session journals.
+        if (experienceOf(version) && data.twitch) continue;
         if (experienceOf(version)) {
           const result = await sessions.process(
             version,
             engine,
             event.data,
-            message.viewerName,
+            viewerName,
             () => fence === generation && !panic && !closed,
           );
           decision = result.decision;
@@ -381,7 +428,7 @@ export function createLiveRuntime(deps: {
         fence === generation && !panic
           ? experienceOf(version)
             ? sessionDelivered
-            : overlay.deliver(decision, message.viewerName, automationId, version.id)
+            : overlay.deliver(decision, viewerName, automationId, version.id)
           : 0;
       // Timer operations commit only for accepted, unfenced work, after admission is durable.
       if (fence === generation && !panic && decision.timers?.length)
@@ -391,25 +438,24 @@ export function createLiveRuntime(deps: {
           deps.onPredictionProposal?.({
             automationId,
             versionId: version.id,
-            eventId: message.id,
+            eventId: messageId,
             proposal,
           });
-      lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
+      lastEvent = { at: Date.now(), viewer: viewerName, code: decision.code };
       publishActivity({
         at: Date.now(),
         kind: 'decision',
         automationId,
         versionId: version.id,
-        eventId: message.id,
-        viewer: message.viewerName,
+        eventId: messageId,
+        viewer: viewerName,
         code: fence === generation ? decision.code : 'STOPPED',
         message:
           decision.code === 'ACCEPTED'
-            ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+            ? `${viewerName} ${data.twitch ? twitchActivity(data.twitch) : `used ${(version.manifest as PermissionManifest).trigger.command}`} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
-      if (fence === generation && !panic)
-        queueTwitchActions(decision, automationId, message.viewerName);
+      if (fence === generation && !panic) queueTwitchActions(decision, automationId, viewerName);
     }
     await applyPending();
     return results;
@@ -912,6 +958,59 @@ export function createLiveRuntime(deps: {
       );
       queue = next.catch(() => undefined);
       return next;
+    },
+    /**
+     * F19: admit one normalized Twitch platform event through the same serialized
+     * queue, durable admission, budgets and panic fences as chat. Platform events never
+     * reach reserved chat commands, proposals, help or shared sessions.
+     */
+    handleTwitchEvent(input: LiveTwitchEvent): Promise<ExecutionDecision[]> {
+      if (closed || panic || input.source !== 'twitch') return Promise.resolve([]);
+      if (pendingChat >= 128) {
+        publishActivity({
+          at: now(),
+          kind: 'decision',
+          automationId: null,
+          versionId: null,
+          eventId: input.id,
+          viewer: input.viewerName,
+          code: 'CAPACITY',
+          message: `The gameplay queue was full, so this ${input.twitch.kind} was not admitted.`,
+        });
+        return Promise.resolve([]);
+      }
+      const fence = generation;
+      pendingChat++;
+      const next = queue
+        .then(async () => {
+          if (fence !== generation || closed || panic) return [];
+          lastAt = Math.max(lastAt, now());
+          const event = eventSchema.safeParse({
+            id: input.id,
+            channelId: input.channelId,
+            viewerId: input.viewerId,
+            roles: ['viewer'],
+            text: input.text,
+            at: lastAt,
+            twitch: input.twitch,
+          });
+          if (!event.success) return [];
+          return admit(event.data, input.viewerName, input.id);
+        })
+        .finally(() => {
+          pendingChat--;
+        });
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /** Event families that live automations currently listen to (drives EventSub). */
+    eventTriggers(): TwitchEventKind[] {
+      const kinds = new Set<TwitchEventKind>();
+      for (const { version } of engines.values()) {
+        const kind = (version.manifest as PermissionManifest).trigger.event?.kind;
+        if (kind) kinds.add(kind);
+      }
+      return [...kinds];
     },
     tick(): Promise<void> {
       const fence = generation;

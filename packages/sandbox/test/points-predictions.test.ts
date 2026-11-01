@@ -70,6 +70,43 @@ describe('points.redeem manifests', () => {
   });
 });
 
+describe('Channel Points and Twitch event triggers', () => {
+  it('a trigger is either a points.redeem redemption or a trigger.event, never both', () => {
+    const cheer = { kind: 'cheer', minimum: 100 };
+    expect(
+      manifestSchema.safeParse({
+        ...redeemManifest,
+        trigger: { ...redeemManifest.trigger, command: '@cheer', event: cheer },
+      }).success,
+    ).toBe(false);
+    // The same event trigger without the redemption fields is valid.
+    expect(
+      manifestSchema.safeParse({
+        ...redeemManifest,
+        trigger: {
+          command: '@cheer',
+          audience: ['viewer'],
+          maxPerViewer: 2,
+          windowMs: 60_000,
+          kind: 'chat.command',
+          reward: null,
+          event: cheer,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it('Channel Points and chat triggers ignore Twitch platform events', async () => {
+    const engine = createPreviewEngine({ source: splash, manifest: redeemManifest }, 7);
+    const twitch = { kind: 'cheer', amount: 500, tier: null, anonymous: false, gift: false };
+    expect((await engine.dispatch({ ...redemption('r1'), twitch })).code).toBe('UNRELATED');
+    expect((await engine.dispatch({ ...chat('c1', '!hydrate', ['viewer'], 1), twitch })).code).toBe(
+      'UNRELATED',
+    );
+    engine.stop();
+  });
+});
+
 describe('points.redeem admission', () => {
   it('admits only redemptions, with dedupe and the viewer window, never chat text', async () => {
     const engine = createPreviewEngine({ source: splash, manifest: redeemManifest }, 7);

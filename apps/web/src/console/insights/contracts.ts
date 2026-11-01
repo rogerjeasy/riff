@@ -94,5 +94,6 @@ export const REASON_LABELS: Record<string, string> = {
   duplicate: 'Duplicate delivery',
   capacity: 'Gameplay queue full',
   mechanics: 'Game rule (eliminated, locked, burst or round break)',
+  'below-minimum': 'Twitch event below the minimum',
   error: 'Invalid event or incident',
 };

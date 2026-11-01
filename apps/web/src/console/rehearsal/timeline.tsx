@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Decision, SessionSnapshot, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import '../timers/timers.css';
-import { explain, formatClock, shortHash, tone } from '../format.js';
+import { explain, formatClock, shortHash, tone, triggerInstruction } from '../format.js';
 import type { RehearsalResult, RehearsalRun, RehearsalScenario } from './contracts.js';
 import type { ExpectationDraft } from './input-editor.js';
 import { codeLabel, describeCheck, logicalClock, stepTitle, timeOf, verdict } from './labels.js';
@@ -568,7 +568,7 @@ function StageView(props: {
       now: props.at,
       definition: d,
       snapshot: session,
-      instructions: props.instructions ?? [`Type ${props.version.manifest.trigger.command}`],
+      instructions: props.instructions ?? [triggerInstruction(props.version.manifest)],
       guides: true,
     });
     const key = props.frame ? `${props.version.id}:${props.frame.at}:${props.frame.key}` : '';

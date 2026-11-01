@@ -353,3 +353,38 @@ Channel Points redemption are dispatched like chat-triggered ones (a fire-staged
 counts against the effect budget; sandbox test). Redemptions now also apply staged
 timers and prediction proposals. Helix poll, announcement and shoutout mutations use
 `{ retries: 0 }`.
+
+## Sub, gift, resub, cheer and raid triggers (F19) — November 1, 2026
+
+`packages/twitch/src/triggers.ts` adds `subscribe` (`channel.subscribe`), `gift`
+(`channel.subscription.gift`), `resub` (`channel.subscription.message`), `cheer`
+(`channel.cheer`) and `raid` (`channel.raid`, `to_broadcaster_user_id`), all version 1,
+with versions, scopes and conditions checked against the EventSub subscription types page
+on November 1, 2026. Fixtures are the documentation notification examples (inline `//`
+comments removed). Normalization validates each payload with zod, hides anonymous
+gifts/cheers behind one `anonymous` identity, clamps amounts and sanitizes resub/cheer
+text and display names.
+
+Manifests may declare `trigger.event {kind, minimum}` with the reserved command `@kind`
+(SDK 0.4.0, additive; chat artifacts keep their identity). Events carry `event.twitch`
+and enter the same engine admission (dedupe → kind → `BELOW_MINIMUM` → per-viewer window
+→ channel budget) and live queue, durable admission records, panic fences and overlay path
+as chat. Prompt pack `riff-compiler/7` (merged as `riff-compiler/11`) and the offline
+compiler support event intents.
+The Twitch connection subscribes on demand for families live interactions use when the
+token carries the scope, and `GET /api/twitch/triggers` reports use, consent and
+subscription state; `/auth/twitch?triggers=` requests extra consent while keeping earlier
+scopes. Rehearsal and previews accept labeled synthetic Twitch events only.
+
+Not verified here: delivery from a real Twitch channel (tests use the documented protocol
+against a local WebSocket stand-in), and recipe export/adaptation of event-triggered
+interactions (the recipe profile flow remains chat-command based). No new dependency,
+table or environment variable.
+
+Integration (prompt pack `riff-compiler/11`): F19 merged after F18/F21/F22/F31. The
+shared `admit` loop keeps timer, prediction-proposal and native-action side effects for
+chat and platform events; redemptions keep their own linked-automation path. The
+manifest validator rejects a trigger that is both `points.redeem` and `trigger.event`.
+Incoming raids feed F23's "raiders only" shoutout policy (`recordRaid`), and selecting
+that policy subscribes to `channel.raid` on its own (server test). `/auth/twitch`
+accepts `?features=`, `?feature=` and `?triggers=` together.

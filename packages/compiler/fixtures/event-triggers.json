@@ -1,0 +1,1410 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/11",
+    "note": "Deterministic F19 template responses recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "request": {
+        "intent": "When someone cheers 100+ bits, rain confetti",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Cheer Shower",
+        "summary": "Someone cheers 100+ bits: a shower of stars rains across your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const n = Math.min(5, Math.max(1, Math.floor(event.twitch.amount / 100)));\n  for (let i = 0; i < n; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "command": "@cheer",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "event": {
+              "kind": "cheer",
+              "minimum": 100
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 5,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A cheer at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Below 100 does nothing",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "b1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "BELOW_MINIMUM",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 99,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "b2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 100,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone cheers 100+ bits",
+          "what": "A shower of stars rains across your overlay",
+          "who": "Anyone on Twitch who does it",
+          "howMuch": "one star per 100 bits, up to 5; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": [
+          "Riff has no confetti effect yet; a shower of stars stands in for it.",
+          "Up to 5 reactions per account in any 60 seconds.",
+          "Anonymous cheers and gifts share one allowance."
+        ]
+      }
+    },
+    {
+      "request": {
+        "intent": "When we get raided, show a welcome banner",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Raid Welcome",
+        "summary": "A raid arrives: a welcome burst of 5 stars crosses your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  for (let i = 0; i < 5; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "command": "@raid",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "event": {
+              "kind": "raid",
+              "minimum": 1
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 5,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A raid at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "A raid arrives",
+          "what": "A welcome burst of 5 stars crosses your overlay",
+          "who": "Any channel that raids you",
+          "howMuch": "5 stars per raid; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": [
+          "Every raid counts; no minimum was stated.",
+          "Riff cannot draw text banners yet; a burst of stars welcomes them instead.",
+          "Up to 5 reactions per account in any 60 seconds."
+        ]
+      }
+    },
+    {
+      "request": {
+        "intent": "When someone gifts 5 or more subs, throw hearts",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Gift Hearts",
+        "summary": "Someone gifts 5+ subs: a heart for every gifted sub flies across your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const n = Math.min(5, Math.max(1, event.twitch.amount));\n  for (let i = 0; i < n; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'heart', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "command": "@gift",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "event": {
+              "kind": "gift",
+              "minimum": 5
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 5,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A gift at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Below 5 does nothing",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "b1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "BELOW_MINIMUM",
+                "effects": 0,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 4,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "b2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 5,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "gift",
+                  "amount": 5,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone gifts 5+ subs",
+          "what": "A heart for every gifted sub flies across your overlay",
+          "who": "Anyone on Twitch who does it",
+          "howMuch": "one heart per gifted sub, up to 5; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": [
+          "Up to 5 reactions per account in any 60 seconds.",
+          "Anonymous cheers and gifts share one allowance."
+        ]
+      }
+    },
+    {
+      "request": {
+        "intent": "When someone subscribes, send three hearts",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Sub Hearts",
+        "summary": "Someone subscribes: three hearts fly across your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  for (let i = 0; i < 3; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'heart', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "command": "@subscribe",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "event": {
+              "kind": "subscribe",
+              "minimum": 1
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 3,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A subscribe at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "subscribe",
+                  "amount": 1,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone subscribes",
+          "what": "Three hearts fly across your overlay",
+          "who": "Anyone on Twitch who does it",
+          "howMuch": "3 hearts per sub; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": ["Up to 5 reactions per account in any 60 seconds."]
+      }
+    },
+    {
+      "request": {
+        "intent": "Celebrate every resub of 12+ months with stars",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Resub Hearts",
+        "summary": "Someone resubscribes for 12+ months: three stars fly across your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  for (let i = 0; i < 3; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "command": "@resub",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "event": {
+              "kind": "resub",
+              "minimum": 12
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 3,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A resub at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Below 12 does nothing",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "b1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "BELOW_MINIMUM",
+                "effects": 0,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 11,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "b2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 3,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "resub",
+                  "amount": 12,
+                  "tier": "1000",
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone resubscribes for 12+ months",
+          "what": "Three stars fly across your overlay",
+          "who": "Anyone on Twitch who does it",
+          "howMuch": "3 stars per resub; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": ["Up to 5 reactions per account in any 60 seconds."]
+      }
+    }
+  ]
+}

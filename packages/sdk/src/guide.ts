@@ -22,8 +22,9 @@ nothing survives to the next event. The host has already checked the command, th
 audience and every allowance before the handler runs, so a handler only decides which
 effects to show.
 
-\`event\`: { id, channelId, viewerId, roles, text, at }. roles ⊆ viewer, subscriber,
-moderator, broadcaster; every chatter has \`viewer\`. text ≤ 500 chars.
+\`event\`: { id, channelId, viewerId, roles, text, at, twitch }. roles ⊆ viewer, subscriber,
+moderator, broadcaster; every chatter has \`viewer\`. text ≤ 500 chars. twitch is null for
+chat messages and set only for Twitch event triggers (see below).
 
 \`riff.overlay.emit(effect): Promise<void>\` (capability \`overlay\`) stages one
 projectile: { kind: 'projectile', asset: 'tomato' | 'star' | 'heart', x } with x a
@@ -179,6 +180,36 @@ Manifests declaring \`polls\` or \`shoutout\` must restrict trigger.audience to 
 and/or broadcaster. \`chat.announce\` may use any audience; keep effectsPerMinute low
 (the host channel budget is 6 announcements per minute across all interactions).
 
+## Twitch event triggers (subs, gifts, resubs, cheers, raids)
+
+Instead of a chat command, a projectile interaction may run on ONE Twitch event kind.
+Set trigger.event = { kind, minimum } and trigger.command = '@' + kind (a reserved
+token chat can never match). kind is subscribe | gift | resub | cheer | raid.
+experience must be null and audience must be ['viewer']. minimum is an integer
+1..1000000 compared with event.twitch.amount; use 1 when no threshold is stated.
+
+event.twitch = { kind, amount, tier, anonymous, gift }:
+- subscribe: a new (not resub) subscription; amount 1; gift true when gifted.
+- gift: one gift of amount subscriptions; anonymous true for anonymous gifts.
+- resub: amount is cumulative months; text is the resub message.
+- cheer: amount is bits; text is the cheer message; anonymous cheers allowed.
+- raid: amount is the raid's viewer count; viewerId is the raiding channel.
+tier is '1000' | '2000' | '3000' for subscribe/gift/resub, otherwise null.
+Anonymous cheers and gifts use viewerId 'anonymous' and share one allowance.
+Viewer-supplied text is control-stripped and capped at 500 characters.
+
+Event admission order: DUPLICATE → UNRELATED (chat text, or a different event kind) →
+BELOW_MINIMUM (amount < minimum, 0 effects) → VIEWER_LIMIT → CHANNEL_LIMIT → ACCEPTED.
+Chat-command interactions return UNRELATED for every Twitch event.
+Example: \`async (event, riff) => { const n = Math.min(10, Math.ceil(event.twitch.amount / 100)); for (let i = 0; i < n; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() }); }\`
+
+Event scenario steps set twitch to the synthetic event and text to '' (or a message);
+chat steps set twitch:null. Event steps are synthetic rehearsal inputs, never
+Twitch transport events. Example step: { id:'c1', viewer:'alice', roles:['viewer'],
+text:'', at:0, twitch:{kind:'cheer',amount:100,tier:null,anonymous:false,gift:false},
+expect:'ACCEPTED', effects:1, session:null }. Cover a happy event, a BELOW_MINIMUM
+(when minimum > 1) or VIEWER_LIMIT edge, and a negative: ordinary chat is UNRELATED.
+
 ## Permission manifest
 
 {
@@ -305,7 +336,8 @@ export const RIFF_DTS = `declare module 'riff' {
     mechanics?: SessionMechanicsState;
   }
   export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
-  export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number; kind?: 'points.redeem' }
+  export interface TwitchEventDetail { kind: 'subscribe' | 'gift' | 'resub' | 'cheer' | 'raid'; amount: number; tier: '1000' | '2000' | '3000' | null; anonymous: boolean; gift: boolean }
+  export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number; kind?: 'points.redeem'; twitch?: TwitchEventDetail | null }
   export interface PredictionProposal { title: string; outcomes: string[]; windowSeconds: number }
   export interface ProjectileEffect { kind: 'projectile'; asset: 'tomato' | 'star' | 'heart'; x: number }
   /** Internal host timer event; chat events have no source field. */
@@ -331,10 +363,10 @@ export const RIFF_DTS = `declare module 'riff' {
 `;
 
 export const RIFF_TEST_DTS = `declare module 'riff/test' {
-  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT' | 'ELIMINATED' | 'LOCKED' | 'HEALTH_FULL' | 'BURST_COUNTED' | 'BURST_ACTIVE' | 'BURST_LIMIT' | 'ROUND_INTERMISSION';
+  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT' | 'ELIMINATED' | 'LOCKED' | 'HEALTH_FULL' | 'BURST_COUNTED' | 'BURST_ACTIVE' | 'BURST_LIMIT' | 'ROUND_INTERMISSION' | 'BELOW_MINIMUM';
   export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>>; round?: number; winner?: string | null; wins?: Record<string,number>; standings?: Record<string,{ health?: number | null; eliminated?: boolean; bursts?: number; tier?: number }> }
   export interface TimerAssertion { fired: number; effects: number }
-  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null; timers?: TimerAssertion | null; kind?: 'points.redeem' | null }
+  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null; timers?: TimerAssertion | null; kind?: 'points.redeem' | null; twitch?: import('riff').TwitchEventDetail | null }
   export interface Scenario { name: string; kind: 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window'; steps: ScenarioStep[] }
 }
 `;

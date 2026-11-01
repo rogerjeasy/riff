@@ -9,11 +9,24 @@ export {
 } from './errors.js';
 export type { FetchLike } from './http.js';
 export {
+  EVENT_TRIGGER_NAMES,
   TRIGGERS,
+  missingScopes,
+  scopesForTriggers,
+  triggerCondition,
   triggerForSubscription,
+  type EventTriggerName,
   type TriggerDefinition,
   type TriggerName,
 } from './triggers.js';
+export {
+  ANONYMOUS_VIEWER_ID,
+  MAX_EVENT_AMOUNT,
+  normalizeTwitchEvent,
+  type NormalizedTwitchEvent,
+  type SubscriptionTier,
+  type TwitchEventKind,
+} from './normalize-events.js';
 export {
   MAX_CHAT_TEXT_LENGTH,
   normalizeChatMessage,
