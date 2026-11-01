@@ -1,4 +1,6 @@
 import { ProductionPanel } from './production/panel.js';
+import { ChannelPointsPanel } from './channel-points/channel-points-panel.js';
+import { PredictionsPanel } from './channel-points/predictions-panel.js';
 import { ParticipationPanel } from './participation/panel.js';
 import { RecipeLibrary } from './recipes/library.js';
 import { DirectorPanel } from './director/panel.js';
@@ -303,6 +305,8 @@ export function App() {
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
         <ProductionPanel versions={allVersions} panic={studio.panic} />
+        <ChannelPointsPanel />
+        <PredictionsPanel />
         <RecipeLibrary
           versions={allVersions}
           onReview={(id) => {

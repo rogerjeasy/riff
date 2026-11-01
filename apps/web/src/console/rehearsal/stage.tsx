@@ -30,6 +30,7 @@ interface RehearsalEvent {
   roles: Role[];
   text: string;
   at: number;
+  kind?: 'points.redeem';
 }
 const SEED = 42;
 const reducedMotion = () =>
@@ -61,6 +62,12 @@ export function Rehearsal(props: {
   const definition = version?.manifest.experience;
   const session = result?.session ?? result?.decisions.at(-1)?.session;
   const command = version?.manifest.trigger.command ?? '!tomato';
+  // Channel Points interactions rehearse the handle as a simulated redemption: no Twitch call.
+  const redeems = version?.manifest.trigger.kind === 'points.redeem';
+  const asInput = (message: string): Pick<RehearsalEvent, 'text'> & { kind?: 'points.redeem' } =>
+    redeems && message.trim().toLowerCase() === command
+      ? { text: '', kind: 'points.redeem' }
+      : { text: message };
 
   useEffect(() => {
     if (stage.current && version)
@@ -154,7 +161,7 @@ export function Rehearsal(props: {
       channelId: 'private-preview',
       viewerId: who.id,
       roles: who.roles,
-      text: message,
+      ...asInput(message),
       at,
     };
     const next = [...base, event];
@@ -224,7 +231,9 @@ export function Rehearsal(props: {
     let list: RehearsalEvent[] = [];
     for (const step of steps) {
       if (sequence.current !== run) return;
-      const dupId = step.dup ? list.find((event) => event.text === command)?.id : undefined;
+      const dupId = step.dup
+        ? list.find((event) => event.text === command || event.kind)?.id
+        : undefined;
       list = [
         ...list,
         {
@@ -232,7 +241,7 @@ export function Rehearsal(props: {
           channelId: 'private-preview',
           viewerId: step.who.id,
           roles: step.who.roles,
-          text: step.text,
+          ...asInput(step.text),
           at: step.at,
         },
       ];
