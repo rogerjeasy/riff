@@ -15,6 +15,14 @@ export const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
  */
 export const CHAT_READ_SCOPES: readonly string[] = TRIGGERS['chat.message'].scopes;
 
+/**
+ * Feature consent for Riff-managed Channel Points rewards: create/update/delete rewards,
+ * update redemption status and receive `points.redeem` (all "channel:manage:redemptions").
+ */
+export const CHANNEL_POINTS_SCOPES: readonly string[] = TRIGGERS['points.redeem'].scopes;
+/** Create/End Prediction require "channel:manage:predictions" (Get accepts it too). */
+export const PREDICTION_SCOPES: readonly string[] = ['channel:manage:predictions'];
+
 export interface TwitchTokenSet {
   readonly accessToken: string;
   readonly refreshToken: string;
