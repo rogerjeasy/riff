@@ -91,7 +91,10 @@ export function registerConsoleSession(
       if (deps.accessToken && same(token, deps.accessToken)) issue(reply);
       url.searchParams.delete('access');
       reply.header('Cache-Control', 'no-store');
-      return reply.redirect(`${url.pathname}${url.search}`, 302);
+      // Same-site only: normalisation can leave `//host` (e.g. from `/.//host`), which a
+      // browser would follow off-site, so collapse any leading slashes or backslashes.
+      const path = `/${url.pathname.replace(/^[/\\]+/, '')}`;
+      return reply.redirect(`${path}${url.search}`, 302);
     }
     if (isPublic(request.routeOptions.url) || signedIn(request)) return;
     return reply

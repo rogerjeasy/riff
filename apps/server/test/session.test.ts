@@ -191,4 +191,18 @@ describe('console sign-in', () => {
     expect((await login(app, PASSWORD, '198.51.100.9')).statusCode).toBe(429);
     expect((await login(app, PASSWORD, '203.0.113.50')).statusCode).toBe(200);
   });
+
+  it('only redirects a sign-in link within this site', async () => {
+    const app = await hosted();
+    for (const url of [
+      '/.//evil.example/?access=nope',
+      '//evil.example/?access=nope',
+      '/%2F%2Fevil.example/?access=nope',
+      '/\\evil.example/?access=nope',
+    ]) {
+      const location = String((await app.inject(url)).headers.location);
+      expect(location, url).toMatch(/^\/(?![/\\])/);
+      expect(location, url).not.toMatch(/^\/\/|^https?:/);
+    }
+  });
 });
