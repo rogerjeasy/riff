@@ -339,6 +339,14 @@ change an approved live layout.
    automated test `apps/server/test/twitch-live.test.ts` drives the same path with the
    documented EventSub protocol and fixtures.
 
+## Deployment
+
+Pushes to `main` that pass CI deploy automatically to AWS Lightsail. Terraform manages the
+infrastructure, AWS Secrets Manager holds the secrets, and GitHub OIDC grants short-lived
+AWS access. Streamers are listed in `infra/terraform/prod/terraform.tfvars`. See
+[infra/deploy/README.md](infra/deploy/README.md) for the pipeline, one-time setup and
+streamer access.
+
 ## Commands
 
 | Command                        | Purpose                                                             |
