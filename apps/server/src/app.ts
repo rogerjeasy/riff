@@ -1,3 +1,7 @@
+import { createCoordinator } from './services/collaboration/coordinator.js';
+import { createCollaborationMember } from './services/collaboration/member.js';
+import { createPeerTransport, type PeerTransport } from './services/collaboration/transport.js';
+import { registerCollaborationRoutes } from './routes/collaboration.js';
 import { createSceneService } from './services/scenes/service.js';
 import { registerSceneRoutes } from './routes/scenes.js';
 import { createRehearsalService } from './services/rehearsal/service.js';
@@ -47,6 +51,7 @@ interface AppDependencies {
   twitch?: TwitchConfig | null;
   fetch?: FetchLike;
   now?: () => number;
+  peerFetch?: typeof fetch;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -56,6 +61,10 @@ export function migrateConnection(database: DatabaseConnection) {
 }
 
 export interface RiffServices {
+  collaboration: {
+    coordinator: ReturnType<typeof createCoordinator>;
+    member: ReturnType<typeof createCollaborationMember>;
+  };
   repo: ReturnType<typeof forChannel>;
   runtime: ReturnType<typeof createLiveRuntime>;
   overlay: ReturnType<typeof createOverlayBroker>;
@@ -65,6 +74,7 @@ export interface RiffServices {
   proposals: ReturnType<typeof createProposalService>;
   rehearsal: ReturnType<typeof createRehearsalService>;
   scenes: ReturnType<typeof createSceneService>;
+  twitch: ReturnType<typeof createTwitchConnection>;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -106,7 +116,22 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       hub.publish('studio', null);
     }
   };
+  const shared: { current?: RiffServices['collaboration'] } = {};
+  const stopCollaboration = () => {
+    try {
+      shared.current?.member.stop('Your channel stopped. Request a new invitation to rejoin.');
+    } catch {
+      /* Local publication is fenced first. */
+    }
+    try {
+      shared.current?.coordinator.stop('Coordinator channel stopped.');
+    } catch {
+      /* Memory fencing precedes persistence. */
+    }
+  };
   const runtime = createLiveRuntime({
+    onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
+    onStop: stopCollaboration,
     repo,
     hub,
     overlay,
@@ -153,8 +178,60 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     sealer,
     ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
     log: (message) => app.log.warn(message),
+    onStatus: (status) => {
+      if (status.state !== 'connected') stopCollaboration();
+    },
   });
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
+  const coordinator = createCoordinator({
+    database,
+    repo,
+    blocked: () => runtime.panicked,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  const remote = createPeerTransport(dependencies.peerFetch);
+  const peer: PeerTransport = async (origin, token, action, body, signal) => {
+    if (origin !== 'local') return remote(origin, token, action, body, signal);
+    if (signal?.aborted) throw new Error('Membership request cancelled.');
+    switch (action) {
+      case 'review':
+        return coordinator.review(token);
+      case 'approve':
+        return coordinator.approve(token, (body as { digest: string }).digest);
+      case 'heartbeat':
+        return coordinator.heartbeat(token);
+      case 'input':
+        return coordinator.input(token, body);
+      case 'leave':
+        coordinator.leave(token);
+        return { ok: true };
+    }
+  };
+  const member = createCollaborationMember({
+    database,
+    repo,
+    sealer,
+    identity: () => repo.state().twitchUserId,
+    ready: () => twitch.status.state === 'connected',
+    blocked: () => runtime.panicked,
+    transport: peer,
+    publish: (projection) => {
+      overlay.setCollaboration(projection);
+      hub.publish('studio', null);
+    },
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  const collaboration = { coordinator, member };
+  shared.current = collaboration;
+  const collaborationTimer = setInterval(() => {
+    try {
+      coordinator.tick();
+    } catch {
+      stopCollaboration();
+    }
+    void member.poll();
+  }, 2000);
+  collaborationTimer.unref();
 
   await app.register(helmet, {
     contentSecurityPolicy: {
@@ -185,6 +262,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   registerRehearsalRoutes(app, { rehearsal, authoring });
   registerSceneRoutes(app, scenes);
+  registerCollaborationRoutes(app, {
+    coordinator,
+    member,
+    identity: () => repo.state().twitchUserId,
+    login: () => repo.state().twitchLogin,
+    publicUrl,
+    configured: !!sealer,
+    ready: () => twitch.status.state === 'connected',
+  });
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
@@ -200,6 +286,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   app.addHook('onClose', async () => {
     clearInterval(communityTimer);
+    clearInterval(collaborationTimer);
+    member.close();
+    coordinator.close();
     if (studioSoon) clearTimeout(studioSoon);
     unsubscribeCommunity();
     scenes.close();
@@ -215,6 +304,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
   }
   const services: RiffServices = {
+    collaboration,
     repo,
     runtime,
     overlay,
@@ -224,6 +314,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     proposals,
     rehearsal,
     scenes,
+    twitch,
   };
   return Object.assign(app as FastifyInstance, { riff: services });
 }

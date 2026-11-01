@@ -51,6 +51,7 @@ export function createTwitchConnection(deps: {
   sealer: Sealer | null;
   fetch?: FetchLike;
   log?: (message: string) => void;
+  onStatus?: (status: TwitchStatus) => void;
 }) {
   const { config, repo, hub, runtime, sealer } = deps;
   const doFetch = deps.fetch ?? (globalThis.fetch as unknown as FetchLike);
@@ -60,6 +61,7 @@ export function createTwitchConnection(deps: {
     config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' };
   const setStatus = (next: TwitchStatus) => {
     status = next;
+    deps.onStatus?.(next);
     hub.publish('twitch', next);
   };
   const login = () => repo.state().twitchLogin;
@@ -129,6 +131,8 @@ export function createTwitchConnection(deps: {
         void runtime.handleChat({
           id: message.id,
           channelId: message.channelId,
+          sourceChannelId: message.sourceChannelId,
+          sourceMessageId: message.sourceMessageId,
           viewerId: message.viewerId,
           viewerName: message.viewerName,
           roles: [...message.roles],

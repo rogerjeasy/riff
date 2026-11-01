@@ -43,6 +43,8 @@ import type { OverlayBroker } from '../overlay/broker.js';
 export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
   viewerName: string;
   source: 'twitch';
+  sourceChannelId?: string;
+  sourceMessageId?: string;
 }
 const PANIC_COMMAND = '!riff panic';
 
@@ -56,6 +58,8 @@ export function createLiveRuntime(deps: {
   overlay: OverlayBroker;
   now?: () => number;
   proposals?: ProposalService;
+  onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
+  onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
 }) {
   const { repo, hub, overlay } = deps;
@@ -176,6 +180,7 @@ export function createLiveRuntime(deps: {
   }
 
   async function processChat(message: LiveChatMessage): Promise<ExecutionDecision[]> {
+    if (message.sourceChannelId && message.sourceChannelId !== message.channelId) return [];
     const text = message.text.trim().toLowerCase();
     if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
       if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
@@ -196,6 +201,8 @@ export function createLiveRuntime(deps: {
       return [];
     }
     if (panic) return [];
+    if (await deps.onSharedChat?.(message)) return [];
+    if (panic || closed) return [];
     if (now() - lastPrune > 60_000) {
       lastPrune = now();
       try {
@@ -488,6 +495,7 @@ export function createLiveRuntime(deps: {
     },
     panic(source: string) {
       panic = true; // in-memory first: nothing below can delay the stop
+      deps.onStop?.();
       generation++;
       for (const { engine } of engines.values()) engine.stop();
       engines.clear();
@@ -585,6 +593,8 @@ export function createLiveRuntime(deps: {
     },
     /** Serialize one channel, including state changes spanning multiple automations. */
     handleChat(message: LiveChatMessage): Promise<ExecutionDecision[]> {
+      if (message.sourceChannelId && message.sourceChannelId !== message.channelId)
+        return Promise.resolve([]);
       const text = message.text.trim().toLowerCase();
       if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
         if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))

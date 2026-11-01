@@ -1,3 +1,4 @@
+import type { SharedPresentationFrame } from '../collaboration/contract.js';
 import type { CommunityProjection } from '../proposals/projection.js';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -9,6 +10,7 @@ import type {
 
 /** Versioned overlay protocol. The overlay ignores unknown types. */
 export type OverlayMessage =
+  | { v: 1; type: 'collaboration'; payload: SharedPresentationFrame | null }
   | { v: 1; type: 'hello'; payload: { channel: string } }
   | { v: 1; type: 'scenes'; payload: { scenes: SceneProjection[] } }
   | { v: 1; type: 'heartbeat'; payload: { at: number } }
@@ -63,6 +65,7 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
   let scenes: SceneProjection[] = [];
   let community: CommunityProjection | null = null;
   let stopped = false;
+  let collaboration: SharedPresentationFrame | null = null;
   const broadcast = (message: OverlayMessage) => {
     const data = JSON.stringify(message);
     for (const socket of sockets) {
@@ -100,6 +103,19 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       socket.send(
         JSON.stringify({ v: 1, type: 'community', payload: community } satisfies OverlayMessage),
       );
+      socket.send(
+        JSON.stringify({
+          v: 1,
+          type: 'collaboration',
+          payload: collaboration,
+        } satisfies OverlayMessage),
+      );
+    },
+    setCollaboration(next: SharedPresentationFrame | null) {
+      const safe = stopped ? null : next;
+      if (JSON.stringify(collaboration) === JSON.stringify(safe)) return;
+      collaboration = structuredClone(safe);
+      broadcast({ v: 1, type: 'collaboration', payload: collaboration });
     },
     setScenes(next: SceneProjection[]) {
       const safe = stopped ? [] : next;
@@ -159,6 +175,9 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       broadcast({ v: 1, type: 'instructions', payload: { lines: instructions } });
     },
     clear(reason: 'panic' | 'pause' | 'rotate') {
+      // Clear the cached projection too: the next authoritative member heartbeat
+      // must rehydrate clients even when no aggregate value changed.
+      collaboration = null;
       scenes = [];
       broadcast({ v: 1, type: 'scenes', payload: { scenes } });
       if (reason === 'panic') {
