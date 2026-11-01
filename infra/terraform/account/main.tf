@@ -26,10 +26,15 @@ variable "region" {
   type    = string
   default = "us-east-1"
 }
-variable "github_repository" {
-  description = "owner/name of the repository allowed to deploy"
+variable "github_subject" {
+  description = <<-EOT
+    OIDC subject prefix of the repository allowed to deploy. This repository uses GitHub's
+    immutable subject (owner@owner-id/repo@repo-id), which survives renames and cannot be
+    claimed by a re-created repository of the same name. Read it with:
+    gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+  EOT
   type        = string
-  default     = "rogerjeasy/riff"
+  default     = "repo:rogerjeasy@58919295/riff@1440872473"
 }
 variable "deploy_branch" {
   type    = string
@@ -66,7 +71,7 @@ data "aws_iam_policy_document" "trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"]
+      values   = ["${var.github_subject}:ref:refs/heads/${var.deploy_branch}"]
     }
   }
 }
