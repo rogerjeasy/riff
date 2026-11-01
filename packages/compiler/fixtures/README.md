@@ -16,3 +16,9 @@ the existing allowance; it is an offline recording, not a model execution.
 prompt pack 6, with bounded private rehearsal evidence and a two-effect repair.
 It records no live model call. Compiler contract tests validate the request/output;
 server tests verify the response against immutable independent regression inputs.
+
+`event-triggers.json` records the deterministic offline F19 outputs for prompt pack 7
+(cheer, raid, gift, subscribe and resub intents, including "rain confetti" and "welcome
+banner" requests whose missing effects are stated as projectile stand-ins). Prompt pack 7
+only adds the Twitch event-trigger rules and curated event examples, so the host-authored
+`rehearsal-repair.json` response is re-pinned to it unchanged. No live model call.

@@ -3,9 +3,11 @@ import {
   type AudienceRole,
   type ProjectileAsset,
   type ExperienceDefinition,
+  type EventTrigger,
 } from '@riff/sdk';
 
 import { extractExperienceHints } from './experience-hints.js';
+import { extractEventHints } from './event-hints.js';
 
 /** Facts stated explicitly in the creator's words. Absent facts stay null. */
 export interface IntentHints {
@@ -24,7 +26,8 @@ export type IntentAspect =
   | 'duration'
   | 'teams'
   | 'resource'
-  | 'objective';
+  | 'objective'
+  | 'event';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -128,7 +131,13 @@ export function extractIntentHints(intent: string): IntentHints {
 
 export interface ManifestView {
   experience?: ExperienceDefinition | null;
-  trigger: { command: string; audience: AudienceRole[]; maxPerViewer: number; windowMs: number };
+  trigger: {
+    command: string;
+    audience: AudienceRole[];
+    maxPerViewer: number;
+    windowMs: number;
+    event?: EventTrigger | null | undefined;
+  };
 }
 export const describeWindow = (ms: number) =>
   ms % 3_600_000 === 0
@@ -294,6 +303,27 @@ export function checkIntent(
           (sessionHints.target === null || sessionHints.target === experience.objective.target),
       ],
     );
+  }
+  // F19: the Twitch event family and threshold are explicit facts like a command.
+  const eventHints = extractEventHints(intent);
+  if (eventHints || t.event || p?.event) {
+    const eventText = (event: EventTrigger | null | undefined) =>
+      event ? `${event.kind} ≥ ${event.minimum}` : 'chat command';
+    const statedEvent = eventHints
+      ? eventHints.minimum === null
+        ? eventHints.kind
+        : `${eventHints.kind} ≥ ${eventHints.minimum}`
+      : null;
+    rows.push([
+      'event',
+      'Twitch event',
+      statedEvent,
+      eventText(t.event),
+      p ? eventText(p.event) : null,
+      !eventHints ||
+        (t.event?.kind === eventHints.kind &&
+          (eventHints.minimum === null || eventHints.minimum === t.event.minimum)),
+    ]);
   }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({
     aspect,

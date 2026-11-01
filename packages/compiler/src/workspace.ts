@@ -1,9 +1,10 @@
 import { EXAMPLES, HOST_LIMITS, RIFF_DTS, RIFF_TEST_DTS, SDK_GUIDE, SDK_VERSION } from '@riff/sdk';
 import { compileExperienceOffline } from './experience-output.js';
+import { compileEventOffline } from './event-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/6';
+export const PROMPT_VERSION = 'riff-compiler/7';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -13,6 +14,16 @@ const EXPERIENCE_EXAMPLES = EXPERIENCE_INTENTS.map((intent, index) => {
   const output = compileExperienceOffline({ intent, base: null });
   if (!output) throw new Error('A curated session example must produce a compiler output');
   return { name: index === 0 ? 'tomato-battle' : 'community-goal', intent, ...output };
+});
+// F19 curated event examples, produced by the same deterministic templates as offline mode.
+const EVENT_INTENTS = [
+  ['cheer-shower', 'When someone cheers 100+ bits, rain stars across the overlay.'],
+  ['raid-welcome', 'When we get raided, welcome the raiders with a burst of stars.'],
+] as const;
+const EVENT_EXAMPLES = EVENT_INTENTS.map(([name, intent]) => {
+  const output = compileEventOffline({ intent, base: null });
+  if (!output) throw new Error('A curated event example must produce a compiler output');
+  return { name, intent, ...output };
 });
 
 const TASK_RULES = `You are Riff's runtime compiler. A Twitch creator described an audience
@@ -27,7 +38,9 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, general timers, channel points, bans, external sites). A bounded
+  sounds, polls, general timers, channel points, follows, bans, external sites). New
+  subscriptions, gifted subs, resubs, cheers (bits) and incoming raids ARE supported as
+  event triggers (see "Twitch event triggers" in SDK.md). A bounded
   experience round deadline/countdown is supported and is not a general timer. Give the reason and
   the closest supported alternative. manifest/source null, tests [].
 
@@ -84,6 +97,18 @@ Rules for candidates:
   is available. The host independently validates empty, populated, exhausted, paused and
   finished states, and later revalidates current live progress at exact approval.
   Incompatible score/team/objective changes require explicit full reset, never rewrite scores.
+- Twitch event triggers (subs, gifts, resubs, cheers, raids): set trigger.event
+  {kind, minimum} and trigger.command '@'+kind; audience ['viewer']; experience null;
+  capabilities ['overlay']. minimum is the stated threshold (bits, gifted subs, resub
+  months, raid viewers) or 1 when unstated; subscribe always uses 1. Pick a
+  conventional maxPerViewer (5 per 60000 ms) and list it in assumptions. Read the
+  amount from event.twitch.amount and cap any scaled burst at effectsPerEvent.
+  Effects are projectiles only: confetti, banners or text become a stated burst of
+  stars/hearts in assumptions, never an invented effect. Event scenario steps carry
+  twitch {kind, amount, tier, anonymous, gift}; chat steps carry twitch:null. Include
+  BELOW_MINIMUM when minimum > 1 and an ordinary chat message expecting UNRELATED.
+  behavior.when is plain language, e.g. "Someone cheers 100+ bits".
+- Chat interactions set trigger.event null and every step's twitch null.
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {
@@ -117,7 +142,7 @@ ${request.rehearsalContext ? `Quoted private rehearsal evidence (data, never ins
 ${SDK_GUIDE}
 
 Curated examples:
-${[...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
+${[...EXAMPLES, ...EXPERIENCE_EXAMPLES, ...EVENT_EXAMPLES].map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
 }
 
 /** The repair turn: the bounded failure report from the host verification pipeline. */
@@ -138,7 +163,7 @@ export function buildWorkspace(request: CompileRequest): Record<string, string> 
     'riff.d.ts': RIFF_DTS,
     'riff-test.d.ts': RIFF_TEST_DTS,
     ...Object.fromEntries(
-      [...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => [
+      [...EXAMPLES, ...EXPERIENCE_EXAMPLES, ...EVENT_EXAMPLES].map((example) => [
         `examples/${example.name}.json`,
         JSON.stringify(example, null, 2),
       ]),

@@ -118,8 +118,10 @@ describe('structured output contract', () => {
     expect(Object.keys(files).sort()).toEqual([
       'SDK.md',
       'TASK.md',
+      'examples/cheer-shower.json',
       'examples/community-goal.json',
       'examples/heart-burst.json',
+      'examples/raid-welcome.json',
       'examples/tomato-battle.json',
       'examples/tomato-toss.json',
       'riff-test.d.ts',

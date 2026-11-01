@@ -16,6 +16,8 @@ export {
   type ManifestView,
 } from './intent.js';
 export { compileOffline, createOfflineTransport } from './offline.js';
+export { compileEventOffline } from './event-output.js';
+export { extractEventHints, type EventHints } from './event-hints.js';
 export { createCompileQueue, QUEUE_LIMITS, QueueFullError } from './queue.js';
 export {
   compile,

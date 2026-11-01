@@ -7,7 +7,47 @@ import {
   SDK_VERSION,
   SESSION_LIMITS,
   TRIGGER_LIMITS,
+  EVENT_TRIGGER_LIMITS,
+  SUBSCRIPTION_TIERS,
+  TWITCH_EVENT_KINDS,
 } from '@riff/sdk';
+
+/** F19 strict JSON fragments: the event trigger and a synthetic Twitch event step. */
+const EVENT_TRIGGER_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'minimum'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        minimum: {
+          type: 'integer',
+          minimum: EVENT_TRIGGER_LIMITS.minimum.min,
+          maximum: EVENT_TRIGGER_LIMITS.minimum.max,
+        },
+      },
+    },
+  ],
+} as const;
+const TWITCH_STEP_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'amount', 'tier', 'anonymous', 'gift'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        amount: { type: 'integer', minimum: 1, maximum: EVENT_TRIGGER_LIMITS.amountMax },
+        tier: { type: ['string', 'null'], enum: [...SUBSCRIPTION_TIERS, null] },
+        anonymous: { type: 'boolean' },
+        gift: { type: 'boolean' },
+      },
+    },
+  ],
+} as const;
 
 /** Bounded quoted host evidence; never merged into creator-intent extraction. */
 const rehearsalContextSchema = z
@@ -235,12 +275,13 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             trigger: {
               type: 'object',
               additionalProperties: false,
-              required: ['command', 'audience', 'maxPerViewer', 'windowMs'],
+              required: ['command', 'audience', 'maxPerViewer', 'windowMs', 'event'],
               properties: {
                 command: { type: 'string' },
                 audience: { type: 'array', items: { type: 'string', enum: [...AUDIENCE_ROLES] } },
                 maxPerViewer: { type: 'integer' },
                 windowMs: { type: 'integer' },
+                event: EVENT_TRIGGER_JSON,
               },
             },
             limits: {
@@ -275,7 +316,17 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects', 'session'],
+              required: [
+                'id',
+                'viewer',
+                'roles',
+                'text',
+                'at',
+                'expect',
+                'effects',
+                'session',
+                'twitch',
+              ],
               properties: {
                 id: { type: 'string' },
                 viewer: { type: 'string' },
@@ -284,6 +335,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 at: { type: 'integer' },
                 expect: { type: 'string', enum: [...DECISION_CODES] },
                 effects: { type: 'integer' },
+                twitch: TWITCH_STEP_JSON,
                 session: {
                   anyOf: [
                     { type: 'null' },

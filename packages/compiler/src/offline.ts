@@ -2,6 +2,7 @@ import { SDK_VERSION, type AudienceRole, type ProjectileAsset, type Scenario } f
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
 import { compileExperienceOffline } from './experience-output.js';
+import { compileEventOffline } from './event-output.js';
 import type { CompilerTransport } from './transport.js';
 
 const UNSUPPORTED =
@@ -131,10 +132,12 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff supports overlay projectiles and bounded score sessions.',
+        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions and sub, gift, resub, cheer and raid triggers.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;
+  const event = compileEventOffline(request);
+  if (event) return event;
   const command = hints.command ? `!${hints.command}` : base?.trigger?.command;
   if (!command)
     return {
