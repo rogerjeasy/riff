@@ -1,5 +1,7 @@
+import { ProductionTest } from './production/test-frame.js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ParticipationPage } from '../participation/page.js';
 import { App } from './app.js';
 import { RecipeDirectory } from './recipes/directory.js';
 import '../styles/studio.css';
@@ -8,6 +10,14 @@ const root = document.getElementById('root');
 if (!root) throw new Error('Missing console root');
 createRoot(root).render(
   <StrictMode>
-    {window.location.pathname === '/recipes' ? <RecipeDirectory /> : <App />}
+    {window.location.pathname === '/production-test' ? (
+      <ProductionTest />
+    ) : window.location.pathname === '/participate' ? (
+      <ParticipationPage />
+    ) : window.location.pathname === '/recipes' ? (
+      <RecipeDirectory />
+    ) : (
+      <App />
+    )}
   </StrictMode>,
 );

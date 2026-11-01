@@ -457,6 +457,38 @@ export function RemixTab({
                 <span className="panel-hint"> · effects fade in place instead of flying</span>
               </span>
             </label>
+            <label className="panel-checkbox">
+              <input
+                type="checkbox"
+                checked={profile.highContrast === true}
+                onChange={(e) => setProfile({ ...profile, highContrast: e.target.checked })}
+              />
+              High contrast for this installation
+            </label>
+            <label className="panel-checkbox">
+              <input
+                type="checkbox"
+                checked={profile.effectLabels === true}
+                onChange={(e) => setProfile({ ...profile, effectLabels: e.target.checked })}
+              />
+              Text labels for effects
+            </label>
+            <button
+              type="button"
+              className="button small ghost"
+              disabled={!selected}
+              onClick={() =>
+                selected &&
+                setProfile({
+                  ...profile,
+                  ...selected.package.presentation,
+                  highContrast: selected.package.presentation.highContrast === true,
+                  effectLabels: selected.package.presentation.effectLabels === true,
+                })
+              }
+            >
+              Use source presentation preferences
+            </button>
             <div className="recipe-layout">
               <span className="director-label">Screen layout</span>
               <div className="panel-actions">
@@ -486,6 +518,11 @@ export function RemixTab({
                           .then((raw) => {
                             const next = z.object({ state: sceneStateSchema }).parse(raw);
                             setSceneText(JSON.stringify(next.state.scene, null, 2));
+                            // This menu is a one-shot action and resets, so confirm what happened.
+                            const from = versions.find((v) => v.id === id);
+                            setNotice(
+                              `Layout copied from ${from ? `${from.title} v${from.number}` : 'that version'}. Save the profile to use it.`,
+                            );
                           })
                           .catch(() => setError('Could not load that version’s layout.'));
                     }}
@@ -617,6 +654,8 @@ export function RemixTab({
               proof={review.proof}
               scene={review.scene}
               reducedMotion={state.profile.reducedMotion}
+              highContrast={state.profile.highContrast}
+              effectLabels={state.profile.effectLabels}
             />
             <details>
               <summary>Exact proposed code and rules</summary>

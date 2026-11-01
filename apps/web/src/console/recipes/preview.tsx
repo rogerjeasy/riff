@@ -21,16 +21,23 @@ export function RecipePreview({
   proof,
   scene,
   reducedMotion = true,
+  highContrast = false,
+  effectLabels = false,
 }: {
   proof: RecipeProof;
   scene: Scene;
   reducedMotion?: boolean | undefined;
+  highContrast?: boolean | undefined;
+  effectLabels?: boolean | undefined;
 }) {
   const frames = useMemo<PlayerFrame[]>(
     () =>
       proof.steps.map((step) => ({
         at: step.at,
-        effects: step.effects,
+        effects: step.effects.map((effect) => ({
+          ...effect,
+          ...(effectLabels ? { label: effect.asset } : {}),
+        })),
         caption: (
           <>
             <code>{step.text}</code>{' '}
@@ -41,7 +48,7 @@ export function RecipePreview({
           </>
         ),
       })),
-    [proof],
+    [proof, effectLabels],
   );
   const scores = Object.entries(proof.scores);
   return (
@@ -60,6 +67,7 @@ export function RecipePreview({
         label="Recipe sample preview"
         instructions={['Synthetic sample chat · private playback']}
         reducedMotion={reducedMotion}
+        highContrast={highContrast}
         playLabel="Play sample chat"
       />
     </div>

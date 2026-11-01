@@ -137,4 +137,10 @@ test('private burst review approves the exact draft and stop remains immediate',
   await expect(panel.getByText('This exact draft is approved and adapting live.')).toBeVisible();
   await panel.getByRole('button', { name: 'Stop director cosmetics immediately' }).first().click();
   await expect(panel.getByText('Approved · stopped')).toBeVisible();
+  // The candidate generated above is reviewable from the OBS dock without sideways scrolling.
+  await page.setViewportSize({ width: 340, height: 900 });
+  await page.goto('/dock/');
+  await page.getByText(/Review candidates/).click();
+  await expect(page.getByRole('button', { name: /Approve v1/ })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
 });

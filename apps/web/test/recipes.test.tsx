@@ -233,3 +233,43 @@ it('describes stateful round resources instead of a rolling throw allowance in t
   expect(screen.getByText('!throw')).toBeTruthy();
   expect(screen.queryByText(/3 per viewer/)).toBeNull();
 });
+it('adopts shared presentation preferences only into an unsaved recipient profile', async () => {
+  const state = {
+    profile,
+    imports: [
+      {
+        digest: recipe.digest,
+        package: {
+          ...recipe,
+          presentation: {
+            language: 'fr',
+            reducedMotion: true,
+            highContrast: true,
+            effectLabels: true,
+          },
+        },
+        supported: true,
+        blockers: [],
+      },
+    ],
+    reviews: [],
+    publications: [],
+    reports: [],
+  };
+  const fetcher = vi.fn(async () => new Response(JSON.stringify({ state }), { status: 200 }));
+  vi.stubGlobal('fetch', fetcher);
+  render(<RecipeLibrary versions={[]} onReview={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: /^Recipe library/ }));
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Use source presentation preferences' }),
+  );
+  expect(
+    (screen.getByLabelText('High contrast for this installation') as HTMLInputElement).checked,
+  ).toBe(true);
+  expect((screen.getByLabelText('Text labels for effects') as HTMLInputElement).checked).toBe(true);
+  expect(
+    (screen.getByRole('button', { name: 'Make this fit my channel' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  expect(fetcher.mock.calls).toHaveLength(1);
+});

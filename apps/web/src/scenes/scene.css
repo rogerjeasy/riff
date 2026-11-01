@@ -141,3 +141,31 @@
     border-radius: 6px;
   }
 }
+
+[data-high-contrast='true'] .scene-panel {
+  color: #fff;
+  background: #000;
+  border: 2px solid #fff;
+  text-shadow: none;
+}
+
+/* `!riff help`: the instruction panel announces itself for the help window. */
+[data-help='true'] [data-scene-kind='instructions'] .scene-panel {
+  /* Nodes clip their overflow, so the emphasis is drawn inside the panel. */
+  outline: 3px solid #ffd166;
+  outline-offset: -3px;
+  animation: scene-help-pulse 1.2s ease-in-out 3;
+}
+@keyframes scene-help-pulse {
+  50% {
+    box-shadow: inset 0 0 0 999px rgb(255 209 102 / 0.18);
+  }
+}
+[data-reduced-motion='true'][data-help='true'] [data-scene-kind='instructions'] .scene-panel {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-help='true'] [data-scene-kind='instructions'] .scene-panel {
+    animation: none;
+  }
+}

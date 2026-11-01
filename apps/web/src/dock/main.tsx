@@ -1,3 +1,5 @@
+import { DockReviews } from './reviews.js';
+import '../console/production/production.css';
 import { StrictMode, useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { api } from '../lib/api.js';
@@ -9,7 +11,7 @@ import '../styles/studio.css';
 
 /** OBS custom dock: stop, pause and incidents stay one click away during a show. */
 function Dock() {
-  const { studio, connection, signedOut } = useStudio();
+  const { studio, connection, signedOut, refresh } = useStudio();
   const [message, setMessage] = useState<string | null>(null);
   const notify = useCallback((text: string) => {
     setMessage(text);
@@ -68,6 +70,15 @@ function Dock() {
             </li>
           ))}
       </ul>
+      <DockReviews
+        automations={studio.automations}
+        panic={studio.panic}
+        refresh={refresh}
+        notify={notify}
+      />
+      <a href="/participate" target="_blank" rel="noreferrer">
+        Open viewer instructions ↗
+      </a>
       <ol className="feed compact" aria-label="Recent activity">
         {studio.activity.slice(0, 6).map((entry) => (
           <li key={entry.id}>

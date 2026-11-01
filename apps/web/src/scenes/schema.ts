@@ -221,7 +221,11 @@ export const sceneProjectionSchema = z
     digest,
     scene: sceneSchema,
     reducedMotion: z.boolean().optional(),
+    highContrast: z.boolean().optional(),
+    effectLabels: z.boolean().optional(),
     instructions: z.array(z.string().max(200)).max(4).optional(),
+    /** Present for a short window after an accepted `!riff help`. */
+    help: z.literal(true).optional(),
   })
   .strict();
 export type SceneProjection = z.infer<typeof sceneProjectionSchema>;

@@ -279,7 +279,14 @@ export function createSceneOverlay(
         }
       for (const p of projections) {
         const layer = layers.get(p.automationId);
-        if (layer) root.append(layer);
+        if (layer) {
+          layer.dataset.highContrast = String(p.highContrast === true);
+          // A viewer asked `!riff help`: emphasise the instruction panel for the help window.
+          layer.dataset.reducedMotion = String(p.reducedMotion === true);
+          if (p.help) layer.dataset.help = 'true';
+          else delete layer.dataset.help;
+          root.append(layer);
+        }
       }
       render();
     },
@@ -318,7 +325,7 @@ export function createSceneOverlay(
       render();
       return launchSceneEffect(layer, effect, {
         reducedMotion: options.reducedMotion || p?.reducedMotion === true,
-        label: options.showLabels ? (effect.viewer ?? null) : null,
+        label: p?.effectLabels ? effect.asset : options.showLabels ? (effect.viewer ?? null) : null,
       });
     },
   };

@@ -29,6 +29,7 @@ export function StagePlayer({
   label,
   instructions,
   reducedMotion = false,
+  highContrast = false,
   guides = false,
   playLabel = 'Play',
 }: {
@@ -37,6 +38,7 @@ export function StagePlayer({
   label: string;
   instructions: string[];
   reducedMotion?: boolean | undefined;
+  highContrast?: boolean | undefined;
   guides?: boolean;
   playLabel?: string;
 }) {
@@ -80,7 +82,13 @@ export function StagePlayer({
   return (
     <div className="panel-player">
       <div className="stage-frame">
-        <div ref={stage} className="stage" role="img" aria-label={label} />
+        <div
+          ref={stage}
+          className="stage"
+          data-high-contrast={highContrast}
+          role="img"
+          aria-label={label}
+        />
       </div>
       <div className="panel-player-bar">
         <button

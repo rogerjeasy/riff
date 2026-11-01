@@ -1,0 +1,229 @@
+/* F39 production setup: connector cards, guided OBS placement, Streamer.bot mappings. */
+.production-connectors {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 12px;
+}
+.production-connector {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.production-connector[data-status='connected'] {
+  border-color: rgb(79 211 148 / 0.35);
+}
+.production-connector[data-status='error'] {
+  border-color: rgb(255 95 95 / 0.4);
+}
+.production-connector header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.production-connector form,
+.production-connector fieldset {
+  display: grid;
+  gap: 12px;
+}
+.production-connector code {
+  overflow-wrap: anywhere;
+}
+.production-section {
+  display: grid;
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.production-section fieldset {
+  display: grid;
+  gap: 14px;
+}
+.production-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.production-stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 6px;
+  counter-reset: stage;
+}
+.production-stepper li {
+  counter-increment: stage;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--faint);
+}
+.production-stepper li::before {
+  content: counter(stage);
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  font-size: 11px;
+}
+.production-stepper li[data-state='done'] {
+  color: var(--good);
+}
+.production-stepper li[data-state='done']::before {
+  content: '✓';
+  background: var(--good-bg);
+}
+.production-stepper li[data-state='current'] {
+  color: var(--text);
+  border-color: rgb(255 122 69 / 0.55);
+}
+.production-stepper li[data-state='current']::before {
+  background: rgb(255 122 69 / 0.2);
+  color: var(--accent-soft);
+}
+.production-review {
+  overflow-wrap: anywhere;
+}
+.production-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.production-table th,
+.production-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.production-table thead th {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.production-table td:last-child {
+  text-align: right;
+}
+.production-diff {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+}
+.production-import {
+  display: grid;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .production-table thead {
+    display: none;
+  }
+  .production-table tr {
+    display: grid;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .production-table th,
+  .production-table td {
+    border: 0;
+    padding: 2px 0;
+    text-align: left;
+  }
+  .production-table td:last-child {
+    text-align: left;
+  }
+}
+.production-test {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 5vw;
+  color: white;
+  background: #081c26;
+  text-align: center;
+}
+.production-test-grid {
+  position: fixed;
+  inset: 2%;
+  border: 5px solid #3ff3cd;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 49.8%, #3ff3cd33 50%, transparent 50.2%),
+    linear-gradient(transparent 49.8%, #3ff3cd33 50%, transparent 50.2%);
+}
+.production-test section {
+  z-index: 1;
+  background: #081c26;
+  padding: 2rem;
+  border: 2px solid white;
+  max-width: 800px;
+}
+.production-test h1 {
+  font-size: clamp(28px, 5vw, 80px);
+}
+.dock .evidence {
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.dock .fact-table {
+  display: block;
+  overflow-x: auto;
+}
+/* OBS docks are narrow: let the dock column shrink and wide review tables scroll in place. */
+.dock {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dock > * {
+  min-width: 0;
+}
+.dock-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.dock-review > *,
+.dock .evidence * {
+  min-width: 0;
+}
+.dock-review > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.dock-review label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.dock-review select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: #110f17;
+  color: var(--text);
+}
+.dock .intent-table {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}

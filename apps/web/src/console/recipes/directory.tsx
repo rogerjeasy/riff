@@ -179,6 +179,8 @@ export function RecipeDirectory() {
               proof={selected.proof}
               scene={recipe.scene}
               reducedMotion={recipe.presentation.reducedMotion}
+              highContrast={recipe.presentation.highContrast}
+              effectLabels={recipe.presentation.effectLabels}
             />
             {recipe.lineage.length > 0 && (
               <p className="panel-hint">

@@ -20,7 +20,14 @@ export const recipePackageSchema = z
     manifest: z.unknown(),
     tests: z.unknown(),
     scene: sceneSchema,
-    presentation: z.object({ language, reducedMotion: z.boolean() }).strict(),
+    presentation: z
+      .object({
+        language,
+        reducedMotion: z.boolean(),
+        highContrast: z.boolean().optional(),
+        effectLabels: z.boolean().optional(),
+      })
+      .strict(),
     assets: z
       .array(
         z
@@ -48,6 +55,8 @@ export const profileSchema = z.object({
   displayName: z.string().min(1).max(80),
   language,
   reducedMotion: z.boolean(),
+  highContrast: z.boolean().optional(),
+  effectLabels: z.boolean().optional(),
   scene: sceneSchema,
   capabilities: z.array(z.enum(['overlay', 'session'])).max(2),
   command: z.string().regex(/^![a-z0-9_-]{1,32}$/),
