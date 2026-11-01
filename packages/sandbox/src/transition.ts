@@ -91,11 +91,48 @@ export function assessSessionTransition(
       `Each player would get fewer ${b.resource.name} (${a.resource.perParticipant} → ${b.resource.perParticipant}); Riff never takes away what players already have.`,
     );
   if (b.durationMs < a.durationMs) reasons.push('The round gets shorter.');
+  reasons.push(...mechanicsResetReasons(a, b));
   if (b.maxParticipants < a.maxParticipants)
     reasons.push(
       `Fewer players are allowed (${a.maxParticipants} → ${b.maxParticipants}), which could remove someone already playing.`,
     );
   return { kind: reasons.length ? 'reset-required' : 'migration-required', reasons };
+}
+/**
+ * Version 2 compatibility: labels may change and the intermission may grow; every other
+ * mechanics change alters what existing pools, bursts, unlocks or match wins mean.
+ */
+function mechanicsResetReasons(a: ExperienceDefinition, b: ExperienceDefinition): string[] {
+  const x = a.mechanics,
+    y = b.mechanics;
+  if (!x && !y) return [];
+  if (!x || !y)
+    return [
+      x
+        ? 'Match, health, burst and milestone rules are removed, so current round state cannot carry over.'
+        : 'Match, health, burst or milestone rules are added, so the current round has no state for them.',
+    ];
+  const reasons: string[] = [];
+  const same = (u: unknown, v: unknown) => canonical(u) === canonical(v);
+  if (
+    (x.match?.rounds ?? null) !== (y.match?.rounds ?? null) ||
+    (y.match?.intermissionMs ?? 0) < (x.match?.intermissionMs ?? 0)
+  )
+    reasons.push(
+      `The match changes (${x.match ? `best of ${x.match.rounds}` : 'one round'} → ${y.match ? `best of ${y.match.rounds}` : 'one round'}, or a shorter break), so round wins would mean something different.`,
+    );
+  const health = (h: typeof x.health) => (h ? { ...h, label: '' } : null);
+  if (!same(health(x.health), health(y.health)))
+    reasons.push(
+      'Health, damage or healing changes, so current pools and eliminations would not fit.',
+    );
+  const burst = (v: typeof x.burst) => (v ? { ...v, label: '' } : null);
+  if (!same(burst(x.burst), burst(y.burst)))
+    reasons.push('The burst rule changes, so counted viewers and triggered bursts would not fit.');
+  const milestones = (list: typeof x.milestones) => list.map((item) => ({ ...item, label: '' }));
+  if (!same(milestones(x.milestones), milestones(y.milestones)))
+    reasons.push('Milestones or unlocked commands change, so reached tiers would not fit.');
+  return reasons;
 }
 /** Conservatively classify supported rule changes. Example: classifySessionTransition(oldRules, newRules). */
 export function classifySessionTransition(

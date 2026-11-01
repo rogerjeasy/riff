@@ -77,21 +77,105 @@ export const SESSION_LIMITS = Object.freeze({
   maxScore: 2_560_000,
 });
 export interface ExperienceDefinition {
-  version: 1;
+  /** 1 = score rounds only; 2 adds the declarative `mechanics` block. */
+  version: 1 | 2;
   title: string;
   durationMs: number;
   maxParticipants: number;
   teams: { id: string; label: string; joinCommand: string }[];
   resource: { name: string; perParticipant: number };
   contribution: { command: string; points: number };
-  objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+  /** `burst` (version 2 only) wins a round after `target` burst triggers. */
+  objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
+  /** Present exactly when version is 2. */
+  mechanics?: ExperienceMechanics | undefined;
+}
+/** Bounds for definition version 2 mechanics; validators import these values. */
+export const MECHANIC_LIMITS = Object.freeze({
+  rounds: { min: 2, max: 9 },
+  intermissionMs: { min: 0, max: 60_000 },
+  health: { min: 1, max: 1000 },
+  damage: { min: 1, max: 1000 },
+  heal: { min: 1, max: 1000 },
+  burstParticipants: { min: 2, max: 50 },
+  burstWindowMs: { min: 1000, max: 60_000 },
+  burstPoints: { min: 0, max: 100 },
+  burstLimit: { min: 1, max: 20 },
+  shieldMs: { min: 0, max: 60_000 },
+  milestones: 4,
+  unlockPoints: { min: 1, max: 100 },
+});
+/**
+ * Host-owned declarative rules (definition version 2). Each block is optional (null/[]).
+ * Example: { match: { rounds: 3, intermissionMs: 5000 }, health: null, burst: null, milestones: [] }.
+ */
+export interface ExperienceMechanics {
+  /** Best-of-N match: rounds reset resources, scores and pools; a majority of round wins ends it. */
+  match: { rounds: number; intermissionMs: number } | null;
+  /** One pool per team (two or more teams). Each contribution damages every other standing team. */
+  health: {
+    label: string;
+    max: number;
+    damage: number;
+    heal: { command: string; amount: number } | null;
+  } | null;
+  /**
+   * `participants` distinct viewers of one side act within a sliding `windowMs`. A null
+   * command counts accepted contributions; a command makes a resource-free burst action.
+   */
+  burst: {
+    command: string | null;
+    label: string;
+    participants: number;
+    windowMs: number;
+    points: number;
+    limit: number;
+    shieldMs: number;
+  } | null;
+  /** Ascending round-score thresholds that unlock an effect tier and an optional command. */
+  milestones: {
+    id: string;
+    label: string;
+    score: number;
+    unlock: { command: string; points: number } | null;
+  }[];
 }
 export interface SessionParticipant {
   teamId: string | null;
   remaining: number;
   contributions: number;
 }
+/** Per side (team id or community) state for version 2 mechanics, reset every round. */
+export interface SessionStanding {
+  health: number | null;
+  eliminated: boolean;
+  contributions: number;
+  heals: number;
+  /** Accepted uses of each unlocked milestone command this round. */
+  unlocks: Record<string, number>;
+  bursts: number;
+  /** Distinct viewers counted in the current sliding burst window (host clock). */
+  burstWindow: { viewerId: string; at: number }[];
+  shieldUntil: number | null;
+  /** Milestone ids reached this round; its length is the effect tier. */
+  unlocked: string[];
+}
+export interface SessionRoundResult {
+  round: number;
+  winner: string | null;
+  outcome: 'deadline' | 'goal' | 'elimination';
+  scores: Record<string, number>;
+}
+export interface SessionMechanicsState {
+  /** 1-based current round. */
+  round: number;
+  wins: Record<string, number>;
+  history: SessionRoundResult[];
+  standings: Record<string, SessionStanding>;
+}
 export interface SessionSnapshot {
+  /** Present exactly when the definition is version 2. */
+  mechanics?: SessionMechanicsState | undefined;
   id: string;
   phase: 'running' | 'paused' | 'finished';
   startedAt: number;
@@ -102,10 +186,25 @@ export interface SessionSnapshot {
   participants: Record<string, SessionParticipant>;
   scores: Record<string, number>;
   winner: string | null;
-  outcome: 'deadline' | 'goal' | null;
+  outcome: 'deadline' | 'goal' | 'elimination' | null;
 }
 export interface SessionAssertion {
   phase?: SessionSnapshot['phase'] | undefined;
+  /** Version 2 mechanics subset assertions. */
+  round?: number | undefined;
+  winner?: string | null | undefined;
+  wins?: Record<string, number> | undefined;
+  standings?:
+    | Record<
+        string,
+        {
+          health?: number | null | undefined;
+          eliminated?: boolean | undefined;
+          bursts?: number | undefined;
+          tier?: number | undefined;
+        }
+      >
+    | undefined;
   scores?: Record<string, number> | undefined;
   remainingMs?: number | undefined;
   participants?:
@@ -157,7 +256,14 @@ export type DecisionCode =
   | 'SESSION_PAUSED'
   | 'SESSION_FINISHED'
   | 'ALREADY_JOINED'
-  | 'PARTICIPANT_LIMIT';
+  | 'PARTICIPANT_LIMIT'
+  | 'ELIMINATED'
+  | 'LOCKED'
+  | 'HEALTH_FULL'
+  | 'BURST_COUNTED'
+  | 'BURST_ACTIVE'
+  | 'BURST_LIMIT'
+  | 'ROUND_INTERMISSION';
 export const DECISION_CODES: readonly DecisionCode[] = [
   'ACCEPTED',
   'UNRELATED',
@@ -176,6 +282,13 @@ export const DECISION_CODES: readonly DecisionCode[] = [
   'SESSION_FINISHED',
   'ALREADY_JOINED',
   'PARTICIPANT_LIMIT',
+  'ELIMINATED',
+  'LOCKED',
+  'HEALTH_FULL',
+  'BURST_COUNTED',
+  'BURST_ACTIVE',
+  'BURST_LIMIT',
+  'ROUND_INTERMISSION',
 ];
 /** Viewer allowance after admission, for explanations. */
 export interface AllowanceSnapshot {

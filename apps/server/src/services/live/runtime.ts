@@ -15,6 +15,7 @@ import {
 import {
   artifactIdentity,
   advanceSession,
+  definitionCommands,
   runSessionMigration,
   sessionDefinitionHash,
   migrationSourceHash,
@@ -121,15 +122,24 @@ export function createLiveRuntime(deps: {
       // rolling window or let a late viewer type a command that is rejected.
       const { teams, contribution, resource, objective } = experience;
       const each = `${resource.perParticipant} ${resource.name} each this round`;
-      return teams.length
-        ? `Type ${teams
-            .map((team) => team.joinCommand)
-            .join(', ')
-            .replace(
-              /, ([^,]*)$/,
-              ' or $1',
-            )} to join a team${who}, then ${contribution.command} · ${each}`
-        : `Type ${contribution.command}${who} to help reach ${objective.target ?? ''} together · ${each}`;
+      // Version 2 rules add heal, burst and unlock commands; name them on stream too.
+      const more = definitionCommands(experience).filter(
+        (command) =>
+          command !== contribution.command && !teams.some((team) => team.joinCommand === command),
+      );
+      const also = more.length ? ` · also ${more.join(', ')}` : '';
+      return (
+        (teams.length
+          ? `Type ${teams
+              .map((team) => team.joinCommand)
+              .join(', ')
+              .replace(
+                /, ([^,]*)$/,
+                ' or $1',
+              )} to join a team${who}, then ${contribution.command} · ${each}`
+          : `Type ${contribution.command}${who} to help reach ${objective.target ?? ''} together · ${each}`) +
+        also
+      );
     });
     overlay.setInstructions(panic ? [] : lines);
     sessions.publish(panic);

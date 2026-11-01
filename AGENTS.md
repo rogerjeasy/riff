@@ -500,7 +500,8 @@ Pause freezes remaining time. Panic first fences memory, then persists the chann
 flag independently of session pause writes. Explicit resume uses persisted panicAt
 to recover a pause if an individual session write failed. Canonical definition
 changes require a reviewed preserving transition or explicit reset consent; identical-definition
-edits preserve progress. Generalized multi-round tournaments remain future work.
+edits preserve progress. Brackets/tournaments remain future work; best-of-N matches are
+version 2 mechanics (below).
 
 Every committed round change (start, chat decision, pause, resume, deadline/recovery
 advance) appends a `session_journal` row with a digest of the resulting state in the
@@ -519,6 +520,25 @@ clears old clients but preserves authoritative projection cache for reconnection
 The shared HUD uses safe DOM text, respects reduced motion and clears on lost liveness.
 No new environment variables or dependencies were added.
 
+Experience definition version 2 (same SDK 0.4.0 bridge, additive) adds one declarative
+`mechanics` block — `match` (best of 2–9, 0–60 s break), team `health` (pools, damage,
+heal, elimination), distinct-viewer `burst` (sliding host-clocked window, points, shield,
+per-round limit, `burst` objective) and up to four score `milestones` (tier plus optional
+locked command). Bounds are `MECHANIC_LIMITS` in the SDK. `packages/sandbox/src/mechanics.ts`
+owns pure staging/validation; snapshots gain `mechanics` {round, wins, history, standings}
+and outcome `elimination`, and validation re-derives scores, resource ledgers, tiers, wins
+and outcomes from the definition. New decision codes: `ELIMINATED`, `LOCKED`,
+`HEALTH_FULL`, `BURST_COUNTED`, `BURST_ACTIVE`, `BURST_LIMIT`, `ROUND_INTERMISSION`.
+Version 1 definitions never carry the key, so their hashes and artifact identities are
+unchanged; strict model output sends `mechanics:null`, which the compiler contract strips.
+`mechanics-suite.ts` is the independent host suite (hand-derived expectations); rehearsal
+adds `burst`, `elimination`, `match` and `unlock` presets (`mechanicPresetsFor`). Any
+mechanics change except labels or a longer break is reset-required. Prompt pack
+`riff-compiler/7` documents the primitives and adds Shield Wall/Castle Siege examples;
+`fixtures/stateful-mechanics.json` records the four offline intents. No tables,
+routes, env vars, dependencies or bridge capabilities were added. Collaboration still
+accepts only version 1 teamless cooperative rounds; participation copy shows
+elimination as a finished round.
 
 F32 adds tenant-scoped `session_transitions`: immutable migration source, host-computed
 plan and evidence identities, source session/version/revision, and durable review,

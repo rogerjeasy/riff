@@ -21,16 +21,71 @@ export type DecisionCode =
   | 'SESSION_PAUSED'
   | 'SESSION_FINISHED'
   | 'ALREADY_JOINED'
-  | 'PARTICIPANT_LIMIT';
+  | 'PARTICIPANT_LIMIT'
+  | 'ELIMINATED'
+  | 'LOCKED'
+  | 'HEALTH_FULL'
+  | 'BURST_COUNTED'
+  | 'BURST_ACTIVE'
+  | 'BURST_LIMIT'
+  | 'ROUND_INTERMISSION';
+/** Definition version 2 rules; each block is null/[] when unused. */
+export interface ExperienceMechanics {
+  match: { rounds: number; intermissionMs: number } | null;
+  health: {
+    label: string;
+    max: number;
+    damage: number;
+    heal: { command: string; amount: number } | null;
+  } | null;
+  burst: {
+    command: string | null;
+    label: string;
+    participants: number;
+    windowMs: number;
+    points: number;
+    limit: number;
+    shieldMs: number;
+  } | null;
+  milestones: {
+    id: string;
+    label: string;
+    score: number;
+    unlock: { command: string; points: number } | null;
+  }[];
+}
+export interface SessionStanding {
+  health: number | null;
+  eliminated: boolean;
+  contributions: number;
+  heals: number;
+  unlocks: Record<string, number>;
+  bursts: number;
+  burstWindow: { viewerId: string; at: number }[];
+  shieldUntil: number | null;
+  unlocked: string[];
+}
+export interface SessionMechanicsState {
+  round: number;
+  wins: Record<string, number>;
+  history: {
+    round: number;
+    winner: string | null;
+    outcome: 'deadline' | 'goal' | 'elimination';
+    scores: Record<string, number>;
+  }[];
+  standings: Record<string, SessionStanding>;
+}
 export interface ExperienceDefinition {
-  version: 1;
+  version: 1 | 2;
   title: string;
   durationMs: number;
   maxParticipants: number;
   teams: { id: string; label: string; joinCommand: string }[];
   resource: { name: string; perParticipant: number };
   contribution: { command: string; points: number };
-  objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+  objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
+  mechanics?: ExperienceMechanics | undefined;
 }
 export interface SessionParticipant {
   teamId: string | null;
@@ -48,7 +103,8 @@ export interface SessionSnapshot {
   participants: Record<string, SessionParticipant>;
   scores: Record<string, number>;
   winner: string | null;
-  outcome: 'deadline' | 'goal' | null;
+  outcome: 'deadline' | 'goal' | 'elimination' | null;
+  mechanics?: SessionMechanicsState | undefined;
 }
 export interface Effect {
   kind: 'projectile';

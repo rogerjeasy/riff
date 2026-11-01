@@ -67,7 +67,13 @@ export const contractSchema = z
   .strict()
   .superRefine((contract, ctx) => {
     const definition = contract.artifact.manifest.experience;
-    if (!definition || definition.teams.length || definition.objective.kind !== 'collective-goal')
+    // Version 2 mechanics are not part of the reviewed shared projection yet.
+    if (
+      !definition ||
+      definition.version !== 1 ||
+      definition.teams.length ||
+      definition.objective.kind !== 'collective-goal'
+    )
       ctx.addIssue({ code: 'custom', message: 'Sharing requires a teamless cooperative round' });
   });
 export type SharedContract = z.infer<typeof contractSchema>;

@@ -3,6 +3,7 @@ import {
   AUDIENCE_ROLES,
   CAPABILITIES,
   DECISION_CODES,
+  MECHANIC_LIMITS,
   PROJECTILE_ASSETS,
   SDK_VERSION,
   SESSION_LIMITS,
@@ -65,6 +66,82 @@ const behaviorSchema = z
   .strict();
 
 /**
+ * Strict model output must send `mechanics: null` for version 1 definitions; the canonical
+ * definition omits the key so version 1 hashes and artifact identities stay unchanged.
+ */
+function withoutNullMechanics(manifest: unknown): unknown {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return manifest;
+  const experience = (manifest as { experience?: unknown }).experience;
+  if (
+    !experience ||
+    typeof experience !== 'object' ||
+    Array.isArray(experience) ||
+    !Object.hasOwn(experience, 'mechanics') ||
+    (experience as { mechanics?: unknown }).mechanics !== null
+  )
+    return manifest;
+  const rest = Object.fromEntries(
+    Object.entries(experience as Record<string, unknown>).filter(([key]) => key !== 'mechanics'),
+  );
+  return { ...manifest, experience: rest };
+}
+
+const int = (range: { min: number; max: number }) => ({
+  type: 'integer',
+  minimum: range.min,
+  maximum: range.max,
+});
+const command = { type: 'string', pattern: TRIGGER_LIMITS.commandPattern } as const;
+const label = { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.labelLength } as const;
+const strictObject = (properties: Record<string, unknown>) => ({
+  type: 'object',
+  additionalProperties: false,
+  required: Object.keys(properties),
+  properties,
+});
+const nullable = (schema: Record<string, unknown>) => ({ anyOf: [{ type: 'null' }, schema] });
+/** Definition version 2 mechanics for the strict model schema; host zod rules stay authoritative. */
+const MECHANICS_JSON_SCHEMA = nullable(
+  strictObject({
+    match: nullable(
+      strictObject({
+        rounds: int(MECHANIC_LIMITS.rounds),
+        intermissionMs: int(MECHANIC_LIMITS.intermissionMs),
+      }),
+    ),
+    health: nullable(
+      strictObject({
+        label,
+        max: int(MECHANIC_LIMITS.health),
+        damage: int(MECHANIC_LIMITS.damage),
+        heal: nullable(strictObject({ command, amount: int(MECHANIC_LIMITS.heal) })),
+      }),
+    ),
+    burst: nullable(
+      strictObject({
+        command: { type: ['string', 'null'], pattern: TRIGGER_LIMITS.commandPattern },
+        label,
+        participants: int(MECHANIC_LIMITS.burstParticipants),
+        windowMs: int(MECHANIC_LIMITS.burstWindowMs),
+        points: int(MECHANIC_LIMITS.burstPoints),
+        limit: int(MECHANIC_LIMITS.burstLimit),
+        shieldMs: int(MECHANIC_LIMITS.shieldMs),
+      }),
+    ),
+    milestones: {
+      type: 'array',
+      maxItems: MECHANIC_LIMITS.milestones,
+      items: strictObject({
+        id: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,31}$' },
+        label,
+        score: { type: 'integer', minimum: 1, maximum: SESSION_LIMITS.maxScore },
+        unlock: nullable(strictObject({ command, points: int(MECHANIC_LIMITS.unlockPoints) })),
+      }),
+    },
+  }),
+);
+
+/**
  * Structured compiler output. Executable content is only ever read from these fields,
  * never extracted from free text. Strict validation of manifest and tests is the
  * sandbox verification pipeline's job; here we bound shape and size.
@@ -80,7 +157,7 @@ export const compileOutputSchema = z
     alternative: z.string().max(400).nullable(),
     source: z.string().max(16_384).nullable(),
     migrationSource: z.string().min(1).max(32768).nullable().optional(),
-    manifest: z.unknown(),
+    manifest: z.unknown().transform(withoutNullMechanics),
     tests: z.array(z.unknown()).max(12),
     behavior: behaviorSchema,
     assumptions: z.array(z.string().max(240)).max(8),
@@ -152,9 +229,11 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                     'resource',
                     'contribution',
                     'objective',
+                    'mechanics',
                   ],
                   properties: {
-                    version: { type: 'integer', enum: [1] },
+                    version: { type: 'integer', enum: [1, 2] },
+                    mechanics: MECHANICS_JSON_SCHEMA,
                     title: { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.titleLength },
                     durationMs: {
                       type: 'integer',
@@ -219,7 +298,10 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                       additionalProperties: false,
                       required: ['kind', 'target'],
                       properties: {
-                        kind: { type: 'string', enum: ['highest-score', 'collective-goal'] },
+                        kind: {
+                          type: 'string',
+                          enum: ['highest-score', 'collective-goal', 'burst'],
+                        },
                         target: {
                           type: ['integer', 'null'],
                           minimum: 1,

@@ -255,3 +255,22 @@ Verification for this increment: 685 tests in 66 socket-independent Vitest files
 isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
 source files passed. Two existing socket-dependent test files were excluded from the
 local run. CI includes the new production, participation and dock checks.
+
+## Broader stateful mechanics (F31 definition version 2) — November 1, 2026
+
+Implemented additive experience definition version 2 on the SDK 0.4.0 bridge: best-of-N
+matches with per-round reset and intermission, team health pools with damage, healing and
+elimination, distinct-viewer burst objectives on a sliding host-clocked window (with
+optional shield), and score milestones that unlock tiers and locked commands. Seven new
+decision codes, an independent hand-derived host suite, compatibility rules (any change
+except labels or a longer break requires reset), four rehearsal presets, prompt pack
+`riff-compiler/7`, offline templates for four example intents with a recorded fixture,
+and accessible HUD/scoreboard presentation (health meters, burst meter with window
+countdown, round and break countdown, tiers). Version 1 definitions and identities are
+unchanged. No tables, migrations, routes, env vars or dependencies were added.
+
+Verification: 779 tests in 74 Vitest files pass (35 new across sandbox, compiler, server and web);
+lint, boundary checks, strict types, production build and overlay bundle isolation pass.
+Live server tests cover concurrent burst/damage admission, restart across a round
+deadline, single round advancement and journal audit; no real-model version 2 compile or
+live Twitch round is claimed.

@@ -82,10 +82,104 @@
   border: 1px solid #9c7647;
   border-radius: 10px;
 }
+/* Version 2 mechanics: round indicator, health pools, burst meter and tiers. */
+.session-mechanics {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.session-round,
+.session-intermission {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.session-round {
+  color: #d8c8ed;
+  font-weight: 700;
+}
+.session-intermission {
+  color: #ffe1ba;
+  font-weight: 700;
+}
+.session-pools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+.session-pool {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.session-pool[data-eliminated='true'] {
+  opacity: 0.72;
+}
+.session-meter {
+  display: grid;
+  gap: 3px;
+}
+.session-meter-label {
+  font-size: 0.86em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.session-meter-track {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  overflow: hidden;
+}
+.session-meter-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform-origin: left center;
+  background: #a8efc1;
+  transition: transform 240ms ease-out;
+}
+.session-meter-low .session-meter-fill {
+  background: #ffb36b;
+}
+.session-meter-out .session-meter-fill {
+  background: #ff6b6b;
+}
+.session-meter-burst .session-meter-fill {
+  background: #b9a2ff;
+}
+.session-meter-shield .session-meter-fill {
+  background: #7fd6ff;
+}
+.session-tiers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.session-tier {
+  font-size: 0.8em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid #76658d;
+  color: #d8d2e5;
+}
+.session-tier[data-reached='true'] {
+  border-color: #a8efc1;
+  color: #a8efc1;
+  font-weight: 700;
+}
+.overlay-sessions .session-meter-track {
+  height: 12px;
+}
 @media (prefers-reduced-motion: reduce) {
   .session-hud {
     transition: none;
     animation: none;
+  }
+  .session-meter-fill {
+    transition: none;
   }
 }
 .round-audit {

@@ -12,6 +12,7 @@ import {
   runRehearsal,
   type RehearsalPreset,
   type RehearsalScenario,
+  definitionCommands,
 } from '@riff/sandbox';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import {
@@ -127,10 +128,7 @@ export function createRehearsalService(
       initialSession.participants = Object.fromEntries(
         Object.entries(initialSession.participants).map(([id, p]) => [viewer(id), p]),
       );
-      const commands = [
-        manifest.trigger.command,
-        ...manifest.experience.teams.map((t) => t.joinCommand),
-      ];
+      const commands = [manifest.trigger.command, ...definitionCommands(manifest.experience)];
       const steps: RehearsalScenario['steps'] = entries.slice(1).map((entry, i) => {
         const key = `recorded-${i + 1}`;
         if (entry.kind === 'chat') {

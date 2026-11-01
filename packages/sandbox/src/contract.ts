@@ -112,6 +112,22 @@ export const scenarioStepSchema = z
         phase: z.enum(['running', 'paused', 'finished']).optional(),
         scores: z.record(z.string(), z.number().int().nonnegative()).optional(),
         remainingMs: z.number().int().nonnegative().optional(),
+        round: z.number().int().min(1).max(9).optional(),
+        winner: z.string().max(32).nullable().optional(),
+        wins: z.record(z.string(), z.number().int().nonnegative()).optional(),
+        standings: z
+          .record(
+            z.string(),
+            z
+              .object({
+                health: z.number().int().nonnegative().nullable().optional(),
+                eliminated: z.boolean().optional(),
+                bursts: z.number().int().nonnegative().optional(),
+                tier: z.number().int().nonnegative().optional(),
+              })
+              .strict(),
+          )
+          .optional(),
         participants: z
           .record(
             z.string(),

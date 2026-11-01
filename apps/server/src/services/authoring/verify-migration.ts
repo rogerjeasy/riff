@@ -2,6 +2,7 @@ import type { SessionSnapshot } from '@riff/sdk';
 import type { Evidence } from '../automations/views.js';
 import {
   advanceSession,
+  applySessionCommand,
   classifySessionTransition,
   createSessionSnapshot,
   manifestSchema,
@@ -63,6 +64,24 @@ export async function verifyAuthoredCandidate(
     const populated = structuredClone(empty);
     const key = oldDefinition.teams[0]?.id ?? 'community';
     const fill = (snapshot: SessionSnapshot, contributions: number) => {
+      // Version 2 ledgers (pools, bursts, unlocks) are derived by the host rules themselves.
+      if (oldDefinition.mechanics) {
+        const team = oldDefinition.teams[0];
+        let state = team
+          ? applySessionCommand(oldDefinition, snapshot, {
+              viewerId: 'alice',
+              at: snapshot.updatedAt,
+              text: team.joinCommand,
+            }).snapshot
+          : snapshot;
+        for (let i = 0; i < contributions && state.phase === 'running'; i++)
+          state = applySessionCommand(oldDefinition, state, {
+            viewerId: 'alice',
+            at: state.updatedAt,
+            text: oldDefinition.contribution.command,
+          }).snapshot;
+        return state;
+      }
       snapshot.participants.alice = {
         teamId: oldDefinition.teams[0]?.id ?? null,
         contributions,

@@ -5,7 +5,30 @@ import {
   type ExperienceDefinition,
 } from '@riff/sdk';
 
-import { extractExperienceHints } from './experience-hints.js';
+import { extractExperienceHints, type MechanicHints } from './experience-hints.js';
+
+/** Normalized version 2 facts, comparable between creator text and canonical rules. */
+function statedMechanics(h: MechanicHints): string[] {
+  return [
+    ...(h.burst ? [`burst ${h.burst.participants} viewers / ${h.burst.windowMs / 1000} s`] : []),
+    ...(h.health ? [`health ${h.health.max}`] : []),
+    ...(h.health?.damage ? [`damage ${h.health.damage}`] : []),
+    ...(h.health?.heal ? [`heal ${h.health.heal.command} ${h.health.heal.amount}`] : []),
+    ...(h.match ? [`best of ${h.match.rounds}`] : []),
+    ...h.milestones.map((x) => `unlock at ${x.score}${x.command ? ` ${x.command}` : ''}`),
+  ];
+}
+function actualMechanics(d: ExperienceDefinition | null | undefined): string[] {
+  const m = d?.mechanics;
+  if (!m) return [];
+  return [
+    ...(m.burst ? [`burst ${m.burst.participants} viewers / ${m.burst.windowMs / 1000} s`] : []),
+    ...(m.health ? [`health ${m.health.max}`, `damage ${m.health.damage}`] : []),
+    ...(m.health?.heal ? [`heal ${m.health.heal.command} ${m.health.heal.amount}`] : []),
+    ...(m.match ? [`best of ${m.match.rounds}`] : []),
+    ...m.milestones.map((x) => `unlock at ${x.score}${x.unlock ? ` ${x.unlock.command}` : ''}`),
+  ];
+}
 
 /** Facts stated explicitly in the creator's words. Absent facts stay null. */
 export interface IntentHints {
@@ -24,7 +47,8 @@ export type IntentAspect =
   | 'duration'
   | 'teams'
   | 'resource'
-  | 'objective';
+  | 'objective'
+  | 'mechanics';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -294,6 +318,18 @@ export function checkIntent(
           (sessionHints.target === null || sessionHints.target === experience.objective.target),
       ],
     );
+    const stated = statedMechanics(sessionHints.mechanics);
+    const actual = actualMechanics(experience);
+    if (stated.length || actual.length || sessionHints.mechanics.mentioned)
+      rows.push([
+        'mechanics',
+        'Health, bursts, rounds and unlocks',
+        stated.length || sessionHints.mechanics.mentioned ? stated.join('; ') || 'mentioned' : null,
+        actual.join('; ') || 'none',
+        oldExperience ? actualMechanics(oldExperience).join('; ') || 'none' : null,
+        stated.every((fact) => actual.includes(fact)) &&
+          (stated.length > 0 || !sessionHints.mechanics.mentioned || actual.length > 0),
+      ]);
   }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({
     aspect,

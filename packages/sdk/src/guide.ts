@@ -6,7 +6,9 @@ export const SDK_GUIDE = `# Riff SDK 0.4.0 — handler contract
 
 Compatibility: existing 0.3.0 projectile artifacts retain their rolling allowance
 semantics and artifact identity. 0.4.0 adds canonical host-owned sessions. 0.2.0
-artifacts must be regenerated.
+artifacts must be regenerated. Experience definition version 2 (additive, same SDK
+0.4.0 bridge) adds declarative mechanics; version 1 definitions, snapshots and
+identities are unchanged and never carry a mechanics key.
 
 ## Handler
 
@@ -79,6 +81,46 @@ deadline the session finishes before contribution; a cooperative goal finishes o
 the contribution reaching its target. Host cosmetic budgets may suppress effects
 while returning ACCEPTED and preserving canonical semantic progress.
 
+## Version 2 mechanics (definition version 2)
+
+Set version:2 and mechanics = { match, health, burst, milestones } (null or [] when
+unused). Every rule is host-owned and declarative; handlers only read
+snapshot.mechanics. Example: \`const tier = riff.session.snapshot().mechanics.standings.community.unlocked.length;\`
+objective.kind may also be 'burst' (target = triggers needed, at most burst.limit).
+
+- burst: { command: string|null, label, participants: 2..50, windowMs: 1000..60000,
+  points: 0..100, limit: 1..20, shieldMs: 0..60000 }. A burst fills when \`participants\`
+  DIFFERENT viewers of one side act within a sliding windowMs measured on event.at;
+  entries older than at - windowMs no longer count. command:null counts accepted
+  contributions (a repeat viewer is accepted but counts once); a command is a
+  resource-free action: BURST_COUNTED (viewer already in the window), BURST_ACTIVE
+  (shield running), BURST_LIMIT (limit reached this round). A trigger clears the window,
+  adds points to that side and raises a shield until at + shieldMs (needs health).
+- health: { label, max: 1..1000, damage: 1..1000, heal: {command, amount}|null } needs
+  two or more teams and highest-score. Each contribution damages every other standing,
+  unshielded team. 0 health eliminates that team: its players and new joiners get
+  ELIMINATED. The last team standing wins the round (outcome 'elimination'); at the
+  deadline the standing team with most health wins. Heal spends one resource and is
+  HEALTH_FULL at max.
+- match: { rounds: 2..9, intermissionMs: 0..60000 } is best of N. Ending a round (deadline,
+  goal, burst objective or elimination) records history and wins; a majority of round
+  wins or the last round finishes the match (winner = most wins, tie when level).
+  Otherwise the next round starts after the intermission with fresh resources,
+  scores, pools and bursts; teams stay. Actions during the break get
+  ROUND_INTERMISSION; joins are allowed. remainingMs includes the break.
+- milestones: up to 4 { id, label, score, unlock: {command, points}|null } with
+  strictly increasing scores. Reaching a round score unlocks the tier for that side;
+  unlock commands are LOCKED before it and then spend one resource for points.
+Every join, contribution, heal, burst and unlock command must be unique.
+
+snapshot.mechanics = { round, wins, history: [{round, winner, outcome, scores}],
+standings: { [team id | community]: { health, eliminated, contributions, heals, unlocks,
+bursts, burstWindow: [{viewerId, at}], shieldUntil, unlocked } } }. participant
+contributions count every resource-spending action. Admission after phase checks:
+join → intermission → enrollment → elimination → action limits → resources.
+Scenario session assertions may also check round, winner, wins and
+standings {health, eliminated, bursts, tier}.
+
 ## Permission manifest
 
 {
@@ -140,19 +182,36 @@ and advances revision. This contract adds no generated handler capability.
 `;
 
 export const RIFF_DTS = `declare module 'riff' {
+  export interface ExperienceMechanics {
+    match: { rounds: number; intermissionMs: number } | null;
+    health: { label: string; max: number; damage: number; heal: { command: string; amount: number } | null } | null;
+    burst: { command: string | null; label: string; participants: number; windowMs: number; points: number; limit: number; shieldMs: number } | null;
+    milestones: { id: string; label: string; score: number; unlock: { command: string; points: number } | null }[];
+  }
   export interface ExperienceDefinition {
-    version: 1; title: string; durationMs: number; maxParticipants: number;
+    version: 1 | 2; title: string; durationMs: number; maxParticipants: number;
     teams: { id: string; label: string; joinCommand: string }[];
     resource: { name: string; perParticipant: number };
     contribution: { command: string; points: number };
-    objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+    objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
+    mechanics?: ExperienceMechanics;
   }
   export interface SessionParticipant { teamId: string | null; remaining: number; contributions: number }
+  export interface SessionStanding {
+    health: number | null; eliminated: boolean; contributions: number; heals: number;
+    unlocks: Record<string, number>; bursts: number; burstWindow: { viewerId: string; at: number }[];
+    shieldUntil: number | null; unlocked: string[];
+  }
+  export interface SessionMechanicsState {
+    round: number; wins: Record<string, number>; standings: Record<string, SessionStanding>;
+    history: { round: number; winner: string | null; outcome: 'deadline' | 'goal' | 'elimination'; scores: Record<string, number> }[];
+  }
   export interface SessionSnapshot {
     id: string; phase: 'running' | 'paused' | 'finished'; startedAt: number;
     deadlineAt: number | null; remainingMs: number; updatedAt: number; revision: number;
     participants: Record<string, SessionParticipant>; scores: Record<string, number>;
-    winner: string | null; outcome: 'deadline' | 'goal' | null;
+    winner: string | null; outcome: 'deadline' | 'goal' | 'elimination' | null;
+    mechanics?: SessionMechanicsState;
   }
   export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
   export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number }
@@ -168,8 +227,8 @@ export const RIFF_DTS = `declare module 'riff' {
 `;
 
 export const RIFF_TEST_DTS = `declare module 'riff/test' {
-  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT';
-  export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>> }
+  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT' | 'ELIMINATED' | 'LOCKED' | 'HEALTH_FULL' | 'BURST_COUNTED' | 'BURST_ACTIVE' | 'BURST_LIMIT' | 'ROUND_INTERMISSION';
+  export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>>; round?: number; winner?: string | null; wins?: Record<string,number>; standings?: Record<string,{ health?: number | null; eliminated?: boolean; bursts?: number; tier?: number }> }
   export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null }
   export interface Scenario { name: string; kind: 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window'; steps: ScenarioStep[] }
 }

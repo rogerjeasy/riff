@@ -25,6 +25,13 @@ export const decisionCodes = [
   'SESSION_FINISHED',
   'ALREADY_JOINED',
   'PARTICIPANT_LIMIT',
+  'ELIMINATED',
+  'LOCKED',
+  'HEALTH_FULL',
+  'BURST_COUNTED',
+  'BURST_ACTIVE',
+  'BURST_LIMIT',
+  'ROUND_INTERMISSION',
 ] as const;
 export const presets = [
   'proof',
@@ -33,6 +40,10 @@ export const presets = [
   'late-arrival',
   'exhaustion',
   'deadline',
+  'burst',
+  'elimination',
+  'match',
+  'unlock',
 ] as const;
 export const provenanceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('synthetic') }).strict(),

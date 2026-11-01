@@ -51,6 +51,13 @@ export const CODE_LABEL: Record<DecisionCode, string> = {
   SESSION_FINISHED: 'Round finished',
   ALREADY_JOINED: 'Already joined',
   PARTICIPANT_LIMIT: 'Round full',
+  ELIMINATED: 'Team eliminated',
+  LOCKED: 'Still locked',
+  HEALTH_FULL: 'Health full',
+  BURST_COUNTED: 'Already counted',
+  BURST_ACTIVE: 'Shield active',
+  BURST_LIMIT: 'Burst limit',
+  ROUND_INTERMISSION: 'Between rounds',
 };
 export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
   code === 'ACCEPTED' ||

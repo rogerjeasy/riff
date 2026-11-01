@@ -1,0 +1,789 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/7",
+    "note": "Deterministic version 2 mechanics template responses recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "intent": "Shield Wall: when 5 different viewers type !shield within 10 seconds, the shield goes up.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'heart', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!shield",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 2,
+            "title": "Shield Wall",
+            "durationMs": 120000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "contributions",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!shield",
+              "points": 1
+            },
+            "objective": {
+              "kind": "burst",
+              "target": 1
+            },
+            "mechanics": {
+              "match": null,
+              "health": null,
+              "burst": {
+                "command": null,
+                "label": "Shield",
+                "participants": 5,
+                "windowMs": 10000,
+                "points": 0,
+                "limit": 1,
+                "shieldMs": 0
+              },
+              "milestones": []
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "An action is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not act",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered actions never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 120000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Shield needs 5 different viewers",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "burst0",
+                "viewer": "viewer0",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "burst1",
+                "viewer": "viewer1",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "burst2",
+                "viewer": "viewer2",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 4,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "burst3",
+                "viewer": "viewer3",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 5,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "burst4",
+                "viewer": "viewer4",
+                "roles": ["viewer"],
+                "text": "!shield",
+                "at": 6,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Type !shield to join and contribute",
+          "what": "5 different viewers using !shield within 10 s trigger Shield",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "3 contributions per participant per round; 2 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "The round lasts 120 seconds.",
+          "Each participant gets 3 actions per round.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Shield Wall",
+        "summary": "Use !shield together: 5 different viewers using !shield within 10 s trigger Shield."
+      }
+    },
+    {
+      "intent": "Castle Siege: viewers join Red with !red or Blue with !blue. Each !attack deals 10 damage to the other castle; castles have 100 health and !heal restores 5 health. A castle at 0 health is eliminated.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!attack",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 2,
+            "title": "Castle Siege",
+            "durationMs": 120000,
+            "maxParticipants": 256,
+            "teams": [
+              {
+                "id": "red",
+                "label": "Red",
+                "joinCommand": "!red"
+              },
+              {
+                "id": "blue",
+                "label": "Blue",
+                "joinCommand": "!blue"
+              }
+            ],
+            "resource": {
+              "name": "throws",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!attack",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            },
+            "mechanics": {
+              "match": null,
+              "health": {
+                "label": "Health",
+                "max": 100,
+                "damage": 10,
+                "heal": {
+                  "command": "!heal",
+                  "amount": 5
+                }
+              },
+              "burst": null,
+              "milestones": []
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "An action is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!attack",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not act",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered actions never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!attack",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!attack",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "deadline",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!attack",
+                "at": 120000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Healing at full health is rejected without spending",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!blue",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "full",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!heal",
+                "at": 1,
+                "expect": "HEALTH_FULL",
+                "effects": 0
+              },
+              {
+                "id": "join-red",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "hit",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!attack",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "heal",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!heal",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Join Red with !red or Blue with !blue; contribute with !attack",
+          "what": "teams have 100 health; each !attack deals 10; !heal heals 5; 0 eliminates",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "3 throws per participant per round; 2 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "A team at 0 health is eliminated; the last team standing wins the round.",
+          "The round lasts 120 seconds.",
+          "Each participant gets 3 actions per round.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Castle Siege",
+        "summary": "Use !attack together: teams have 100 health; each !attack deals 10; !heal heals 5; 0 eliminates."
+      }
+    },
+    {
+      "intent": "Tomato Battle best of 3: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 60 second round with a 5 second break between rounds.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!throw",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 60000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 2,
+            "title": "Tomato Match",
+            "durationMs": 60000,
+            "maxParticipants": 256,
+            "teams": [
+              {
+                "id": "red",
+                "label": "Red",
+                "joinCommand": "!red"
+              },
+              {
+                "id": "blue",
+                "label": "Blue",
+                "joinCommand": "!blue"
+              }
+            ],
+            "resource": {
+              "name": "throws",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!throw",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            },
+            "mechanics": {
+              "match": {
+                "rounds": 3,
+                "intermissionMs": 5000
+              },
+              "health": null,
+              "burst": null,
+              "milestones": []
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "An action is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not act",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered actions never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "The deadline starts the next round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "join",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!red",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "deadline",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!throw",
+                "at": 60000,
+                "expect": "ROUND_INTERMISSION",
+                "effects": 0,
+                "session": {
+                  "phase": "running"
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Join Red with !red or Blue with !blue; contribute with !throw",
+          "what": "best of 3 rounds",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "3 throws per participant per round; 1 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Resources, scores and pools reset every round; a majority of round wins ends the match.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Tomato Match",
+        "summary": "Use !throw together: best of 3 rounds."
+      }
+    },
+    {
+      "intent": "Community Garden: everyone uses !grow to contribute, with 5 contributions per participant in a 120 second round. Work together toward a collective goal of 40 points. At 10 points unlock !bloom worth 3 points.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const s = riff.session.snapshot();\n  const tier = Math.max(0, ...Object.values(s.mechanics.standings).map((side) => side.unlocked.length));\n  await riff.overlay.emit({ kind: 'projectile', asset: tier > 0 ? 'star' : 'heart', x: s.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!grow",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 120000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 2,
+            "title": "Community Goal",
+            "durationMs": 120000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "contributions",
+              "perParticipant": 5
+            },
+            "contribution": {
+              "command": "!grow",
+              "points": 1
+            },
+            "objective": {
+              "kind": "collective-goal",
+              "target": 40
+            },
+            "mechanics": {
+              "match": null,
+              "health": null,
+              "burst": null,
+              "milestones": [
+                {
+                  "id": "tier-1",
+                  "label": "Bloom",
+                  "score": 10,
+                  "unlock": {
+                    "command": "!bloom",
+                    "points": 3
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "An action is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does not act",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered actions never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the round",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!grow",
+                "at": 120000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "!bloom stays locked until 10 points",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "locked",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!bloom",
+                "at": 1,
+                "expect": "LOCKED",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Type !grow to join and contribute",
+          "what": "10 points unlock !bloom",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "5 contributions per participant per round; 2 min duration"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Up to 256 participants; each contribution adds 1 point."
+        ],
+        "kind": "candidate",
+        "title": "Community Goal",
+        "summary": "Use !grow together: 10 points unlock !bloom."
+      }
+    }
+  ]
+}

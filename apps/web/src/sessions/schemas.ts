@@ -20,10 +20,59 @@ const teamId = z
   );
 const integer = z.number().int().nonnegative().safe();
 const timestamp = integer.max(Number.MAX_SAFE_INTEGER - 3600000);
+const bounded = (min: number, max: number) => z.number().int().min(min).max(max);
+/** Definition version 2 mechanics; the host remains the authority on cross-field rules. */
+const mechanicsSchema = z
+  .object({
+    match: z
+      .object({ rounds: bounded(2, 9), intermissionMs: bounded(0, 60000) })
+      .strict()
+      .nullable(),
+    health: z
+      .object({
+        label,
+        max: bounded(1, 1000),
+        damage: bounded(1, 1000),
+        heal: z
+          .object({ command, amount: bounded(1, 1000) })
+          .strict()
+          .nullable(),
+      })
+      .strict()
+      .nullable(),
+    burst: z
+      .object({
+        command: command.nullable(),
+        label,
+        participants: bounded(2, 50),
+        windowMs: bounded(1000, 60000),
+        points: bounded(0, 100),
+        limit: bounded(1, 20),
+        shieldMs: bounded(0, 60000),
+      })
+      .strict()
+      .nullable(),
+    milestones: z
+      .array(
+        z
+          .object({
+            id: teamId,
+            label,
+            score: bounded(1, 2560000),
+            unlock: z
+              .object({ command, points: bounded(1, 100) })
+              .strict()
+              .nullable(),
+          })
+          .strict(),
+      )
+      .max(4),
+  })
+  .strict();
 /** Browser-owned validation mirrors the public contract; no SDK runtime crosses HTTP. */
 export const experienceDefinitionSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     title: label.max(120),
     durationMs: z.number().int().min(1000).max(3600000),
     maxParticipants: z.number().int().min(1).max(256),
@@ -32,10 +81,11 @@ export const experienceDefinitionSchema = z
     contribution: z.object({ command, points: z.number().int().min(1).max(100) }).strict(),
     objective: z
       .object({
-        kind: z.enum(['highest-score', 'collective-goal']),
+        kind: z.enum(['highest-score', 'collective-goal', 'burst']),
         target: z.number().int().min(1).max(2560000).nullable(),
       })
       .strict(),
+    mechanics: mechanicsSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -46,9 +96,13 @@ export const experienceDefinitionSchema = z
     ) {
       ctx.addIssue({ code: 'custom', message: 'Team identities and commands must be unique.' });
     }
+    if ((value.version === 2) !== (value.mechanics !== undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'Only version 2 definitions carry mechanics.' });
+    }
     if (
-      (value.objective.kind === 'collective-goal') !== (value.objective.target !== null) ||
-      (value.objective.kind === 'collective-goal' && value.teams.length > 0)
+      (value.objective.kind === 'highest-score') !== (value.objective.target === null) ||
+      (value.objective.kind === 'collective-goal' && value.teams.length > 0) ||
+      (value.objective.kind === 'burst' && !value.mechanics?.burst)
     ) {
       ctx.addIssue({
         code: 'custom',
@@ -86,7 +140,7 @@ export const sessionSnapshotSchema = z
     phase: z.enum(['running', 'paused', 'finished']),
     startedAt: timestamp,
     deadlineAt: timestamp.nullable(),
-    remainingMs: z.number().int().min(0).max(3600000),
+    remainingMs: z.number().int().min(0).max(3660000),
     updatedAt: timestamp,
     revision: integer,
     participants: dictionary(
@@ -101,7 +155,44 @@ export const sessionSnapshotSchema = z
     ),
     scores: dictionary(z.number().int().min(0).max(2560000), 8),
     winner: z.string().max(32).nullable(),
-    outcome: z.enum(['deadline', 'goal']).nullable(),
+    outcome: z.enum(['deadline', 'goal', 'elimination']).nullable(),
+    mechanics: z
+      .object({
+        round: bounded(1, 9),
+        wins: dictionary(bounded(0, 9), 8),
+        history: z
+          .array(
+            z
+              .object({
+                round: bounded(1, 9),
+                winner: z.string().max(32).nullable(),
+                outcome: z.enum(['deadline', 'goal', 'elimination']),
+                scores: dictionary(bounded(0, 2560000), 8),
+              })
+              .strict(),
+          )
+          .max(9),
+        standings: dictionary(
+          z
+            .object({
+              health: bounded(0, 1000).nullable(),
+              eliminated: z.boolean(),
+              contributions: integer,
+              heals: integer,
+              unlocks: dictionary(integer, 4),
+              bursts: bounded(0, 20),
+              burstWindow: z
+                .array(z.object({ viewerId: z.string().min(1).max(100), at: integer }).strict())
+                .max(50),
+              shieldUntil: integer.nullable(),
+              unlocked: z.array(teamId).max(4),
+            })
+            .strict(),
+          8,
+        ),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -115,7 +206,8 @@ export const sessionSnapshotSchema = z
         (value.deadlineAt !== null ||
           value.remainingMs !== 0 ||
           value.outcome === null ||
-          value.winner === null))
+          // A cooperative round that misses its target ends at the deadline without a winner.
+          (value.winner === null && value.outcome !== 'deadline')))
     ) {
       ctx.addIssue({ code: 'custom', message: 'Inconsistent session phase or clock' });
     }
@@ -130,6 +222,40 @@ export const overlaySessionSchema = z
   })
   .superRefine(({ definition, snapshot }, ctx) => {
     const keys = definition.teams.length ? definition.teams.map((team) => team.id) : ['community'];
+    if (definition.mechanics) {
+      // Version 2 scores include bursts and unlocks; the host validated the full ledger.
+      const m = snapshot.mechanics;
+      const sameKeys = (value: Record<string, unknown> | undefined) =>
+        !!value &&
+        Object.keys(value).length === keys.length &&
+        keys.every((key) => Object.hasOwn(value, key));
+      const valid =
+        !!m &&
+        sameKeys(snapshot.scores) &&
+        sameKeys(m.standings) &&
+        sameKeys(m.wins) &&
+        m.round <= (definition.mechanics.match?.rounds ?? 1) &&
+        Object.keys(snapshot.participants).length <= definition.maxParticipants &&
+        snapshot.remainingMs <=
+          definition.durationMs + (definition.mechanics.match?.intermissionMs ?? 0) &&
+        Object.values(m.standings).every(
+          (standing) =>
+            (definition.mechanics?.health
+              ? standing.health !== null && standing.health <= definition.mechanics.health.max
+              : standing.health === null) &&
+            standing.bursts <= (definition.mechanics?.burst?.limit ?? 0),
+        );
+      if (!valid)
+        ctx.addIssue({
+          code: 'custom',
+          message: 'Session evidence does not match the experience rules',
+        });
+      return;
+    }
+    if (snapshot.mechanics) {
+      ctx.addIssue({ code: 'custom', message: 'Version 1 sessions carry no mechanics' });
+      return;
+    }
     const totals = new Map(keys.map((key) => [key, 0]));
     let valid =
       Object.keys(snapshot.scores).length === keys.length &&

@@ -1,10 +1,22 @@
 import { z } from 'zod';
 import {
+  MECHANIC_LIMITS,
   SESSION_LIMITS,
   TRIGGER_LIMITS,
   type ExperienceDefinition,
   type SessionSnapshot,
 } from '@riff/sdk';
+import {
+  mechanicsActionFor,
+  stageMechanicsAction,
+  advanceMechanics,
+  createMechanicsState,
+  maxRemainingMs,
+  mechanicsProblems,
+  mechanicsSchema,
+  mechanicsStateSchema,
+  validateMechanicsState,
+} from './mechanics.js';
 
 const timestamp = z
   .number()
@@ -22,7 +34,7 @@ const teamId = z
 /** Validate generated rules before starting a session. Example: sessionDefinitionSchema.parse(value). */
 export const sessionDefinitionSchema = z
   .object({
-    version: z.literal(1),
+    version: z.union([z.literal(1), z.literal(2)]),
     title: z.string().trim().min(1).max(SESSION_LIMITS.titleLength).refine(cleanText),
     durationMs: z
       .number()
@@ -47,10 +59,11 @@ export const sessionDefinitionSchema = z
       .strict(),
     objective: z
       .object({
-        kind: z.enum(['highest-score', 'collective-goal']),
+        kind: z.enum(['highest-score', 'collective-goal', 'burst']),
         target: z.number().int().min(1).max(SESSION_LIMITS.maxScore).nullable(),
       })
       .strict(),
+    mechanics: mechanicsSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -65,8 +78,12 @@ export const sessionDefinitionSchema = z
         code: 'custom',
         message: 'Team ids and commands must be unique and distinct from contribution command',
       });
-    if ((value.objective.kind === 'collective-goal') !== (value.objective.target !== null))
-      ctx.addIssue({ code: 'custom', message: 'Only collective goals require a target' });
+    if ((value.objective.kind === 'highest-score') !== (value.objective.target === null))
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Collective and burst goals require a target; highest-score uses null',
+      });
+    for (const message of mechanicsProblems(value)) ctx.addIssue({ code: 'custom', message });
     if (value.objective.kind === 'collective-goal' && value.teams.length)
       ctx.addIssue({
         code: 'custom',
@@ -112,7 +129,11 @@ export const sessionSnapshotSchema = z
     phase: z.enum(['running', 'paused', 'finished']),
     startedAt: timestamp,
     deadlineAt: timestamp.nullable(),
-    remainingMs: z.number().int().min(0).max(SESSION_LIMITS.durationMs.max),
+    remainingMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(SESSION_LIMITS.durationMs.max + MECHANIC_LIMITS.intermissionMs.max),
     updatedAt: timestamp,
     revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     participants: dictionary(participantSchema, SESSION_LIMITS.maxParticipants),
@@ -121,7 +142,8 @@ export const sessionSnapshotSchema = z
       SESSION_LIMITS.maxTeams,
     ),
     winner: z.string().max(32).nullable(),
-    outcome: z.enum(['deadline', 'goal']).nullable(),
+    outcome: z.enum(['deadline', 'goal', 'elimination']).nullable(),
+    mechanics: mechanicsStateSchema.optional(),
   })
   .strict()
   .superRefine((s, ctx) => {
@@ -155,9 +177,24 @@ export function validateSessionSnapshot(
     Object.keys(s.scores).length !== keys.length ||
     keys.some((key) => !Object.hasOwn(s.scores, key)) ||
     Object.keys(s.participants).length > d.maxParticipants ||
-    s.remainingMs > d.durationMs
+    s.remainingMs > maxRemainingMs(d) ||
+    (!d.mechanics && s.remainingMs > d.durationMs) ||
+    (!d.mechanics && (s.mechanics !== undefined || s.outcome === 'elimination'))
   )
     throw new Error('Snapshot does not match experience definition');
+  if (d.mechanics) {
+    for (const participant of Object.values(s.participants)) {
+      const key = participant.teamId ?? 'community';
+      if (
+        !keys.includes(key) ||
+        (d.teams.length > 0 && participant.teamId === null) ||
+        participant.remaining + participant.contributions !== d.resource.perParticipant
+      )
+        throw new Error('Invalid session participant resources');
+    }
+    validateMechanicsState(d, s);
+    return s;
+  }
   const totals: Record<string, number> = Object.create(null);
   for (const key of keys) totals[key] = 0;
   for (const participant of Object.values(s.participants)) {
@@ -209,6 +246,7 @@ export function createSessionSnapshot(
     scores,
     winner: null,
     outcome: null,
+    ...(d.mechanics ? { mechanics: createMechanicsState(d) } : {}),
   });
 }
 function winner(scores: Record<string, number>): string {
@@ -227,6 +265,15 @@ export function advanceSession(
   timestamp.parse(at);
   if (at < next.updatedAt) throw new Error('Session time cannot decrease');
   if (next.phase !== 'running') return next;
+  if (definition?.mechanics) {
+    const d = sessionDefinitionSchema.parse(definition);
+    if (next.updatedAt !== at) {
+      next.updatedAt = at;
+      next.revision++;
+    }
+    advanceMechanics(d, next, at);
+    return next;
+  }
   next.remainingMs = Math.max(0, (next.deadlineAt ?? at) - at);
   if (next.updatedAt !== at) {
     next.updatedAt = at;
@@ -239,6 +286,33 @@ export function advanceSession(
     next.outcome = 'deadline';
   }
   return next;
+}
+/**
+ * Apply one version 2 gameplay command with host rules only (no guest handler), e.g. to
+ * build realistic populated snapshots for migration checks. Example:
+ * applySessionCommand(definition, snapshot, { viewerId: 'ada', at: 5, text: '!attack' }).
+ */
+export function applySessionCommand(
+  definition: ExperienceDefinition,
+  snapshot: SessionSnapshot,
+  event: { viewerId: string; at: number; text: string },
+): { code: string; snapshot: SessionSnapshot } {
+  const d = sessionDefinitionSchema.parse(definition);
+  if (!d.mechanics) throw new Error('Host-only commands require version 2 mechanics');
+  const next = advanceSession(validateSessionSnapshot(d, snapshot), event.at, d);
+  if (next.phase !== 'running')
+    return {
+      code: next.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
+      snapshot: next,
+    };
+  const action = mechanicsActionFor(
+    d,
+    (text, command) => text.trim().toLowerCase() === command.toLowerCase(),
+    event.text,
+  );
+  if (!action) return { code: 'UNRELATED', snapshot: next };
+  const stage = stageMechanicsAction(d, next, event, action);
+  return { code: stage.code, snapshot: validateSessionSnapshot(d, next) };
 }
 /** Freeze remaining round time. Example: pauseSession(snapshot, now). */
 export function pauseSession(

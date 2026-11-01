@@ -7,6 +7,12 @@ import {
 } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { extractExperienceHints } from './experience-hints.js';
+import {
+  describeMechanics,
+  mechanicScenarios,
+  mechanicsSource,
+  planMechanics,
+} from './mechanics-output.js';
 
 const RESERVED_TEAM_IDS = ['__proto__', 'constructor', 'prototype', 'community', 'tie'];
 import {
@@ -16,8 +22,10 @@ import {
   type ManifestView,
 } from './intent.js';
 
+// Health, elimination, bursts, best-of-N rounds and unlocks are version 2 primitives with
+// their own parser; anything else stays outside the declarative engine.
 const COMPLEX_MECHANICS =
-  /\b(?:health|damage|eliminat\w*|inventor\w*|unlock\w*|levels?|steal\w*|trades?|purchases?|bets?|wagers?|random (?:winner|scores?)|multiple rounds?|best of|brackets?|tournaments?|lives|respawn\w*|cooldowns?)\b/i;
+  /\b(?:inventor\w*|levels?|steal\w*|trades?|purchases?|bets?|wagers?|random (?:winner|scores?)|brackets?|tournaments?|lives|respawn\w*|cooldowns?)\b/i;
 
 const empty = {
   question: null,
@@ -45,18 +53,13 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
     summary: 'The offline template compiler cannot faithfully generate these rules.',
     unsupportedReason: reason,
     alternative:
-      'Use a bounded team score battle or a cooperative contribution goal, or switch to model compilation for other supported SDK rules.',
+      'Use a bounded team score battle, a cooperative goal, team health, a distinct-viewer burst, a best-of-N match or score unlocks, or switch to model compilation.',
   });
   if (COMPLEX_MECHANICS.test(request.intent))
     return unsupported(
-      'These mechanics are outside the bounded team-score and collective-goal session primitives.',
+      'These mechanics are outside the bounded session primitives (scores, goals, health, bursts, rounds and unlocks).',
     );
   if (!hints.requested && !previous) return null;
-  const kind = hints.objective ?? previous?.objective.kind;
-  if (!kind)
-    return unsupported(
-      'Choose a highest-score team battle or a cooperative collective goal. The offline compiler does not infer other session rules.',
-    );
   const assumptions = ['Offline template compiler; no model call.'];
   // "join red or blue" names teams without commands; derive !red/!blue and say so.
   const derived = hints.teamNames?.map((name) => ({
@@ -75,6 +78,20 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
       `Teams join with ${derived.map((team) => team.joinCommand).join(' or ')}, named after the teams.`,
     );
   const teams = hints.teams ?? (derivable ? derived : null) ?? previous?.teams ?? [];
+  const plan = planMechanics({
+    hints: hints.mechanics,
+    command: hints.command ?? previous?.contribution.command ?? null,
+    teams,
+    kind: hints.objective ?? previous?.objective.kind ?? null,
+    assumptions,
+  });
+  if (plan && !plan.ok) return unsupported(plan.reason);
+  const kind = (plan?.ok ? plan.kind : null) ?? hints.objective ?? previous?.objective.kind;
+  if (!kind)
+    return unsupported(
+      'Choose a highest-score team battle, a cooperative collective goal or a distinct-viewer burst. The offline compiler does not infer other session rules.',
+    );
+  const mechanics = plan?.ok ? plan.mechanics : previous?.mechanics;
   if (kind === 'highest-score' && !teams.length)
     return {
       ...empty,
@@ -89,8 +106,12 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
       'The stated number of teams does not match the explicit team join commands.',
     );
   const fallbackCommand = kind === 'highest-score' ? '!throw' : '!grow';
-  const command = hints.command ?? previous?.contribution.command ?? fallbackCommand;
-  if (!hints.command && !previous)
+  const command =
+    (plan?.ok ? plan.command : null) ??
+    hints.command ??
+    previous?.contribution.command ??
+    fallbackCommand;
+  if (!hints.command && !previous && !plan?.ok)
     assumptions.push(`Participants contribute with ${fallbackCommand}.`);
   if (teams.some((team) => team.joinCommand === command))
     return unsupported('The contribution command must differ from every team join command.');
@@ -102,8 +123,18 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
     return fallback;
   }
   const definition: ExperienceDefinition = {
-    version: 1,
-    title: request.base?.title ?? (kind === 'highest-score' ? 'Tomato Battle' : 'Community Goal'),
+    version: mechanics ? 2 : 1,
+    title:
+      request.base?.title ??
+      (mechanics?.health
+        ? 'Castle Siege'
+        : kind === 'burst'
+          ? `${mechanics?.burst?.label ?? 'Burst'} Wall`
+          : mechanics?.match
+            ? 'Tomato Match'
+            : kind === 'highest-score'
+              ? 'Tomato Battle'
+              : 'Community Goal'),
     durationMs: pick(
       hints.durationMs,
       previous?.durationMs,
@@ -132,13 +163,16 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
       target:
         kind === 'highest-score'
           ? null
-          : pick(
-              hints.target,
-              previous?.objective.target ?? undefined,
-              5,
-              'The collective goal is 5 points.',
-            ),
+          : kind === 'burst'
+            ? ((plan?.ok ? plan.target : null) ?? previous?.objective.target ?? 1)
+            : pick(
+                hints.target,
+                previous?.objective.target ?? undefined,
+                5,
+                'The collective goal is 5 points.',
+              ),
     },
+    ...(mechanics ? { mechanics } : {}),
   };
   if (!previous) assumptions.push('Up to 256 participants; each contribution adds 1 point.');
   const audience = facts.audience ?? base?.trigger.audience ?? ['viewer'];
@@ -161,15 +195,19 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
         JSON.stringify(definition.teams.map((team) => team.id).sort()) &&
       definition.resource.perParticipant >= previous.resource.perParticipant &&
       definition.durationMs >= previous.durationMs &&
-      definition.maxParticipants >= previous.maxParticipants
+      definition.maxParticipants >= previous.maxParticipants &&
+      JSON.stringify(previous.mechanics ?? null) === JSON.stringify(definition.mechanics ?? null)
         ? PRESERVING_MIGRATION_SOURCE
         : null,
     title: definition.title,
-    summary:
-      kind === 'highest-score'
+    summary: mechanics
+      ? `Use ${command} together: ${describeMechanics(definition)}.`.slice(0, 400)
+      : kind === 'highest-score'
         ? `Join a team and use ${command} to score during a timed battle.`
         : `Use ${command} to help the community reach ${definition.objective.target} points.`,
-    source: `async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: '${asset}', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}`,
+    source: mechanics
+      ? mechanicsSource(asset, mechanics.milestones.length > 0)
+      : `async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: '${asset}', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}`,
     manifest: {
       sdkVersion: SDK_VERSION,
       capabilities: ['overlay', 'session'],
@@ -182,15 +220,19 @@ export function compileExperienceOffline(request: CompileRequest): CompileOutput
       limits: { effectsPerEvent: 1, effectsPerMinute: 120 },
       experience: definition,
     },
-    tests: experienceScenarios(definition, audience),
+    tests: mechanics
+      ? mechanicScenarios(definition, audience)
+      : experienceScenarios(definition, audience),
     behavior: {
       when: teams.length
         ? `Join ${teams.map((team) => `${team.label} with ${team.joinCommand}`).join(' or ')}; contribute with ${command}`
         : `Type ${command} to join and contribute`,
-      what:
-        kind === 'highest-score'
+      what: (mechanics
+        ? describeMechanics(definition)
+        : kind === 'highest-score'
           ? 'Team scores accumulate; the highest score wins at the deadline'
-          : `Everyone builds toward ${definition.objective.target} points; reaching the goal ends the round`,
+          : `Everyone builds toward ${definition.objective.target} points; reaching the goal ends the round`
+      ).slice(0, 200),
       who: `${describeAudience(audience)}; up to ${definition.maxParticipants} participants`,
       howMuch: `${definition.resource.perParticipant} ${definition.resource.name} per participant per round; ${describeWindow(definition.durationMs)} duration`,
     },

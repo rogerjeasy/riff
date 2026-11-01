@@ -11,7 +11,7 @@ import {
   type createCompileQueue,
   type CompilerTransport,
 } from '@riff/compiler';
-import { artifactIdentity } from '@riff/sandbox';
+import { artifactIdentity, definitionCommands } from '@riff/sandbox';
 import type { DatabaseConnection } from '../../db/client.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import { sceneRepository } from '../../db/repositories/scenes.js';
@@ -50,6 +50,10 @@ function instructionsFor(version: VersionRow): string[] {
       200,
     ),
   );
+  const more = definitionCommands(e).filter(
+    (command) => command !== e.contribution.command && !commands.includes(command),
+  );
+  if (more.length) lines.push(`Also: ${more.join(' / ')}`.slice(0, 200));
   return lines.slice(0, 4);
 }
 function digest(versionId: string, artifactId: string, revision: number, scene: SceneDocument) {

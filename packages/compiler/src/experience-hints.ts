@@ -39,12 +39,131 @@ export interface ExperienceHints {
   teamCount: number | null;
   objective: ExperienceDefinition['objective']['kind'] | null;
   target: number | null;
+  /** Version 2 mechanics stated explicitly; null fields were not mentioned. */
+  mechanics: MechanicHints;
+}
+export interface MechanicHints {
+  /** True when the text names any version 2 primitive, even one that was not fully parsed. */
+  mentioned: boolean;
+  burst: {
+    participants: number;
+    windowMs: number;
+    command: string | null;
+    protects: boolean;
+  } | null;
+  health: {
+    max: number;
+    damage: number | null;
+    heal: { command: string; amount: number } | null;
+  } | null;
+  match: { rounds: number; intermissionMs: number | null } | null;
+  milestones: { score: number; command: string | null; points: number | null }[];
+  shieldMs: number | null;
+}
+const SECONDS = '(?:s|secs?|seconds?)';
+const PEOPLE =
+  '(?:different|distinct|unique|separate)\\s+(?:viewers|people|chatters|players|teammates|participants|members)';
+/** Read version 2 primitives conservatively; anything ambiguous stays null. */
+export function extractMechanicHints(intent: string): { hints: MechanicHints; rest: string } {
+  let rest = intent.replace(/\s+/g, ' ');
+  const take = (pattern: RegExp) => {
+    const match = rest.match(pattern);
+    if (match) rest = rest.replace(match[0], ' ');
+    return match;
+  };
+  const mentioned =
+    /\b(?:health|hp|damage|heal\w*|eliminat\w*|unlock\w*|milestones?|tiers?|best of|rounds|different (?:viewers|people|chatters|players|teammates))\b/i.test(
+      rest,
+    );
+  const burstMatch = take(
+    new RegExp(
+      `${NUMBER}\\s+${PEOPLE}\\s+(?:all\\s+)?(?:type|use|send|say|typing|using|sending)?\\s*(![a-z0-9_-]{1,32})?\\s*(?:within|in|inside)\\s+(?:the\\s+same\\s+)?${NUMBER}\\s*${SECONDS}`,
+      'i',
+    ),
+  );
+  const shieldFor = take(
+    new RegExp(`(?:protects?|shields?)\\s+(?:\\w+\\s+){0,3}?for\\s+${NUMBER}\\s*${SECONDS}`, 'i'),
+  );
+  const healthMatch = take(new RegExp(`${NUMBER}\\s+(?:health|hp|hit points)\\b`, 'i'));
+  const damageMatch = take(new RegExp(`${NUMBER}\\s+damage\\b`, 'i'));
+  const healMatch =
+    take(new RegExp(`(![a-z0-9_-]{1,32})\\s+(?:heals|restores|repairs)\\s+${NUMBER}`, 'i')) ??
+    take(
+      new RegExp(
+        `heals?\\s+${NUMBER}\\s+(?:health|hp)?\\s*(?:with|using|via)\\s+(![a-z0-9_-]{1,32})`,
+        'i',
+      ),
+    );
+  const bestOf = take(new RegExp(`best\\s+of\\s+${NUMBER}(?:\\s+rounds?)?`, 'i'));
+  const roundsMatch = bestOf ? null : take(new RegExp(`${NUMBER}\\s+rounds\\b`, 'i'));
+  const breakMatch = take(
+    new RegExp(
+      `${NUMBER}\\s*-?${SECONDS}\\s+(?:break|intermission|pause)\\s+between\\s+rounds`,
+      'i',
+    ),
+  );
+  const milestones: MechanicHints['milestones'] = [];
+  const unlockPattern = new RegExp(
+    `(?:at|reach(?:es|ing)?|after)\\s+${NUMBER}\\s+points?\\s*,?\\s*(?:to\\s+)?unlocks?\\s+(?:a\\s+|the\\s+)?(?:(![a-z0-9_-]{1,32})|(?:bigger|stronger|new|next)\\s+(?:effect\\s+)?tier)(?:\\s+(?:worth|for|that\\s+scores?)\\s+${NUMBER}\\s+points?)?`,
+    'gi',
+  );
+  for (const match of rest.matchAll(unlockPattern))
+    milestones.push({
+      score: numberOf(match[1]) ?? 0,
+      command: match[2]?.toLowerCase() ?? null,
+      points: numberOf(match[3]),
+    });
+  rest = rest.replace(unlockPattern, ' ');
+  const healCommand = healMatch
+    ? healMatch[1]?.startsWith('!')
+      ? healMatch[1]
+      : healMatch[2]
+    : null;
+  const healAmount = healMatch
+    ? numberOf(healMatch[1]?.startsWith('!') ? healMatch[2] : healMatch[1])
+    : null;
+  return {
+    rest,
+    hints: {
+      mentioned,
+      burst: burstMatch
+        ? {
+            participants: numberOf(burstMatch[1]) ?? 0,
+            command: burstMatch[2]?.toLowerCase() ?? null,
+            windowMs: (numberOf(burstMatch[3]) ?? 0) * 1000,
+            protects: /\b(?:protects?|shields?|blocks?)\b/i.test(intent),
+          }
+        : null,
+      health: healthMatch
+        ? {
+            max: numberOf(healthMatch[1]) ?? 0,
+            damage: numberOf(damageMatch?.[1]),
+            heal:
+              healCommand && healAmount !== null
+                ? { command: healCommand.toLowerCase(), amount: healAmount }
+                : null,
+          }
+        : null,
+      match:
+        bestOf || roundsMatch
+          ? {
+              rounds: numberOf((bestOf ?? roundsMatch)?.[1]) ?? 0,
+              intermissionMs: breakMatch ? (numberOf(breakMatch[1]) ?? 0) * 1000 : null,
+            }
+          : null,
+      milestones,
+      shieldMs: shieldFor ? (numberOf(shieldFor[1]) ?? 0) * 1000 : null,
+    },
+  };
 }
 
 /** Conservative, independent reading of the bounded session primitives in creator text. */
 export function extractExperienceHints(intent: string): ExperienceHints {
-  const text = intent.replace(/\s+/g, ' ');
+  // Mechanic phrases ("within 10 seconds") must not be read as round facts.
+  const { hints: mechanics, rest } = extractMechanicHints(intent);
+  const text = rest.replace(/\s+/g, ' ');
   const requested =
+    mechanics.mentioned ||
     /\b(?:battle|teams?|cooperati(?:ve|on)|community goal|collective goal|round|session|contributions?)\b/i.test(
       text,
     );
@@ -130,6 +249,7 @@ export function extractExperienceHints(intent: string): ExperienceHints {
     teamCount: numberOf(countMatch?.[1]),
     objective: cooperative ? 'collective-goal' : competitive ? 'highest-score' : null,
     target: numberOf(targetMatch?.[1]),
+    mechanics,
   };
 }
 

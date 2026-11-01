@@ -36,6 +36,11 @@ export type {
 export { buildPrompt, buildRepairPrompt, buildWorkspace, PROMPT_VERSION } from './workspace.js';
 
 export { PRESERVING_MIGRATION_SOURCE } from './experience-output.js';
+export {
+  extractExperienceHints,
+  type ExperienceHints,
+  type MechanicHints,
+} from './experience-hints.js';
 
 export {
   sceneSchema,
