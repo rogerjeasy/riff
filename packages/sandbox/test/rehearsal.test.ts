@@ -72,7 +72,9 @@ describe('private bounded rehearsal replay', () => {
       expect(prefix.cursor.session).toBeNull();
     }
     expect(full).toEqual(await host.runRehearsal({ artifact: artifact(), scenario: input }));
-    expect(full.timeline[0]?.decision?.effects[0]?.x).toBeGreaterThan(0);
+    expect(full.timeline[0]?.decision?.effects).toEqual([
+      { kind: 'projectile', asset: 'tomato', x: 0.7325348288286477 },
+    ]);
   });
 
   it('retains controls, state, admission and deadlines in the same private engine', async () => {
@@ -280,3 +282,247 @@ it('summarizes semantic host state without artifact or timing telemetry in its d
     actual: 'quarantined',
   });
 });
+
+describe('bounded counterexample reduction', () => {
+  it('removes noise but keeps the three throws causing a fourth expected accepted failure', async () => {
+    const input = scenario([
+      chat('noise', 0, 'hello'),
+      chat('one', 1),
+      chat('other', 2, 'hello'),
+      chat('two', 3),
+      chat('three', 4),
+      chat('four', 5),
+      chat('tail', 6, 'hello'),
+    ]);
+    input.expectations = [
+      { id: 'noise-check', stepKey: 'noise', kind: 'decision', value: 'UNRELATED' },
+      { id: 'fourth', stepKey: 'four', kind: 'decision', value: 'ACCEPTED' },
+    ];
+    const reduced = await host.minimizeCounterexample({
+      artifact: artifact(),
+      scenario: input,
+      checkId: 'expect:fourth',
+    });
+    expect(reduced.scenario.steps.map((s) => s.key)).toEqual(['one', 'two', 'three', 'four']);
+    expect(reduced.run.checks.find((c) => c.id === 'expect:fourth')).toMatchObject({
+      status: 'failed',
+      actual: 'VIEWER_LIMIT',
+      expected: 'ACCEPTED',
+    });
+    expect(reduced.scenario.expectations).toEqual([
+      { id: 'fourth', stepKey: 'four', kind: 'decision', value: 'ACCEPTED' },
+    ]);
+    expect(reduced.scenario.provenance).toMatchObject({ kind: 'synthetic-derivative' });
+    expect(reduced.removedSteps).toBe(3);
+    expect(reduced.budgetStopped).toBe(false);
+    expect(input.steps).toHaveLength(7);
+    expect(reduced.attempts).toBeLessThanOrEqual(24);
+    expect(reduced.dispatchedSteps).toBeLessThanOrEqual(2400);
+    expect(
+      (await host.runRehearsal({ artifact: artifact(), scenario: reduced.scenario })).evidenceHash,
+    ).toBe(reduced.run.evidenceHash);
+  }, 60000);
+
+  it('retains the prerequisite delivery and cannot substitute a later incident for the selected failure', async () => {
+    const input = scenario([
+      chat('noise', 0, 'hello'),
+      chat('first', 1, '!throw', 'same'),
+      chat('selected', 2, '!throw', 'same'),
+      chat('later-incident', 3, '!throw', 'bad', 'bad'),
+    ]);
+    input.expectations = [
+      { id: 'duplicate', stepKey: 'selected', kind: 'decision', value: 'ACCEPTED' },
+    ];
+    const candidate = {
+      ...artifact(),
+      source: `(e,riff)=>{if(e.viewerId==='bad')throw Error('later');return riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5});}`,
+    };
+    const reduced = await host.minimizeCounterexample({
+      artifact: candidate,
+      scenario: input,
+      checkId: 'expect:duplicate',
+    });
+    expect(reduced.scenario.steps.map((s) => s.key)).toEqual(['first', 'selected']);
+    expect(reduced.run.checks.filter((c) => c.status === 'failed')).toMatchObject([
+      { id: 'expect:duplicate', actual: 'DUPLICATE' },
+    ]);
+    expect(reduced.failure).toMatchObject({
+      id: 'expect:duplicate',
+      stepKey: 'selected',
+      actual: 'DUPLICATE',
+    });
+  });
+
+  it('rejects missing or passing checks and propagates cancellation', async () => {
+    const input = scenario([chat('one', 1)]);
+    await expect(
+      host.minimizeCounterexample({ artifact: artifact(), scenario: input, checkId: 'absent' }),
+    ).rejects.toMatchObject({ code: 'INVALID_CHECK' });
+    await expect(
+      host.minimizeCounterexample({
+        artifact: artifact(),
+        scenario: input,
+        checkId: 'auto:one:quarantine',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_CHECK' });
+    const abort = new AbortController();
+    const pending = host.minimizeCounterexample({
+      artifact: artifact(),
+      scenario: input,
+      checkId: 'absent',
+      signal: abort.signal,
+    });
+    abort.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'ABORTED' });
+  });
+
+  it('stops reduction within both budgets and charges the baseline and final validation', async () => {
+    const input = scenario(Array.from({ length: 120 }, (_, i) => chat(`s${i}`, i, '!other')));
+    // All noise is removable; exact counters include the original and final replay.
+    input.expectations = [{ id: 'selected', stepKey: 's119', kind: 'effects', value: 1 }];
+    const reduced = await host.minimizeCounterexample({
+      artifact: artifact(),
+      scenario: input,
+      checkId: 'expect:selected',
+    });
+    expect(reduced.scenario.steps.map((s) => s.key)).toEqual(['s119']);
+    expect(reduced.attempts).toBe(9);
+    expect(reduced.dispatchedSteps).toBe(241);
+    expect(reduced.budgetStopped).toBe(false);
+    expect(reduced.run.checks.find((c) => c.id === 'expect:selected')?.actual).toBe(0);
+  });
+});
+
+describe('manifest-based rehearsal presets', () => {
+  it('builds bounded deterministic synthetic presets with actual expected host outcomes', async () => {
+    for (const preset of [
+      'proof',
+      'crowd-burst',
+      'duplicate-delivery',
+      'late-arrival',
+      'exhaustion',
+      'deadline',
+    ] as const) {
+      for (const stateful of [false, true]) {
+        const candidate = artifact(stateful);
+        const input = host.createRehearsalPreset(candidate, preset, 7);
+        expect(input).toEqual(host.createRehearsalPreset(candidate, preset, 7));
+        expect(input.steps.length).toBeLessThanOrEqual(120);
+        expect(input.provenance).toEqual({ kind: 'synthetic' });
+        const result = await host.runRehearsal({ artifact: candidate, scenario: input });
+        expect(result.status, `${preset}/${stateful}`).toBe('passed');
+        const codes = result.timeline.flatMap((f) => (f.decision ? [f.decision.code] : []));
+        if (preset === 'duplicate-delivery') expect(codes).toContain('DUPLICATE');
+        if (preset === 'exhaustion')
+          expect(codes).toContain(stateful ? 'RESOURCE_LIMIT' : 'VIEWER_LIMIT');
+        if (preset === 'deadline' && stateful)
+          expect(result.cursor.session?.phase).toBe('finished');
+      }
+    }
+  });
+
+  it('caps high-participant exhaustion before execution and rejects unsupported preset names', () => {
+    const candidate = artifact(true);
+    candidate.manifest.experience = {
+      ...definition,
+      resource: { name: 'tomatoes', perParticipant: 100 },
+    };
+    const input = host.createRehearsalPreset(candidate, 'exhaustion', 0xffff_ffff);
+    expect(input.steps).toHaveLength(102);
+    expect(() =>
+      host.createRehearsalPreset(candidate, 'unsupported' as host.RehearsalPreset, 7),
+    ).toThrow();
+    expect(() => host.createRehearsalPreset(candidate, 'proof', 0)).toThrow();
+  });
+});
+
+it('reserves final validation when the step budget stops a failure needing every contribution', async () => {
+  const input = scenario([
+    ...Array.from({ length: 119 }, (_, i) => chat(`s${i}`, i + 1, '!throw', `s${i}`, `v${i % 2}`)),
+    { kind: 'advance', key: 'selected', at: 120 },
+  ]);
+  input.expectations = [
+    { id: 'all-points', stepKey: 'selected', kind: 'score', teamId: 'community', value: 0 },
+  ];
+  const candidate = artifact(true);
+  candidate.manifest.experience = {
+    ...definition,
+    teams: [],
+    resource: { name: 'tomatoes', perParticipant: 100 },
+  };
+  const reduced = await host.minimizeCounterexample({
+    artifact: candidate,
+    scenario: input,
+    checkId: 'expect:all-points',
+  });
+  expect(reduced.budgetStopped).toBe(true);
+  expect(reduced.scenario.steps).toHaveLength(120);
+  expect(reduced.attempts).toBeLessThanOrEqual(24);
+  expect(reduced.dispatchedSteps).toBeLessThanOrEqual(2400);
+  expect(reduced.run.checks.find((c) => c.id === 'expect:all-points')).toMatchObject({
+    status: 'failed',
+    actual: 238,
+  });
+}, 60000);
+
+it('honors early cooperative completion and late participant capacity in presets', async () => {
+  const cooperative = artifact(true);
+  cooperative.manifest.experience = {
+    ...definition,
+    teams: [],
+    objective: { kind: 'collective-goal', target: 2 },
+  };
+  for (const preset of ['exhaustion', 'late-arrival'] as const) {
+    expect(
+      (
+        await host.runRehearsal({
+          artifact: cooperative,
+          scenario: host.createRehearsalPreset(cooperative, preset, 7),
+        })
+      ).status,
+    ).toBe('passed');
+  }
+  const limited = artifact(true);
+  limited.manifest.experience = { ...definition, maxParticipants: 1 };
+  expect(
+    (
+      await host.runRehearsal({
+        artifact: limited,
+        scenario: host.createRehearsalPreset(limited, 'late-arrival', 7),
+      })
+    ).timeline.at(-1)?.decision?.code,
+  ).toBe('NOT_JOINED');
+  expect(
+    (
+      await host.runRehearsal({
+        artifact: limited,
+        scenario: host.createRehearsalPreset(limited, 'late-arrival', 7),
+      })
+    ).status,
+  ).toBe('passed');
+});
+
+it('stops at 24 replays when the replay budget is tighter than the step budget', async () => {
+  const input = scenario([
+    ...Array.from({ length: 39 }, (_, i) => chat(`s${i}`, i + 1, '!throw', `s${i}`, `v${i % 2}`)),
+    { kind: 'advance', key: 'selected', at: 40 },
+  ]);
+  input.expectations = [
+    { id: 'all-points', stepKey: 'selected', kind: 'score', teamId: 'community', value: 0 },
+  ];
+  const candidate = artifact(true);
+  candidate.manifest.experience = {
+    ...definition,
+    teams: [],
+    resource: { name: 'tomatoes', perParticipant: 100 },
+  };
+  const reduced = await host.minimizeCounterexample({
+    artifact: candidate,
+    scenario: input,
+    checkId: 'expect:all-points',
+  });
+  expect(reduced.budgetStopped).toBe(true);
+  expect(reduced.attempts).toBe(24);
+  expect(reduced.dispatchedSteps).toBeLessThan(2400);
+  expect(reduced.run.checks.find((c) => c.id === 'expect:all-points')?.actual).toBe(78);
+}, 60000);

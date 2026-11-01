@@ -91,3 +91,14 @@ export {
   type RehearsalCheck,
   type RehearsalDecision,
 } from './rehearsal.js';
+export {
+  minimizeCounterexample,
+  type MinimizeCounterexampleInput,
+  type MinimizedCounterexample,
+  type RehearsalFailure,
+} from './rehearsal-minimizer.js';
+export {
+  createRehearsalPreset,
+  REHEARSAL_PRESETS,
+  type RehearsalPreset,
+} from './rehearsal-presets.js';
