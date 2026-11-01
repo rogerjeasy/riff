@@ -71,10 +71,10 @@ export function ProposalInbox({
     setBase('');
   }, []);
   const reconcile = useCallback(
-    (next: ProposalSnapshot) => {
+    (next: ProposalSnapshot, verifiedEditor?: Proposal) => {
       const current = editorRef.current;
       if (current) {
-        const p = next.proposals.find((row) => row.id === current.id);
+        const p = next.proposals.find((row) => row.id === current.id) ?? verifiedEditor;
         if (!p || !eligible(p) || p.revision !== current.revision) invalidateEditor();
         else
           setSaved((s) =>
@@ -103,14 +103,43 @@ export function ProposalInbox({
     const epoch = ++queryEpoch.current;
     setLoading(true);
     try {
-      const next = await api.proposals({
+      let next = await api.proposals({
         ...(filter ? { state: filter } : {}),
         offset,
         limit: PAGE,
       });
-      if (alive.current && epoch === queryEpoch.current) {
-        reconcile(next);
+      if (!alive.current || epoch !== queryEpoch.current) return;
+      const current = editorRef.current;
+      const editEpoch = editorEpoch.current;
+      let verifiedEditor: Proposal | undefined;
+      if (current && !next.proposals.some((row) => row.id === current.id)) {
+        // Page/filter absence is not removal. Eligible states contain at most
+        // 100 nonhidden records, so two bounded pages independently verify it.
+        for (let proofOffset = 0; proofOffset < PAGE * 2; proofOffset += PAGE) {
+          const proof = await api.proposals({
+            state: current.state,
+            offset: proofOffset,
+            limit: PAGE,
+          });
+          if (
+            !alive.current ||
+            epoch !== queryEpoch.current ||
+            editEpoch !== editorEpoch.current ||
+            editorRef.current?.id !== current.id ||
+            editorRef.current.revision !== current.revision
+          )
+            return;
+          verifiedEditor = proof.proposals.find((row) => row.id === current.id);
+          next = {
+            ...next,
+            selections: proof.selections,
+            ballots: proof.ballots,
+            grants: proof.grants,
+          };
+          if (verifiedEditor || proof.proposals.length < PAGE) break;
+        }
       }
+      if (alive.current && epoch === queryEpoch.current) reconcile(next, verifiedEditor);
     } catch (cause) {
       if (alive.current && epoch === queryEpoch.current) {
         setError(message(cause));

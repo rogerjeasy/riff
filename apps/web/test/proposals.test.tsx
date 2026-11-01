@@ -455,3 +455,143 @@ it.each(['moderation', 'ballot'] as const)(
     expect(api.proposals).toHaveBeenCalledTimes(2);
   },
 );
+
+it.each(['valid', 'page-two', 'full-absent', 'hidden', 'stale', 'revoked'] as const)(
+  'keeps the saved Shortlisted handoff only with authoritative eligible evidence: %s',
+  async (mode) => {
+    let selectedOnServer = false;
+    let emptyShortlistReads = 0;
+    const initial = snapshot();
+    const selected = proposal('p1', 'selected', 3);
+    const savedSelection = { ...selection, revokedAt: mode === 'revoked' ? 4 : null };
+    vi.spyOn(api, 'proposals').mockImplementation(async (query) => {
+      if (!selectedOnServer) return initial as never;
+      const latest = { ...snapshot([]), selections: [savedSelection] };
+      if (query.state === 'shortlisted') {
+        emptyShortlistReads++;
+        return latest as never;
+      }
+      if (query.state === 'selected') {
+        if ((mode === 'page-two' && query.offset === 0) || mode === 'full-absent')
+          return {
+            ...latest,
+            proposals: Array.from({ length: 50 }, (_, index) =>
+              proposal(`other${index}`, 'selected', 1),
+            ),
+          } as never;
+        return {
+          ...latest,
+          proposals: mode === 'hidden' ? [] : [{ ...selected, revision: mode === 'stale' ? 4 : 3 }],
+        } as never;
+      }
+      return latest as never;
+    });
+    vi.spyOn(api, 'selectProposal').mockImplementation(async () => {
+      selectedOnServer = true;
+      return { selection } as never;
+    });
+    vi.spyOn(api, 'generateSelection').mockResolvedValue({
+      id: 'exact-run',
+      stage: 'queued',
+      selectionId: 's1',
+    } as never);
+    const p = props();
+    const refresh = vi.fn(async () => {
+      // Studio's bounded first page need not contain this selected proposal either.
+      rerender(
+        <ProposalInbox
+          {...({
+            ...p,
+            refresh,
+            studio: { ...p.studio, proposals: { ...snapshot([]), selections: [savedSelection] } },
+          } as unknown as Parameters<typeof ProposalInbox>[0])}
+        />,
+      );
+    });
+    const { rerender } = render(
+      <ProposalInbox {...({ ...p, refresh } as unknown as Parameters<typeof ProposalInbox>[0])} />,
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.change(screen.getByLabelText('Proposal state'), { target: { value: 'shortlisted' } });
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review brief' }));
+    fireEvent.change(screen.getByLabelText('Reviewed brief'), {
+      target: { value: selection.brief },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save selection' }));
+    await waitFor(() => expect(emptyShortlistReads).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect((screen.getByLabelText('Proposal state') as HTMLSelectElement).value).toBe(
+      'shortlisted',
+    );
+    if (mode === 'valid' || mode === 'page-two') {
+      expect((screen.getByLabelText('Reviewed brief') as HTMLTextAreaElement).value).toBe(
+        selection.brief,
+      );
+      if (mode === 'page-two')
+        expect(api.proposals).toHaveBeenCalledWith({ state: 'selected', offset: 50, limit: 50 });
+      fireEvent.click(screen.getByRole('button', { name: 'Generate selected brief' }));
+      await waitFor(() => expect(api.generateSelection).toHaveBeenCalledWith('s1'));
+      expect(api.generateSelection).toHaveBeenCalledTimes(1);
+    } else {
+      if (mode === 'full-absent')
+        expect(
+          vi.mocked(api.proposals).mock.calls.filter(([q]) => q.state === 'selected'),
+        ).toHaveLength(2);
+      expect(screen.queryByLabelText('Reviewed brief')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Generate selected brief' })).toBeNull();
+    }
+  },
+);
+
+it.each(['editor', 'query'] as const)(
+  'ignores an off-page eligibility lookup after the %s changes',
+  async (change) => {
+    let resolve!: (value: unknown) => void;
+    const selected = { ...snapshot([proposal('p1', 'selected', 3)]), selections: [selection] };
+    let reads = 0;
+    vi.spyOn(api, 'proposals').mockImplementation(async (query) => {
+      if (query.state === 'selected')
+        return (await new Promise<unknown>((done) => {
+          resolve = done;
+        })) as never;
+      return (++reads === 1 ? selected : { ...selected, proposals: [] }) as never;
+    });
+    const p = { ...props(), studio: { ...props().studio, proposals: selected } };
+    render(<ProposalInbox {...(p as unknown as Parameters<typeof ProposalInbox>[0])} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Review brief' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh inbox' }));
+    await waitFor(() =>
+      expect(api.proposals).toHaveBeenCalledWith({ state: 'selected', offset: 0, limit: 50 }),
+    );
+    if (change === 'editor') fireEvent.click(screen.getByRole('button', { name: 'Close brief' }));
+    else fireEvent.change(screen.getByLabelText('Proposal state'), { target: { value: 'hidden' } });
+    await act(async () => resolve(selected));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    expect(screen.queryByLabelText('Reviewed brief')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Generate selected brief' })).toBeNull();
+    if (change === 'query')
+      expect((screen.getByLabelText('Proposal state') as HTMLSelectElement).value).toBe('hidden');
+  },
+);
