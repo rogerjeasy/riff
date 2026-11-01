@@ -585,3 +585,34 @@ it('labels the local view with partner roles from the approved agreement only', 
   expect(member.status().projection?.partners).toEqual(['Repair shields']);
   expect(published.at(-1)).toMatchObject({ partners: ['Repair shields'] });
 }, 30000);
+
+it('treats a safety stop without any membership as a no-op, keeping earlier explanations', async () => {
+  const s = setup();
+  const member = createCollaborationMember({
+    database: s.database,
+    repo: s.repo,
+    sealer: createSealer('test-key-material-for-shared-session-members'),
+    identity: () => '200',
+    ready: () => true,
+    blocked: () => false,
+    transport: s.peer,
+    publish: () => undefined,
+    now: () => 1000,
+  });
+  cleanup.push(() => member.close());
+  // e.g. Twitch reconnecting while this channel was never in a shared round
+  member.stop('Your channel stopped. Request a new invitation to rejoin.');
+  expect(member.status()).toMatchObject({ state: 'idle', reason: null });
+
+  const session = await s.coordinator.create(s.version.id, s.roles);
+  const invite = s.coordinator.invite(session.contract.id, 'steer');
+  const review = await member.review('https://coordinator.example', invite.token);
+  await member.approve(review.contract.digest);
+  member.stop();
+  expect(member.status()).toMatchObject({
+    state: 'stopped',
+    reason: 'You left this shared experience.',
+  });
+  member.stop('Your channel stopped. Request a new invitation to rejoin.');
+  expect(member.status().reason).toBe('You left this shared experience.');
+}, 30000);

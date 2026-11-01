@@ -19,6 +19,11 @@ export function LivePanel(props: {
   notify: (message: string, kind?: 'good' | 'bad') => void;
 }) {
   const { studio } = props;
+  // A draft whose every version was discarded was never live and has nothing left to
+  // show or approve; listing it would read as a second "Not live yet" interaction.
+  const shownAutomations = studio.automations.filter(
+    (a) => a.status !== 'draft' || a.versions.some((v) => v.status !== 'discarded'),
+  );
   const [confirmReset, setConfirmReset] = useState<string | null>(null);
   const act = async (fn: () => Promise<unknown>, success: string) => {
     try {
@@ -41,13 +46,13 @@ export function LivePanel(props: {
           <h2 id="live-heading">Your interactions</h2>
         </div>
       </header>
-      {studio.automations.length === 0 ? (
+      {shownAutomations.length === 0 ? (
         <p className="empty">
           Nothing yet. Describe your first interaction — it stays private until you approve it.
         </p>
       ) : (
         <ul className="library">
-          {studio.automations.map((automation) => {
+          {shownAutomations.map((automation) => {
             const active = automation.versions.find((v) => v.id === automation.activeVersionId);
             const shown = active ?? automation.versions[0];
             const t = shown?.manifest.trigger;

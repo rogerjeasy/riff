@@ -417,6 +417,10 @@ export function createCollaborationMember(deps: {
       const c = connection;
       const wasActive = state === 'connected' || state === 'paused' || approving;
       fence();
+      // Nothing to stop (no membership, review or approval in flight): a safety stop, such
+      // as a Twitch reconnect, must not report "your channel stopped" or overwrite an
+      // earlier explanation like "You left this shared experience."
+      if (!c && !approving && !reviewing) return;
       state = 'stopped';
       reason = message;
       review = null;
