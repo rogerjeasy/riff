@@ -1,3 +1,11 @@
+import {
+  TWITCH_ACTION_CAPABILITIES,
+  type AnnouncementRequest,
+  type PollRequest,
+  type ShoutoutRequest,
+  type TwitchAction,
+} from './twitch-actions.js';
+
 /** Public SDK version. 0.4.0 adds host-owned stateful sessions; 0.3.0 remains supported. */
 export const SDK_VERSION = '0.4.0' as const;
 
@@ -22,7 +30,7 @@ export const HOST_LIMITS = Object.freeze({
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
-export const CAPABILITIES = ['overlay', 'session'] as const;
+export const CAPABILITIES = ['overlay', 'session', ...TWITCH_ACTION_CAPABILITIES] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
 export const AUDIENCE_ROLES = ['viewer', 'subscriber', 'moderator', 'broadcaster'] as const;
@@ -128,6 +136,20 @@ export interface AutomationContext {
     /** Queue a bounded projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
     emit(effect: ProjectileEffect): Promise<void>;
   };
+  polls: {
+    /** Queue a host-validated Twitch poll. Example: await riff.polls.start({title:'Next game?',choices:['A','B'],durationSeconds:60}). */
+    start(poll: PollRequest): Promise<void>;
+    /** Queue ending the poll this channel's Riff started. Example: await riff.polls.end(). */
+    end(): Promise<void>;
+  };
+  chat: {
+    /** Queue a budgeted chat announcement. Example: await riff.chat.announce({message:'Round two!',color:'purple'}). */
+    announce(announcement: AnnouncementRequest): Promise<void>;
+  };
+  shoutout: {
+    /** Queue a shoutout to a creator-approved channel. Example: await riff.shoutout.send({login:'twitchdev'}). */
+    send(target: ShoutoutRequest): Promise<void>;
+  };
   util: {
     /** Recorded event time. Example: const at = riff.util.now(). */
     now(): number;
@@ -192,6 +214,8 @@ export interface ExecutionDecision {
   code: DecisionCode;
   reason: string;
   effects: ProjectileEffect[];
+  /** Staged native Twitch actions; present only when non-empty. Preview never sends them. */
+  actions?: TwitchAction[];
   mode: ExecutionMode;
   viewerId: string | null;
   at: number | null;
@@ -275,3 +299,4 @@ export type {
 export type * from './recipes.js';
 export type * from './participation.js';
 export type * from './production.js';
+export * from './twitch-actions.js';

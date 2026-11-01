@@ -16,3 +16,9 @@ the existing allowance; it is an offline recording, not a model execution.
 prompt pack 6, with bounded private rehearsal evidence and a two-effect repair.
 It records no live model call. Compiler contract tests validate the request/output;
 server tests verify the response against immutable independent regression inputs.
+
+`twitch-actions.json` records the deterministic offline outputs for prompt pack 7's
+native Twitch actions: an owner-only poll, a viewer-triggered announcement and a
+fixed-target shoutout. The compiler test replays them byte for byte and the server
+capability-sync test verifies each through the sandbox pipeline. No live model call.
+`rehearsal-repair.json` was re-validated unchanged against prompt pack 7.

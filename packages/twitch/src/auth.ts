@@ -15,6 +15,19 @@ export const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
  */
 export const CHAT_READ_SCOPES: readonly string[] = TRIGGERS['chat.message'].scopes;
 
+/**
+ * Feature-specific scopes, requested separately and only when the creator enables that
+ * feature. Each value is the scope the endpoint documents for a user access token:
+ * Create/End Poll and Get Polls (https://dev.twitch.tv/docs/api/reference/#create-poll),
+ * Send Chat Announcement (#send-chat-announcement), Send a Shoutout (#send-a-shoutout).
+ */
+export const TWITCH_FEATURE_SCOPES = Object.freeze({
+  polls: ['channel:manage:polls'],
+  announcements: ['moderator:manage:announcements'],
+  shoutouts: ['moderator:manage:shoutouts'],
+} as const satisfies Record<string, readonly string[]>);
+export type TwitchFeature = keyof typeof TWITCH_FEATURE_SCOPES;
+
 export interface TwitchTokenSet {
   readonly accessToken: string;
   readonly refreshToken: string;

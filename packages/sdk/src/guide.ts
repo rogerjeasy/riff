@@ -5,8 +5,9 @@
 export const SDK_GUIDE = `# Riff SDK 0.4.0 — handler contract
 
 Compatibility: existing 0.3.0 projectile artifacts retain their rolling allowance
-semantics and artifact identity. 0.4.0 adds canonical host-owned sessions. 0.2.0
-artifacts must be regenerated.
+semantics and artifact identity. 0.4.0 adds canonical host-owned sessions and,
+additively, the native Twitch capabilities polls, chat.announce and shoutout; existing
+0.4.0 artifacts keep their identity and behavior. 0.2.0 artifacts must be regenerated.
 
 ## Handler
 
@@ -78,6 +79,37 @@ and finished rounds return SESSION_PAUSED and SESSION_FINISHED. At exactly the
 deadline the session finishes before contribution; a cooperative goal finishes on
 the contribution reaching its target. Host cosmetic budgets may suppress effects
 while returning ACCEPTED and preserving canonical semantic progress.
+
+## Native Twitch actions (SDK 0.4.0)
+
+These calls only STAGE a request and resolve immediately (Promise<void>). The host
+validates it, applies your manifest limits, the channel budget and Twitch's documented
+caps, then performs it itself; previews and tests use a simulated sink and never reach
+Twitch. Each staged action counts as one effect for effectsPerEvent, effectsPerMinute
+and viewer allowances. At most 2 native actions per event, at most one poll call and
+one shoutout per event. They require sdkVersion:'0.4.0'. Invalid requests quarantine.
+
+\`riff.polls.start({ title, choices, durationSeconds }): Promise<void>\` (capability \`polls\`)
+starts a Twitch poll: title 1..60 characters, 2..5 unique choices of 1..25 characters,
+durationSeconds 15..1800. \`riff.polls.end(): Promise<void>\` ends the poll Riff started.
+The channel must be an Affiliate or Partner and runs one poll at a time; the host
+reports refusals in the console. Example:
+\`await riff.polls.start({ title: 'Next challenge?', choices: ['Speedrun', 'Hardcore'], durationSeconds: 120 })\`
+
+\`riff.chat.announce({ message, color? }): Promise<void>\` (capability \`chat.announce\`)
+posts a highlighted chat announcement: message 1..500 characters without control
+characters; color is blue, green, orange, purple or primary (default). Example:
+\`await riff.chat.announce({ message: 'Round two starts now!', color: 'purple' })\`
+
+\`riff.shoutout.send({ login }): Promise<void>\` (capability \`shoutout\`) shouts out a
+channel by lowercase login ^[a-z0-9_]{1,25}$. The creator's shoutout policy decides
+which channels are allowed (an approved list, or recent raiders only); anything else is
+refused by the host. Twitch allows one shoutout every 2 minutes and the same channel
+once an hour. Example: \`await riff.shoutout.send({ login: 'twitchdev' })\`
+
+Manifests declaring \`polls\` or \`shoutout\` must restrict trigger.audience to moderator
+and/or broadcaster. \`chat.announce\` may use any audience; keep effectsPerMinute low
+(the host channel budget is 6 announcements per minute across all interactions).
 
 ## Permission manifest
 
@@ -161,6 +193,12 @@ export const RIFF_DTS = `declare module 'riff' {
     /** Read deeply frozen staged state. Example: riff.session.snapshot().scores.community. */
     session: { snapshot(): Readonly<SessionSnapshot> };
     overlay: { emit(effect: ProjectileEffect): Promise<void> };
+    /** Stage a host-validated Twitch poll. Example: await riff.polls.start({title:'Next?',choices:['A','B'],durationSeconds:60}). */
+    polls: { start(poll: { title: string; choices: string[]; durationSeconds: number }): Promise<void>; end(): Promise<void> };
+    /** Stage a budgeted announcement. Example: await riff.chat.announce({message:'Go!',color:'purple'}). */
+    chat: { announce(a: { message: string; color?: 'blue' | 'green' | 'orange' | 'purple' | 'primary' }): Promise<void> };
+    /** Stage a shoutout to a creator-approved channel. Example: await riff.shoutout.send({login:'twitchdev'}). */
+    shoutout: { send(target: { login: string }): Promise<void> };
     util: { now(): number; random(): number };
   }
   export type Handler = (event: ChatEvent, riff: Riff) => void | Promise<void>;

@@ -2,10 +2,11 @@ import { SDK_VERSION, type AudienceRole, type ProjectileAsset, type Scenario } f
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
 import { compileExperienceOffline } from './experience-output.js';
+import { compileTwitchActionOffline } from './twitch-intents.js';
 import type { CompilerTransport } from './transport.js';
 
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|timer|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|prediction|timer|ban|timeout|channel points?|redeem|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -123,6 +124,8 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     behavior: { when: '', what: '', who: '', howMuch: '' },
     assumptions: [],
   };
+  const native = compileTwitchActionOffline(request);
+  if (native) return native;
   const experience = compileExperienceOffline(request);
   if (UNSUPPORTED.test(request.intent) || (!experience && /\bcountdown\b/i.test(request.intent)))
     return {
@@ -131,7 +134,7 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff supports overlay projectiles and bounded score sessions.',
+        'Chat replies, sounds, predictions, timers and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, Twitch polls, chat announcements and approved shoutouts.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;

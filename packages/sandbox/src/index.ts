@@ -13,6 +13,7 @@ export {
   type Incident,
 } from './engine.js';
 export {
+  actionSchema,
   artifactSchema,
   effectSchema,
   eventSchema,
@@ -23,6 +24,7 @@ export {
 export {
   analyzeSource,
   hostScenarios,
+  outputCount,
   runScenarios,
   verifyCandidate,
   type Finding,

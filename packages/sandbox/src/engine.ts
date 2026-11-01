@@ -8,12 +8,14 @@ import {
   type ExecutionDecision,
   type ExecutionMode,
   type ProjectileEffect,
+  type TwitchAction,
+  TWITCH_ACTION_LIMITS,
   type SessionSnapshot,
 } from '@riff/sdk';
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
-import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { actionSchema, artifactSchema, eventSchema, effectSchema } from './contract.js';
 
 export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   ACCEPTED: 'Accepted. The effect was staged.',
@@ -40,6 +42,7 @@ const workerReply = z
     id: z.number().int(),
     ok: z.boolean(),
     effects: z.array(effectSchema).max(EFFECT_LIMITS.perEvent),
+    actions: z.array(actionSchema).max(TWITCH_ACTION_LIMITS.perEvent),
     cpuMicros: z.number().nonnegative(),
     fault: z.string().max(200).nullable(),
   })
@@ -128,6 +131,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code: DecisionCode,
     extra: {
       effects?: ProjectileEffect[];
+      actions?: TwitchAction[];
       viewerId?: string;
       at?: number;
       allowance?: AllowanceSnapshot;
@@ -139,6 +143,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code,
     reason: extra.reason ?? DECISION_MESSAGES[code],
     effects: extra.effects ?? [],
+    ...(extra.actions?.length ? { actions: extra.actions } : {}),
     mode,
     viewerId: extra.viewerId ?? null,
     at: extra.at ?? null,
@@ -279,7 +284,9 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     const reply = await execute(event, eventSeed);
     if (stopped) return decision(event.id, 'STOPPED', base);
     if (reply) lastCpuMicros = reply.cpuMicros;
-    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+    // Staged native Twitch actions count as effects for every automation limit.
+    const outputs = reply ? reply.effects.length + reply.actions.length : 0;
+    if (!reply?.ok || outputs > limits.effectsPerEvent) {
       disabled = true;
       discardWorker();
       incident = {
@@ -292,19 +299,22 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
         reason: `${DECISION_MESSAGES.INCIDENT} Cause: ${incident.fault}.`,
       });
     }
-    if (reply.effects.length > remaining)
+    if (outputs > remaining)
       return decision(event.id, 'CHANNEL_LIMIT', {
         ...base,
         allowance: allowance(history, event.at),
       });
-    if (reply.effects.length) {
+    if (outputs) {
       history.push(event.at);
-      state.effects.push(...reply.effects.map(() => event.at));
-      shared?.effects.push(...reply.effects.map(() => event.at));
+      for (let i = 0; i < outputs; i++) {
+        state.effects.push(event.at);
+        shared?.effects.push(event.at);
+      }
     }
     return decision(event.id, 'ACCEPTED', {
       ...base,
       effects: reply.effects,
+      actions: reply.actions,
       allowance: allowance(history, event.at),
     });
   }
@@ -390,7 +400,8 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     const reply = await execute(event, eventSeed, staged);
     if (stopped) return decision(event.id, 'STOPPED', base);
     if (reply) lastCpuMicros = reply.cpuMicros;
-    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+    const outputs = reply ? reply.effects.length + reply.actions.length : 0;
+    if (!reply?.ok || outputs > limits.effectsPerEvent) {
       session = before;
       disabled = true;
       discardWorker();
@@ -412,19 +423,24 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       limits.effectsPerMinute - effectBudget.effects.length,
       shared ? shared.perMinute - shared.effects.length : Infinity,
     );
-    const effects = reply.effects.length <= remaining ? reply.effects : [];
-    effectBudget.effects.push(...effects.map(() => event.at));
-    shared?.effects.push(...effects.map(() => event.at));
+    const fits = outputs <= remaining;
+    const effects = fits ? reply.effects : [];
+    const actions = fits ? reply.actions : [];
+    for (let i = 0; i < effects.length + actions.length; i++) {
+      effectBudget.effects.push(event.at);
+      shared?.effects.push(event.at);
+    }
     return decision(event.id, 'ACCEPTED', {
       ...base,
       effects,
+      actions,
       allowance: {
         used: participant.contributions,
         max: experience.resource.perParticipant,
         windowMs: experience.durationMs,
         nextAt: null,
       },
-      ...(effects.length < reply.effects.length
+      ...(!fits && outputs
         ? { reason: 'Contribution accepted; visual effects suppressed by the channel budget.' }
         : {}),
     });

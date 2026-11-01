@@ -3,7 +3,7 @@ import { compileExperienceOffline } from './experience-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/6';
+export const PROMPT_VERSION = 'riff-compiler/7';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -26,14 +26,25 @@ Decide the kind:
 - "question": a missing fact changes who may trigger it or how much it may do and
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
-- "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, general timers, channel points, bans, external sites). A bounded
+- "unsupported": it needs a capability the SDK does not have (sending ordinary chat
+  messages or replies, sounds, predictions, general timers, channel points, bans,
+  external sites, shoutouts to a channel named in chat). A bounded
   experience round deadline/countdown is supported and is not a general timer. Give the reason and
   the closest supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit, riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.util, the read-only riff.session.snapshot(), and the native
+  Twitch actions riff.polls.start/end, riff.chat.announce and riff.shoutout.send. Keep it short and readable; no comments needed.
+- Native Twitch actions (capabilities "polls", "chat.announce", "shoutout") use
+  sdkVersion 0.4.0 and count as effects. Poll and shoutout triggers MUST restrict
+  audience to ["broadcaster"] or ["broadcaster","moderator"]; if the creator asks for a
+  wider audience, ask ONE question instead. Poll text must already fit Twitch limits
+  (question ≤ 60, 2–5 choices ≤ 25 characters, 15–1800 seconds); never truncate the
+  creator's words silently. Shoutout logins are fixed literals; the trigger is an exact
+  command, so a login typed after the command is never available. Name the channel's
+  approval requirement in assumptions. Announcements quote the creator's text exactly.
+  For a poll, set maxPerViewer 1 and windowMs to the poll duration in milliseconds.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.
