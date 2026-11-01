@@ -40,11 +40,11 @@ https://<streamer>.<base-domain>
 | `infra/deploy/known_hosts`              | Pinned SSH host keys; any other key aborts the deploy.               |
 | `infra/deploy/bootstrap.sh`             | First boot of a new host (swap, Docker, directories).                |
 
-| Secret                | Contents                                                                                         | Managed by                       |
-| --------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------- |
-| `riff/prod/streamers` | Per streamer: `RIFF_SECRET`, console password (+ bcrypt) and sign-in token                       | Terraform (generated)            |
-| `riff/prod/shared`    | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `RIFF_COMPILER_MODE`, `OPENAI_API_KEY`, `ACME_EMAIL` | You (Terraform only creates it)  |
-| `riff/prod/deploy`    | SSH private key for the `riff-deploy` Lightsail key pair                                         | Uploaded once by `first-time.sh` |
+| Secret                | Contents                                                                                                                                                            | Managed by                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `riff/prod/streamers` | Per streamer: `RIFF_SECRET`, console password (+ bcrypt) and sign-in token                                                                                          | Terraform (generated)                                                                   |
+| `riff/prod/shared`    | `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET`, `RIFF_COMPILER_MODE` (`codex` or `mock`), `RIFF_COMPILER_EFFORT`, `RIFF_COMPILER_MODEL`, `OPENAI_API_KEY`, `ACME_EMAIL` | You (Terraform only creates it). Mirrors the integration settings of your local `.env`. |
+| `riff/prod/deploy`    | SSH private key for the `riff-deploy` Lightsail key pair                                                                                                            | Uploaded once by `first-time.sh`                                                        |
 
 ## One-time setup
 

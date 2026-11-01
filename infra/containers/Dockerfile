@@ -7,6 +7,11 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
 FROM node:22.23.2-bookworm-slim AS runtime
+# The Codex CLI verifies TLS against the system certificate store, which the slim image
+# lacks (Node.js bundles its own, so only the compiler is affected).
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production RIFF_HOST=0.0.0.0 RIFF_ALLOW_REMOTE=true RIFF_PORT=8787
 ENV RIFF_DB_PATH=/opt/riff/data/riff.db RIFF_COMPILER_MODE=mock
 WORKDIR /opt/riff/apps/server
