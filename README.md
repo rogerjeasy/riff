@@ -190,6 +190,52 @@ This uses chat ballots and the existing read-only overlay, with no additional Tw
 scopes or outbound chat messages. The creator console retains the existing local
 operator trust model. See the [F33 design](docs/superpowers/specs/2026-11-01-audience-co-creation-design.md).
 
+## Interactive rehearsal — F34
+
+Choose **Open interactive studio** in the private preview card. The studio keeps a
+scenario's seed, logical origin and inputs fixed while you play, step or seek its
+timeline. Each seek replays the prefix
+in a fresh private engine, including duplicate protection and allowance windows.
+Inspect decisions, effects, scores, remaining resources and explicit expectations.
+The original quick proof remains available.
+
+Start with a proof, crowd burst, duplicate delivery, late arrival, exhaustion or
+deadline preset. Add synthetic chat with a chosen viewer and roles, or explicit
+clock and session controls. Save the scenario, then compare two versions with the
+same inputs and seed. A fresh-start comparison is rehearsal evidence; preserving a
+live round still uses the separate F32 transition review.
+
+To exercise the repair loop with Tomato Toss:
+
+1. Choose the **exhaustion** preset and **Load preset**. In **Explicit expectations**,
+   expect the fourth throw's decision to be **ACCEPTED**, then **Save scenario**.
+2. Choose **Run to end**. The host reports the expected/actual mismatch.
+3. **Reduce selected failure**, inspect the retained inputs, then **Save regression**.
+4. Review a repair intent, such as allowing four throws, and **Generate repair candidate**.
+   The existing compiler and independent checks run again, including the saved
+   regression. Rehearse and approve the exact resulting candidate through the normal
+   workflow. Saving or reducing a failure never starts generation or activation.
+
+Saved regressions are immutable and survive deletion of their source scenario.
+Future descendants of their origin version check a pinned set; a failing check
+blocks candidate approval. Existing approved versions retain their previous evidence.
+A passing run proves only the inputs and checks shown.
+
+Current-round recording imports anonymize identities, preserve roles and duplicate
+relationships, and retain only recognized interaction commands. Other chat becomes a
+fixed marker. Imports require a complete single-version journal of at most 120 steps;
+oversized or migration-spanning recordings are rejected. Sanitized cosmetic randomness
+can differ from the original stream, so this is not a byte-identical live audit.
+
+Bounds: 120 steps, 20 expectations, 128 KiB per scenario and 256 KiB per replay result;
+50 scenarios, 100 retained runs and 50 regressions per channel, with at most 10
+applicable regressions per automation. One expensive operation per channel has a
+60-second deadline. Reduction uses at most 24 replays and 2,400 steps, including
+baseline and final validation, and reports when its budget stops it. It does not
+claim a globally smallest failure. Nothing in rehearsal sends to live destinations.
+
+See the [F34 design](docs/superpowers/specs/2026-11-01-interactive-rehearsal-design.md).
+
 ## How it is built
 
 ```text

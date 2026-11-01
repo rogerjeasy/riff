@@ -20,5 +20,24 @@ duplicate, audience and reachable bounded cooperative target checks from the man
 Call `advanceSession(snapshot, at, definition)` (or `pauseSession` with the same third
 argument) to report `winner:null` for an expired cooperative goal that was not reached.
 
+F34 rehearsal uses `runRehearsal({artifact, scenario, through, signal})`. A cursor
+counts applied steps; zero is the fixed origin. Every request creates a fresh private
+engine and replays that prefix, restoring admission windows, duplicate identities and
+seeded effects along with session state. Chat delivery IDs may repeat; scenario step
+keys must be unique. Explicit advance/pause/resume controls cannot rewind the clock.
+Results contain compact timeline decisions, one cursor snapshot, deterministic hashes,
+explicit expectation checks and automatic quarantine/consistency checks.
+
+`createRehearsalPreset` supplies proof, crowd-burst, duplicate-delivery, late-arrival,
+exhaustion and deadline inputs from the artifact's manifest. Scenarios are bounded to
+120 steps, 20 expectations and 128 KiB; results to 256 KiB. The SDK guest surface is
+unchanged. No live engine, repository or destination is accepted by these APIs.
+
+`minimizeCounterexample` preserves the selected check's identity, expected value and
+actual failure while removing inputs. Its 24-replay/2,400-step budget includes baseline
+and final validation. The returned counters and `budgetStopped` explain the reduction;
+the result is not a claim of global minimality. Cancellation stops the private worker.
+The server owns deadlines, channel concurrency, persistence and recording sanitization.
+
 Run `pnpm build:packages` before tests: workers execute the compiled JavaScript artifact.
 See [the SDK](../sdk/SDK.md) for supported contracts and bounds.

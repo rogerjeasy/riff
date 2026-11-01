@@ -392,7 +392,8 @@ Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, 
 `admission_events`, `session_transitions`, `proposals`, `proposal_contributors`,
 `proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
-`proposal_generation_runs`.
+`proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
+`rehearsal_regressions`.
 
 ---
 
@@ -589,3 +590,54 @@ one open ballot, 15–600 seconds and 10,000 votes/ballot; 100 grants. Receipts 
 seven days with a 10,000/channel capacity and fail-closed admission. Private response
 pages cap at 50; public outcomes/selections at five and attributed names at five.
 No SDK changes, dependencies, new Twitch scopes or outbound chat API were added.
+
+## Interactive rehearsal — F34
+
+Host-only versioned rehearsal scenarios fix seed, logical origin, optional initial
+session, ordered chat/control steps and explicit expectations. Fresh prefix replay
+reconstructs admission windows, dedupe and random effects as well as gameplay state.
+A cursor counts applied steps. Compact timeline frames plus one cursor snapshot
+carry deterministic scenario/evidence hashes. Automatic quarantine and consistency
+checks are distinct from ordinary quota rejections and creator expectation failures.
+The SDK guest contract is unchanged; rehearsal accepts no live engine or destination.
+
+Channel-scoped scenario records use revision CAS; runs and saved regressions retain
+immutable exact artifact/input/check evidence. The private `/api/rehearsals` routes
+use the existing local-operator guard, strict bounded bodies and no-store responses.
+They resolve executable artifacts from owned versions, never from client source.
+Limits are 120 steps, 20 expectations, 128 KiB/scenario, 256 KiB/replay result,
+50 scenarios, 100 retained runs and 50 regressions/channel, and 10 applicable
+regressions/automation. Expensive operations have one slot/channel and a 60-second
+deadline; cancellation and shutdown stop private workers.
+
+Recording import reads a bounded complete single-version journal with a valid start.
+It anonymizes viewer/event identities consistently, preserves roles and duplicate
+relationships, substitutes a private channel and replaces unrelated chat with a fixed
+marker. Raw names, account IDs, unrelated chat and credentials never enter imported
+scenario/compiler content. Migration-spanning and oversized journals are unsupported.
+Only the host grants recorded provenance; edits become synthetic derivatives.
+Sanitized cosmetics are not claimed to reproduce the live recording byte for byte.
+
+Comparisons use identical inputs and seed; initial snapshots must validate against
+both versions or the creator explicitly chooses fresh start. This is not F32 migration
+evidence. Failure reduction pins the selected failed check and expected/actual values,
+counts baseline and final validation within 24 replays/2,400 steps, and reports budget
+exhaustion. Unchanged results retain valid original provenance; changed derivatives
+must fit the same byte cap. No global minimality guarantee is made.
+
+Saving a regression does not generate code. Explicit repair uses reviewed intent and
+bounded quoted evidence through the existing authoring pipeline. Future descendant
+compiles pin applicable regressions before generation and independently replay those
+inputs; failed checks set the existing verification blocker. Candidate evidence names
+the exact checked set. Generated tests cannot weaken saved expectations, and F33
+ancestry plus the single automatic repair limit remain in force. Prior approvals are
+not retroactively revoked. No rehearsal action automatically activates a version.
+Compiler context is separate from creator intent and capped at 96 KiB after JSON
+serialization. Scenario samples may be partial or omitted to fit; their labels say so.
+The independent host always checks the complete pinned scenarios.
+
+The console preserves quick proof and adds scenario editing, private timeline controls,
+state/check inspection, synchronized comparison and separate reduction/save/repair
+actions. Aborts and request epochs prevent stale responses from supplying evidence for
+another version. Only a complete nonempty passing primary replay marks its exact
+artifact previewed. Repair candidates return to the existing evidence/review flow.
