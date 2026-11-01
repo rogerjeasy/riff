@@ -24,16 +24,16 @@ Installed Fastify plugins and client libraries are not all registered or invoked
 
 ## Configured but pending environment verification
 
-| Check / tool                      | Observed limitation and next action                                                                                                                                          |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Browser / accessibility execution | The session denies binding `127.0.0.1:8788` with `EPERM`, before browser assertions run. Run `pnpm test:e2e` from a permitted terminal or CI. No browser-pass claim is made. |
-| npm advisory audit                | Registry security endpoint DNS failed. Run `pnpm security:audit` with registry access; no clean-audit claim is made.                                                         |
-| Docker                            | CLI 29.8.1 exists, but daemon/socket access is denied in the session. Compose is absent. Container builds, runtime health and image hardening remain unverified.             |
-| Compose, Trivy, restic, Caddy     | Not installed as host executables. Optional macOS installation definitions are in `infra/Brewfile`; use them when enabling those operations.                                 |
-| Monitoring                        | Prometheus 3.15.1 / Grafana 13.3.0 Compose templates and datasource are configured; images have not been pulled or started. Application metrics remain unimplemented.        |
-| OBS / creator tools               | No GUI installation or connection was performed. OBS, Streamer.bot and Firebot require their supported local environment and later adapter implementation.                   |
-| Hosted isolation / backups        | Responsibility folders and contracts exist; gVisor, restricted workers, backup jobs and restore drills are not implemented.                                                  |
-| CI / registry                     | A workflow with pinned action revisions exists. No remote repository, CI run, GHCR push or deployment has occurred.                                                          |
+| Check / tool                      | Observed limitation and next action                                                                                                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser / accessibility execution | The session denies binding `127.0.0.1:8788` with `EPERM`, before browser assertions run. Run `pnpm test:e2e` from a permitted terminal or CI. No browser-pass claim is made.                                  |
+| npm advisory audit                | Registry security endpoint DNS failed. Run `pnpm security:audit` with registry access; no clean-audit claim is made.                                                                                          |
+| Docker                            | CLI 29.8.1 exists, but daemon/socket access is denied in the session. Compose is absent. Container builds, runtime health and image hardening remain unverified.                                              |
+| Compose, Trivy, restic, Caddy     | Not installed as host executables. Optional macOS installation definitions are in `infra/Brewfile`; use them when enabling those operations.                                                                  |
+| Monitoring                        | Prometheus 3.15.1 / Grafana 13.3.0 Compose templates and datasource are configured; images have not been pulled or started. Application metrics remain unimplemented.                                         |
+| OBS / creator tools               | No GUI installation or connection was performed. OBS, Streamer.bot and Firebot require their supported local environment and later adapter implementation.                                                    |
+| Hosted isolation / backups        | Responsibility folders and contracts exist; gVisor, restricted workers, backup jobs and restore drills are not implemented.                                                                                   |
+| CI / registry                     | A workflow with pinned action revisions runs fast key checks only (format, lint, types, `test:ci`, tooling, secrets); full tests, build, e2e and audits run locally. No GHCR push or deployment has occurred. |
 
 The default development dependency setup is usable without those conditional operations tools. Full `setup:verify` remains pending until the browser environment permits execution. See [setup instructions](setup.md) for exact commands and [foundation decisions](decisions/0001-workspace-foundation.md) for tradeoffs and deprecated dependency follow-up.
 

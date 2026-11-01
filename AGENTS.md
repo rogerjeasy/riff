@@ -369,6 +369,7 @@ Current commands (use `./scripts/pnpm` for this checkout's local toolchain):
 pnpm dev              server (:8787) and web (:5173)
 pnpm build            packages, server and three browser entries
 pnpm test             trusted host, runtime, private replay and DOM tests
+pnpm test:ci          fast key subset run by CI (contracts, sandbox boundary, host guards)
 pnpm test:tooling      workspace graph and source-boundary tests
 pnpm test:e2e          Chromium/axe checks; requires local sockets
 pnpm lint             ESLint plus architecture boundary enforcement

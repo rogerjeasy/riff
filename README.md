@@ -299,6 +299,7 @@ until explicitly resumed.
 | ------------------------------ | ------------------------------------------------------------------- |
 | `./scripts/pnpm dev`           | Server watch mode and Vite hot reload                               |
 | `./scripts/pnpm check`         | Lint, boundaries, strict types, all unit/integration tests, secrets |
+| `./scripts/pnpm test:ci`       | Fast key test subset that CI runs (full suite stays in `check`)     |
 | `./scripts/pnpm test:e2e`      | Chromium end-to-end flow with axe accessibility checks              |
 | `./scripts/pnpm compile:live`  | One real Codex compile (+ `--edit "…"`) through the full pipeline   |
 | `./scripts/pnpm build`         | Packages, server and the console, dock and overlay entries          |
@@ -306,6 +307,9 @@ until explicitly resumed.
 | `./scripts/pnpm smoke`         | Fastify + SQLite health smoke test                                  |
 | `./scripts/pnpm db:generate`   | Generate a migration after a schema change                          |
 | `./scripts/pnpm run doctor`    | Tool and dependency inventory                                       |
+
+CI runs only formatting, lint and boundaries, strict types, `test:ci`, tooling tests and
+the secret scan. Run `check` and `test:e2e` locally before merging.
 
 After `build`, `./scripts/pnpm start` serves the compiled UI and API on port 8787.
 
