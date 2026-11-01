@@ -77,21 +77,37 @@ resource "aws_lightsail_instance_public_ports" "host" {
     protocol  = "tcp"
     from_port = 22
     to_port   = 22
+    # Explicit ranges: left unset, the provider recreates the rules on every apply.
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
   port_info {
     protocol  = "tcp"
     from_port = 80
     to_port   = 80
+    # Explicit ranges: left unset, the provider recreates the rules on every apply.
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
   port_info {
     protocol  = "tcp"
     from_port = 443
     to_port   = 443
+    # Explicit ranges: left unset, the provider recreates the rules on every apply.
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
   port_info {
     protocol  = "udp"
     from_port = 443
     to_port   = 443
+    # Explicit ranges: left unset, the provider recreates the rules on every apply.
+    cidrs             = ["0.0.0.0/0"]
+    ipv6_cidrs        = ["::/0"]
+    cidr_list_aliases = []
   }
 }
 
@@ -112,6 +128,12 @@ resource "random_password" "riff_secret" {
   length   = 48
   special  = false
 }
+# Stable for as long as a name stays listed. Volumes are keyed by it, so a removed and
+# later re-added name (possibly a different person) never inherits the old data.
+resource "random_id" "tenant" {
+  for_each    = toset(var.streamers)
+  byte_length = 4
+}
 
 resource "aws_secretsmanager_secret" "streamers" {
   name                    = "riff/prod/streamers"
@@ -126,6 +148,7 @@ resource "aws_secretsmanager_secret_version" "streamers" {
       CONSOLE_PASSWORD        = random_password.console[name].result
       CONSOLE_PASSWORD_BCRYPT = random_password.console[name].bcrypt_hash
       ACCESS_TOKEN            = random_password.access[name].result
+      TENANT_ID               = random_id.tenant[name].hex
     }
   })
 }

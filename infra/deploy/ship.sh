@@ -38,7 +38,7 @@ echo "Applying configuration"
 jq -n --arg domain "$domain" --slurpfile shared "$work/shared.json" \
   --slurpfile streamers "$work/streamers.json" \
   '{base_domain: $domain, shared: $shared[0],
-    streamers: ($streamers[0] | map_values({RIFF_SECRET, CONSOLE_PASSWORD_BCRYPT, ACCESS_TOKEN}))}' \
+    streamers: ($streamers[0] | map_values({RIFF_SECRET, CONSOLE_PASSWORD_BCRYPT, ACCESS_TOKEN, TENANT_ID}))}' \
   | remote "riffctl sync $tag"
 
 for name in $(jq -r 'keys[]' "$work/streamers.json"); do
