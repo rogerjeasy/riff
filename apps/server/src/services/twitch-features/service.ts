@@ -291,7 +291,11 @@ export function createTwitchFeatureService(deps: {
       const poll = state.poll;
       if (!pollRunning(poll) || !poll)
         throw new RiffError('NO_ACTIVE_POLL', 'No poll started by Riff is running.');
-      if (origin === 'automation' && poll.origin !== 'automation')
+      // An automation may end only the poll that same automation started.
+      if (
+        origin === 'automation' &&
+        (poll.origin !== 'automation' || poll.automationId !== automationId)
+      )
         throw new RiffError('POLICY_DENIED', 'Automations can only end polls they started.');
       const { userId } = identity();
       try {

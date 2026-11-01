@@ -380,6 +380,20 @@ describe('automation dispatch and panic', () => {
     });
   });
 
+  it('one automation cannot end a poll another automation started', async () => {
+    const { service } = setup();
+    await service.dispatch(
+      [{ kind: 'poll.start', title: 'Next?', choices: ['A', 'B'], durationSeconds: 60 }],
+      { automationId: 'auto-a', viewer: 'owner' },
+    );
+    expect(service.snapshot().poll).toMatchObject({ origin: 'automation', automationId: 'auto-a' });
+    await service.dispatch([{ kind: 'poll.end' }], { automationId: 'auto-b', viewer: 'owner' });
+    expect(service.snapshot().poll?.status).toBe('ACTIVE');
+    expect(service.snapshot().history[0]).toMatchObject({ code: 'POLICY_DENIED' });
+    await service.dispatch([{ kind: 'poll.end' }], { automationId: 'auto-a', viewer: 'owner' });
+    expect(service.snapshot().poll?.status).toBe('TERMINATED');
+  });
+
   it('automations may end only polls they started', async () => {
     const { service } = setup();
     await service.startPoll(poll);
