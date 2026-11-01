@@ -1,3 +1,5 @@
+import { createRehearsalService } from './services/rehearsal/service.js';
+import { registerRehearsalRoutes } from './routes/rehearsals.js';
 import { createProposalService } from './services/proposals/service.js';
 import { communityProjection } from './services/proposals/projection.js';
 import type { ProposalCommand } from './services/proposals/commands.js';
@@ -59,6 +61,7 @@ export interface RiffServices {
   studio: ReturnType<typeof createStudioService>;
   authoring: ReturnType<typeof createAuthoringService>;
   proposals: ReturnType<typeof createProposalService>;
+  rehearsal: ReturnType<typeof createRehearsalService>;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -110,7 +113,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   runtime.boot();
   const studio = createStudioService({ repo, hub, runtime, overlay });
+  const rehearsal = createRehearsalService(repo);
   const authoring = createAuthoringService({
+    rehearsal,
     repo,
     hub,
     proposals,
@@ -170,6 +175,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     publicUrl,
     proposals,
   });
+  registerRehearsalRoutes(app, { rehearsal, authoring });
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
@@ -189,6 +195,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     unsubscribeCommunity();
     authoring.close();
     preview.close();
+    await rehearsal.close();
     twitch.close();
     runtime.close();
     overlay.close();
@@ -197,6 +204,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   if (dependencies.webRoot) {
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
   }
-  const services: RiffServices = { repo, runtime, overlay, hub, studio, authoring, proposals };
+  const services: RiffServices = {
+    repo,
+    runtime,
+    overlay,
+    hub,
+    studio,
+    authoring,
+    proposals,
+    rehearsal,
+  };
   return Object.assign(app as FastifyInstance, { riff: services });
 }

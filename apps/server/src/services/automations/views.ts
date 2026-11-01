@@ -1,3 +1,4 @@
+import type { RegressionEvidence } from '../rehearsal/contract.js';
 import type { PermissionManifest } from '@riff/sdk';
 import type { IntentCheck } from '@riff/compiler';
 import type { VerificationReport } from '@riff/sandbox';
@@ -9,6 +10,7 @@ import { versionApprovalBlockers } from '../../db/version-health.js';
 export interface Evidence {
   verification: VerificationReport;
   intent: IntentCheck[];
+  rehearsal?: RegressionEvidence[];
   migration?: { source: string; ok: boolean; snapshots: string[]; failure: string | null };
 }
 export interface Change {

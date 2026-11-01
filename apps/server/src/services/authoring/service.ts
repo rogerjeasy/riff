@@ -1,3 +1,5 @@
+import type { RehearsalService } from '../rehearsal/service.js';
+import { rehearsalScenarioHash } from '@riff/sandbox';
 import { ProposalError, type ProposalService } from '../proposals/service.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -56,6 +58,7 @@ export function createAuthoringService(deps: {
   transport: CompilerTransport;
   queue?: ReturnType<typeof createCompileQueue>;
   proposals?: ProposalService;
+  rehearsal?: RehearsalService;
 }) {
   const { repo, hub, transport } = deps;
   const queue = deps.queue ?? createCompileQueue();
@@ -99,7 +102,9 @@ export function createAuthoringService(deps: {
     if (!final || !output || output.kind !== 'candidate' || !final.verification) return null;
     const automationId = base?.automationId ?? repo.createAutomation(output.title).id;
     const migration = (final.verification as AuthoringVerification).migration;
+    const rehearsal = (final.verification as AuthoringVerification).rehearsal;
     const evidence: Evidence = {
+      ...(rehearsal ? { rehearsal } : {}),
       verification: final.verification,
       intent: final.intent,
       ...(migration ? { migration } : {}),
@@ -133,6 +138,7 @@ export function createAuthoringService(deps: {
       intent: string;
       baseVersionId: string | null;
       selectionId?: string;
+      regressionId?: string;
     }): RunSnapshot {
       if (input.selectionId) {
         const previous = repo.generationForSelection(input.selectionId);
@@ -179,6 +185,58 @@ export function createAuthoringService(deps: {
       if (input.baseVersionId && !base)
         throw new AuthoringError('NOT_FOUND', 'That version no longer exists.');
       if (base) repo.assertVersionLineage(base.id);
+      const pinned = deps.rehearsal?.applicable(base?.id ?? null) ?? [];
+      if (input.regressionId && !pinned.some((item) => item.id === input.regressionId))
+        throw new AuthoringError(
+          'CONFLICT',
+          'The selected regression is not applicable to this version.',
+        );
+      const rehearsalContext: CompileRequest['rehearsalContext'] = pinned.length
+        ? {
+            version: 1,
+            regressions: pinned.map((item) => {
+              // Include the target and a bounded sample. Full immutable input stays host-owned.
+              let steps = item.scenario.steps.filter(
+                (step, i) => i < 12 || step.key === item.failure.stepKey,
+              );
+              const describe = () =>
+                JSON.stringify({
+                  partial: true,
+                  seed: item.scenario.seed,
+                  initialAt: item.scenario.initialAt,
+                  hasInitialSession: !!item.scenario.initialSession,
+                  steps,
+                  expectations: item.scenario.expectations.filter(
+                    (check) => check.stepKey === item.failure.stepKey,
+                  ),
+                  provenance: item.scenario.provenance,
+                });
+              while (Buffer.byteLength(describe(), 'utf8') > 8192 && steps.length > 1) {
+                const index = steps.findIndex((step) => step.key !== item.failure.stepKey);
+                if (index < 0) break;
+                steps = steps.filter((_, i) => i !== index);
+              }
+              const data = describe();
+              return {
+                id: item.id,
+                originVersionId: item.originVersionId,
+                scenarioHash: rehearsalScenarioHash(item.scenario),
+                checkId: item.checkId,
+                expected: item.failure.expected,
+                actual: item.failure.actual,
+                summary: 'A retained independent host check failed on its origin version.',
+                scenario:
+                  Buffer.byteLength(data, 'utf8') <= 8192
+                    ? data
+                    : JSON.stringify({
+                        partial: true,
+                        target: item.failure.stepKey,
+                        omitted: 'Input exceeds compiler evidence budget.',
+                      }),
+              };
+            }),
+          }
+        : undefined;
       if (queue.position(repo.channelId) >= 3)
         throw new AuthoringError('QUEUE_FULL', new QueueFullError().message);
       const snapshot: RunSnapshot = {
@@ -224,6 +282,7 @@ export function createAuthoringService(deps: {
       publish(snapshot);
       const request: CompileRequest = {
         intent: input.intent,
+        ...(rehearsalContext ? { rehearsalContext } : {}),
         base: base
           ? {
               title: base.title,
@@ -240,7 +299,33 @@ export function createAuthoringService(deps: {
         if (controller.signal.aborted) throw new ProposalError('REVOKED');
         const result = await compile(request, transport, {
           signal: controller.signal,
-          verify: (candidate) => verifyAuthoredCandidate(candidate, base?.manifest),
+          verify: async (candidate) => {
+            const report = await verifyAuthoredCandidate(candidate, base?.manifest);
+            if (!deps.rehearsal || !pinned.length) return report;
+            const rehearsal = await deps.rehearsal.verifyRegressions(
+              candidate,
+              pinned,
+              controller.signal,
+            );
+            const failed = rehearsal.some((item) => !item.ok);
+            return {
+              ...report,
+              rehearsal,
+              ok: report.ok && !failed,
+              failureReport: failed
+                ? [
+                    report.failureReport,
+                    'Independent rehearsal regressions failed. Saved expectations cannot be weakened.',
+                    ...rehearsal
+                      .filter((item) => !item.ok)
+                      .map((item) => `Regression ${item.regressionId}: ${item.failure}`),
+                  ]
+                    .filter(Boolean)
+                    .join('\n')
+                    .slice(0, 4096)
+                : report.failureReport,
+            };
+          },
           onStage(stage, attempt) {
             snapshot.stage = stage;
             snapshot.attempt = attempt;

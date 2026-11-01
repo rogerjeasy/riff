@@ -1,4 +1,9 @@
 import type {
+  ScenarioRecord,
+  RunRecord,
+  RegressionRecord,
+} from '../services/rehearsal/contract.js';
+import type {
   ExperienceDefinition,
   SessionTransitionPlan,
   SessionSnapshot,
@@ -453,4 +458,46 @@ export const proposalGenerationRuns = sqliteTable(
       .references(() => compileRuns.id),
   },
   (table) => [uniqueIndex('proposal_generation_run_identity').on(table.channelId, table.runId)],
+);
+
+/** Private immutable replay evidence. No foreign keys to deletable scenario/run history. */
+export const rehearsalScenarios = sqliteTable(
+  'rehearsal_scenarios',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    name: text('name').notNull(),
+    revision: integer('revision').notNull(),
+    scenario: text('scenario', { mode: 'json' }).$type<ScenarioRecord['scenario']>().notNull(),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (t) => [index('rehearsal_scenarios_channel').on(t.channelId)],
+);
+export const rehearsalRuns = sqliteTable(
+  'rehearsal_runs',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    evidence: text('evidence', { mode: 'json' }).$type<RunRecord>().notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('rehearsal_runs_channel').on(t.channelId, t.createdAt)],
+);
+export const rehearsalRegressions = sqliteTable(
+  'rehearsal_regressions',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id').notNull(),
+    evidence: text('evidence', { mode: 'json' }).$type<RegressionRecord>().notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [index('rehearsal_regressions_channel').on(t.channelId, t.automationId)],
 );

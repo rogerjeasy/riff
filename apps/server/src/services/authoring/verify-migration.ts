@@ -14,6 +14,7 @@ import {
 
 export interface AuthoringVerification extends VerificationReport {
   migration?: Evidence['migration'];
+  rehearsal?: Evidence['rehearsal'];
 }
 
 /** Model and offline artifacts pass the same independent, effect-free host checks. */

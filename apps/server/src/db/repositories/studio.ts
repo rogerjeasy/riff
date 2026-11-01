@@ -1,3 +1,4 @@
+import { rehearsalRepository } from './rehearsals.js';
 import { proposalLineageRepository } from './proposal-lineage.js';
 import { transitionRepository } from './transitions.js';
 import { admissionRepository } from './admission.js';
@@ -20,6 +21,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
   const now = () => Date.now();
   return {
     channelId,
+    ...rehearsalRepository(connection, channelId),
     ...sessionRepository(connection, channelId),
     ...transitionRepository(connection, channelId),
     ...admissionRepository(connection, channelId),

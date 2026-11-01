@@ -344,7 +344,7 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
       });
     },
     /** The ordered journal of one round, as the audit replays it. */
-    sessionJournal(sessionId: string): JournalEntry[] {
+    sessionJournal(sessionId: string, limit = 20_001): JournalEntry[] {
       return db
         .select()
         .from(sessionJournal)
@@ -352,6 +352,7 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
           and(eq(sessionJournal.channelId, channelId), eq(sessionJournal.sessionId, sessionId)),
         )
         .orderBy(asc(sessionJournal.seq))
+        .limit(limit)
         .all()
         .map((row): JournalEntry => {
           const base = { seq: row.seq, at: row.at, versionId: row.versionId, digest: row.digest };

@@ -64,6 +64,13 @@
       "when": 1793492223761,
       "tag": "0008_short_audience_numbers",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1793495939033,
+      "tag": "0009_private_rehearsals",
+      "breakpoints": true
     }
   ]
 }
