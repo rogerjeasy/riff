@@ -1,3 +1,5 @@
+import { InteractiveStudio } from './studio.js';
+import type { StudioProps } from './studio.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import { clearStage, launch } from '../../effects/projectile.js';
@@ -34,8 +36,12 @@ const reducedMotion = () =>
 export function Rehearsal(props: {
   version: Version | null;
   onPreviewed: (versionId: string) => void;
+  versions?: Version[];
+  recording?: StudioProps['recording'];
+  onRun?: StudioProps['onRun'];
 }) {
   const { version } = props;
+  const [advanced, setAdvanced] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const [events, setEvents] = useState<RehearsalEvent[]>([]);
   const [result, setResult] = useState<PreviewResult | null>(null);
@@ -67,7 +73,7 @@ export function Rehearsal(props: {
   useEffect(() => {
     reset();
     setText(command);
-  }, [version?.id, command, reset]);
+  }, [version?.id, version?.artifactId, command, reset]);
   // A different interaction is a fresh rehearsal: start again as the default viewer.
   useEffect(() => setPersona(ALICE), [version?.id]);
   useEffect(() => () => request.current?.abort(), []);
@@ -85,7 +91,13 @@ export function Rehearsal(props: {
         const evidence = await api.preview(version.id, next, SEED, controller.signal);
         if (controller.signal.aborted) return;
         setResult(evidence);
-        props.onPreviewed(version.id);
+        if (
+          next.length > 0 &&
+          evidence.artifactId === version.artifactId &&
+          evidence.decisions.length === next.length &&
+          evidence.decisions.every((d) => d.code !== 'INCIDENT')
+        )
+          props.onPreviewed(version.id);
         // Deterministic replay re-derives every decision; animate only the new ones.
         const fresh = evidence.decisions.slice(shown.current);
         shown.current = evidence.decisions.length;
@@ -233,249 +245,277 @@ export function Rehearsal(props: {
         </span>
       </header>
 
-      <div className="stage-frame">
-        <div
-          ref={stage}
-          className="stage"
-          role="img"
-          aria-label={`Private overlay preview. ${accepted} effects shown, ${blocked} messages blocked or ignored.`}
-        >
-          <div className="stage-cam" aria-hidden="true">
-            <span>Your camera</span>
-          </div>
-          {!version && <p className="stage-empty">Generate an interaction to rehearse it here.</p>}
-          {version && decisions.length === 0 && (
-            <p className="stage-empty">
-              Pick a viewer and send {command} — or run the proof sequence.
-            </p>
-          )}
-        </div>
-        <div className="stage-hud" aria-hidden="true">
-          <span className="mono">⏱ {formatClock(clock)}</span>
-          <span>
-            {accepted} thrown · {blocked} blocked/ignored
-          </span>
-        </div>
-      </div>
-
-      {definition && session && (
-        <SessionHud
-          definition={definition}
-          snapshot={session}
-          now={clock}
-          viewerId={persona.id}
-          label={`${definition.title} rehearsal session`}
+      <button
+        className="button small"
+        type="button"
+        aria-expanded={advanced}
+        disabled={!version}
+        onClick={() => {
+          reset();
+          setAdvanced((current) => !current);
+        }}
+      >
+        {advanced ? 'Return to quick proof' : 'Open interactive studio'}
+      </button>
+      {advanced && version && (
+        <InteractiveStudio
+          key={`${version.id}:${version.artifactId}`}
+          version={version}
+          versions={props.versions ?? [version]}
+          recording={props.recording}
+          onPreviewed={props.onPreviewed}
+          onRun={props.onRun}
         />
       )}
-      {definition && (
-        <div className="rehearsal-actions" role="group" aria-label="Session participation">
-          {definition.teams.map((team) => (
+      <div hidden={advanced}>
+        <div className="stage-frame">
+          <div
+            ref={stage}
+            className="stage"
+            role="img"
+            aria-label={`Private overlay preview. ${accepted} effects shown, ${blocked} messages blocked or ignored.`}
+          >
+            <div className="stage-cam" aria-hidden="true">
+              <span>Your camera</span>
+            </div>
+            {!version && (
+              <p className="stage-empty">Generate an interaction to rehearse it here.</p>
+            )}
+            {version && decisions.length === 0 && (
+              <p className="stage-empty">
+                Pick a viewer and send {command} — or run the proof sequence.
+              </p>
+            )}
+          </div>
+          <div className="stage-hud" aria-hidden="true">
+            <span className="mono">⏱ {formatClock(clock)}</span>
+            <span>
+              {accepted} thrown · {blocked} blocked/ignored
+            </span>
+          </div>
+        </div>
+
+        {definition && session && (
+          <SessionHud
+            definition={definition}
+            snapshot={session}
+            now={clock}
+            viewerId={persona.id}
+            label={`${definition.title} rehearsal session`}
+          />
+        )}
+        {definition && (
+          <div className="rehearsal-actions" role="group" aria-label="Session participation">
+            {definition.teams.map((team) => (
+              <button
+                key={team.id}
+                type="button"
+                className="button small"
+                disabled={disabled || events.length >= 120}
+                onClick={() => send(persona, team.joinCommand)}
+              >
+                Join {team.label}
+              </button>
+            ))}
             <button
-              key={team.id}
               type="button"
               className="button small"
               disabled={disabled || events.length >= 120}
-              onClick={() => send(persona, team.joinCommand)}
+              onClick={() => send(persona, command)}
             >
-              Join {team.label}
+              Contribute {command}
             </button>
-          ))}
+            <button
+              type="button"
+              className="button small ghost"
+              disabled={disabled || events.length >= 120}
+              onClick={() => {
+                const deadline = session?.deadlineAt ?? definition.durationMs;
+                setClock(deadline);
+                send(persona, 'rehearsal clock advance', deadline);
+              }}
+            >
+              Advance to deadline
+            </button>
+            <p className="note">
+              Synthetic viewers and clock · resources last for the whole round.
+            </p>
+          </div>
+        )}
+        <div className="personas" role="group" aria-label="Synthetic viewers">
+          {PERSONAS.map((p) => {
+            const d = allowances.get(p.id);
+            const max =
+              definition?.resource.perParticipant ?? version?.manifest.trigger.maxPerViewer ?? 3;
+            const participant =
+              session && Object.hasOwn(session.participants, p.id)
+                ? session.participants[p.id]
+                : undefined;
+            const used = definition
+              ? max - (participant?.remaining ?? max)
+              : d?.allowance
+                ? d.allowance.nextAt !== null && d.allowance.nextAt <= clock
+                  ? 0
+                  : d.allowance.used
+                : 0;
+            const eligible = version
+              ? p.roles.some((r) => version.manifest.trigger.audience.includes(r))
+              : true;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                className="persona"
+                aria-pressed={persona.id === p.id}
+                onClick={() => setPersona(p)}
+                disabled={!version || playing}
+              >
+                <span className="avatar" data-persona={p.id} aria-hidden="true">
+                  {p.name[0]}
+                </span>
+                <span className="persona-name">
+                  {p.name} <small>{p.badge}</small>
+                </span>
+                {eligible ? (
+                  <span className="meter" aria-label={`${Math.max(0, max - used)} of ${max} left`}>
+                    {Array.from({ length: Math.min(max, 10) }, (_, i) => (
+                      <i key={i} data-on={i >= used} />
+                    ))}
+                  </span>
+                ) : (
+                  <span className="meter-note">not eligible</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <form
+          className="chat-input"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!disabled && text.trim()) send(persona, text.trim());
+          }}
+        >
+          <label className="sr-only" htmlFor="rehearsal-text">
+            Chat message as {persona.name}
+          </label>
+          <span className="as" aria-hidden="true">
+            {persona.name}:
+          </span>
+          <input
+            id="rehearsal-text"
+            value={text}
+            maxLength={500}
+            onChange={(e) => setText(e.target.value)}
+            disabled={!version || playing}
+          />
+          <button
+            type="submit"
+            className="button primary small"
+            disabled={disabled || !text.trim() || events.length >= 120}
+          >
+            Send
+          </button>
+        </form>
+        <div className="rehearsal-actions">
           <button
             type="button"
             className="button small"
-            disabled={disabled || events.length >= 120}
-            onClick={() => send(persona, command)}
+            onClick={() => void proof()}
+            disabled={disabled}
           >
-            Contribute {command}
+            ▶ Run proof sequence
           </button>
           <button
             type="button"
             className="button small ghost"
-            disabled={disabled || events.length >= 120}
             onClick={() => {
-              const deadline = session?.deadlineAt ?? definition.durationMs;
-              setClock(deadline);
-              send(persona, 'rehearsal clock advance', deadline);
+              const at = clock + 10_000;
+              setClock(at);
+              if (definition) send(persona, 'rehearsal clock advance', at);
             }}
+            disabled={disabled || events.length >= 120}
           >
-            Advance to deadline
+            +10 s
           </button>
-          <p className="note">Synthetic viewers and clock · resources last for the whole round.</p>
+          <button
+            type="button"
+            className="button small ghost"
+            onClick={() => setClock((c) => c + (version?.manifest.trigger.windowMs ?? 60_000))}
+            hidden={Boolean(definition)}
+            disabled={!version || playing}
+          >
+            Skip {formatDuration(version?.manifest.trigger.windowMs ?? 60_000)}
+          </button>
+          <button
+            type="button"
+            className="button small ghost"
+            onClick={() => {
+              const last = events.at(-1);
+              if (last) void replay([...events, { ...last, at: Math.max(last.at, clock) }]);
+            }}
+            disabled={disabled || !events.length}
+          >
+            Redeliver last
+          </button>
+          <button type="button" className="button small ghost" onClick={reset} disabled={!version}>
+            Reset
+          </button>
         </div>
-      )}
-      <div className="personas" role="group" aria-label="Synthetic viewers">
-        {PERSONAS.map((p) => {
-          const d = allowances.get(p.id);
-          const max =
-            definition?.resource.perParticipant ?? version?.manifest.trigger.maxPerViewer ?? 3;
-          const participant =
-            session && Object.hasOwn(session.participants, p.id)
-              ? session.participants[p.id]
-              : undefined;
-          const used = definition
-            ? max - (participant?.remaining ?? max)
-            : d?.allowance
-              ? d.allowance.nextAt !== null && d.allowance.nextAt <= clock
-                ? 0
-                : d.allowance.used
-              : 0;
-          const eligible = version
-            ? p.roles.some((r) => version.manifest.trigger.audience.includes(r))
-            : true;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              className="persona"
-              aria-pressed={persona.id === p.id}
-              onClick={() => setPersona(p)}
-              disabled={!version || playing}
-            >
-              <span className="avatar" data-persona={p.id} aria-hidden="true">
-                {p.name[0]}
-              </span>
-              <span className="persona-name">
-                {p.name} <small>{p.badge}</small>
-              </span>
-              {eligible ? (
-                <span className="meter" aria-label={`${Math.max(0, max - used)} of ${max} left`}>
-                  {Array.from({ length: Math.min(max, 10) }, (_, i) => (
-                    <i key={i} data-on={i >= used} />
-                  ))}
-                </span>
-              ) : (
-                <span className="meter-note">not eligible</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+        {error && (
+          <p role="alert" className="answer bad">
+            {error}
+          </p>
+        )}
 
-      <form
-        className="chat-input"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!disabled && text.trim()) send(persona, text.trim());
-        }}
-      >
-        <label className="sr-only" htmlFor="rehearsal-text">
-          Chat message as {persona.name}
-        </label>
-        <span className="as" aria-hidden="true">
-          {persona.name}:
-        </span>
-        <input
-          id="rehearsal-text"
-          value={text}
-          maxLength={500}
-          onChange={(e) => setText(e.target.value)}
-          disabled={!version || playing}
-        />
-        <button
-          type="submit"
-          className="button primary small"
-          disabled={disabled || !text.trim() || events.length >= 120}
-        >
-          Send
-        </button>
-      </form>
-      <div className="rehearsal-actions">
-        <button
-          type="button"
-          className="button small"
-          onClick={() => void proof()}
-          disabled={disabled}
-        >
-          ▶ Run proof sequence
-        </button>
-        <button
-          type="button"
-          className="button small ghost"
-          onClick={() => {
-            const at = clock + 10_000;
-            setClock(at);
-            if (definition) send(persona, 'rehearsal clock advance', at);
-          }}
-          disabled={disabled || events.length >= 120}
-        >
-          +10 s
-        </button>
-        <button
-          type="button"
-          className="button small ghost"
-          onClick={() => setClock((c) => c + (version?.manifest.trigger.windowMs ?? 60_000))}
-          hidden={Boolean(definition)}
-          disabled={!version || playing}
-        >
-          Skip {formatDuration(version?.manifest.trigger.windowMs ?? 60_000)}
-        </button>
-        <button
-          type="button"
-          className="button small ghost"
-          onClick={() => {
-            const last = events.at(-1);
-            if (last) void replay([...events, { ...last, at: Math.max(last.at, clock) }]);
-          }}
-          disabled={disabled || !events.length}
-        >
-          Redeliver last
-        </button>
-        <button type="button" className="button small ghost" onClick={reset} disabled={!version}>
-          Reset
-        </button>
-      </div>
-      {error && (
-        <p role="alert" className="answer bad">
-          {error}
-        </p>
-      )}
-
-      <ol className="decisions" aria-label="Host decisions" aria-live="polite">
-        {[...decisions]
-          .reverse()
-          .slice(0, 8)
-          .map((decision, reverseIndex) => {
-            const index = decisions.length - 1 - reverseIndex;
-            const event = events[index];
-            const who =
-              PERSONAS.find((p) => p.id === decision.viewerId)?.name ??
-              decision.viewerId ??
-              'viewer';
-            return (
-              <li
-                key={`${index}-${decision.eventId}`}
-                data-testid="decision"
-                data-tone={tone(decision.code)}
-              >
-                <span className={`badge ${tone(decision.code)}`}>
-                  {decision.code === 'ACCEPTED' && definition
-                    ? 'Accepted'
-                    : CODE_LABEL[decision.code]}
-                </span>
-                <span>
-                  {version
-                    ? explain(decision, event?.text ?? '', who, version.manifest)
-                    : decision.reason}
-                </span>
-                {decision.session && (
-                  <span className="session-evidence">
-                    {decision.session.phase} · revision {decision.session.revision} ·{' '}
-                    {Object.entries(decision.session.scores)
-                      .map(([team, score]) => `${team}: ${score}`)
-                      .join(', ')}
+        <ol className="decisions" aria-label="Host decisions" aria-live="polite">
+          {[...decisions]
+            .reverse()
+            .slice(0, 8)
+            .map((decision, reverseIndex) => {
+              const index = decisions.length - 1 - reverseIndex;
+              const event = events[index];
+              const who =
+                PERSONAS.find((p) => p.id === decision.viewerId)?.name ??
+                decision.viewerId ??
+                'viewer';
+              return (
+                <li
+                  key={`${index}-${decision.eventId}`}
+                  data-testid="decision"
+                  data-tone={tone(decision.code)}
+                >
+                  <span className={`badge ${tone(decision.code)}`}>
+                    {decision.code === 'ACCEPTED' && definition
+                      ? 'Accepted'
+                      : CODE_LABEL[decision.code]}
                   </span>
-                )}
-                <span className="mono muted">{formatClock(event?.at ?? 0)}</span>
-              </li>
-            );
-          })}
-      </ol>
-      {result && (
-        <p className="replay-proof mono">
-          Deterministic replay · seed {result.seed} · {events.length} events · {result.durationMs}{' '}
-          ms · artifact {shortHash(result.artifactId)}
-        </p>
-      )}
+                  <span>
+                    {version
+                      ? explain(decision, event?.text ?? '', who, version.manifest)
+                      : decision.reason}
+                  </span>
+                  {decision.session && (
+                    <span className="session-evidence">
+                      {decision.session.phase} · revision {decision.session.revision} ·{' '}
+                      {Object.entries(decision.session.scores)
+                        .map(([team, score]) => `${team}: ${score}`)
+                        .join(', ')}
+                    </span>
+                  )}
+                  <span className="mono muted">{formatClock(event?.at ?? 0)}</span>
+                </li>
+              );
+            })}
+        </ol>
+        {result && (
+          <p className="replay-proof mono">
+            Deterministic replay · seed {result.seed} · {events.length} events · {result.durationMs}{' '}
+            ms · artifact {shortHash(result.artifactId)}
+          </p>
+        )}
+      </div>
     </section>
   );
 }

@@ -4,7 +4,7 @@ const id = z.string().min(1).max(100);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
 const count = z.number().int().nonnegative();
-const at = count.max(Number.MAX_SAFE_INTEGER - 86_400_000);
+const at = count.max(Number.MAX_SAFE_INTEGER - 7_200_000);
 export const decisionCodes = [
   'ACCEPTED',
   'UNRELATED',
@@ -49,10 +49,7 @@ const event = z
     id,
     channelId: id,
     viewerId: id,
-    roles: z
-      .array(z.enum(['viewer', 'subscriber', 'moderator', 'broadcaster']))
-      .min(1)
-      .max(4),
+    roles: z.array(z.enum(['viewer', 'subscriber', 'moderator', 'broadcaster'])).max(4),
     text: z.string().max(500),
     at,
   })
@@ -209,11 +206,15 @@ export const resultSchema = z
       )
       .max(260),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    if (new TextEncoder().encode(JSON.stringify(result)).length > 262144)
+      context.addIssue({ code: 'custom', message: 'Replay result exceeds 256 KiB.' });
+  });
 export const scenarioRecordSchema = z
   .object({
     id,
-    name: z.string().min(1).max(100),
+    name: z.string().min(1).max(80),
     revision: count,
     scenario: scenarioSchema,
     createdAt: at,
@@ -267,7 +268,7 @@ export const rehearsalRunSchema = z
 export const regressionSchema = z
   .object({
     id,
-    name: z.string().min(1).max(100),
+    name: z.string().min(1).max(80),
     automationId: id,
     originVersionId: id,
     originArtifactId: hash,

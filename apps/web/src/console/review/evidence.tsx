@@ -121,6 +121,51 @@ function EvidenceCard(props: EvidenceProps) {
         </div>
       </dl>
 
+      {(version.evidence.rehearsal ?? verification.rehearsal)?.length ? (
+        <details className="block">
+          <summary>Independent saved regression checks</summary>
+          <p className="note">
+            Exact set pinned when generation started, including records since deleted. These host
+            checks contribute to verification and approval blockers.
+          </p>
+          {(version.evidence.rehearsal ?? verification.rehearsal ?? []).map((check) => (
+            <section key={check.regressionId} aria-label={`Regression ${check.regressionId}`}>
+              <h3>
+                <span className={`badge ${check.ok ? 'good' : 'bad'}`}>
+                  {check.ok ? 'Passed' : 'Failed'}
+                </span>{' '}
+                <span>{check.regressionId}</span>
+              </h3>
+              <p className="mono">
+                Origin version {check.originVersionId} · artifact{' '}
+                {shortHash(check.originArtifactId)} · scenario {shortHash(check.scenarioHash)}
+              </p>
+              {check.failure && <p className="answer bad">{check.failure}</p>}
+              {check.result ? (
+                <>
+                  <p>
+                    {check.result.through}/{check.result.totalSteps} steps · seed{' '}
+                    {check.result.seed} · {check.result.provenance.kind} · evidence{' '}
+                    {shortHash(check.result.evidenceHash)}
+                  </p>
+                  <ul>
+                    {check.result.checks.map((item) => (
+                      <li key={item.id}>
+                        {item.category === 'invariant' ? 'Host invariant' : 'Creator expectation'} ·{' '}
+                        {item.status}: {item.summary} · {item.id} · expected {String(item.expected)}
+                        , actual {String(item.actual)}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p>Independent replay unavailable; see the verification failure.</p>
+              )}
+            </section>
+          ))}
+        </details>
+      ) : null}
+
       {version.evidence.intent.length > 0 && (
         <div className="block">
           <h3>What you asked vs. what will run</h3>

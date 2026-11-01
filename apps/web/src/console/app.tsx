@@ -335,6 +335,16 @@ export function App() {
               onPreviewed={(id) =>
                 setPreviewed((set) => (set.has(id) ? set : new Set(set).add(id)))
               }
+              versions={allVersions}
+              recording={
+                automation?.session && automation.activeVersionId
+                  ? { versionId: automation.activeVersionId, sessionId: automation.session.id }
+                  : null
+              }
+              onRun={(started) => {
+                setRuns((current) => ({ ...current, [started.id]: started }));
+                setRunId(started.id);
+              }}
             />
             <LivePanel
               studio={studio}

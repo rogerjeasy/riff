@@ -2266,3 +2266,113 @@ pre {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Private timeline rehearsal uses native controls and compact progressive groups. */
+.interactive-studio {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  min-width: 0;
+}
+.interactive-studio details {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+.interactive-studio summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 4px;
+}
+.interactive-studio fieldset {
+  border: 0;
+  padding: 12px 0 0;
+  min-width: 0;
+}
+.interactive-studio legend {
+  color: var(--muted);
+  font-size: 12px;
+}
+.rehearsal-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  align-items: end;
+  gap: 12px;
+}
+.interactive-studio label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  min-width: 0;
+}
+.interactive-studio input:not([type='checkbox']),
+.interactive-studio select,
+.interactive-studio textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 9px;
+  color: var(--text);
+}
+.interactive-studio input[type='range'] {
+  padding: 0;
+  accent-color: var(--accent);
+}
+.interactive-studio textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.rehearsal-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.interactive-studio label:has(input[type='checkbox']) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.interactive-studio input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+.rehearsal-inputs {
+  max-height: 320px;
+  overflow: auto;
+  padding: 0 0 0 20px;
+}
+.interactive-stage {
+  height: 180px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 8px;
+}
+.interactive-studio table {
+  display: block;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+}
+.interactive-studio th,
+.interactive-studio td {
+  padding: 6px 10px;
+  text-align: left;
+}
+.interactive-studio p,
+.interactive-studio li {
+  overflow-wrap: anywhere;
+}
+.interactive-studio li[data-tone='bad'] {
+  color: var(--bad);
+}
+.interactive-studio li[data-tone='good'] {
+  color: var(--good);
+}
+@media (max-width: 540px) {
+  .rehearsal-stages {
+    grid-template-columns: 1fr;
+  }
+}

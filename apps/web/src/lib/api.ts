@@ -238,6 +238,19 @@ async function request<T>(
 }
 
 export const api = {
+  async rehearsalScenario(id: string, signal?: AbortSignal) {
+    return z
+      .object({ scenario: scenarioRecordSchema })
+      .strict()
+      .parse(
+        await request(
+          'GET',
+          `/api/rehearsals/scenarios/${encodeURIComponent(id)}`,
+          undefined,
+          signal,
+        ),
+      ).scenario;
+  },
   async rehearsalScenarios(signal?: AbortSignal) {
     return z
       .object({ scenarios: z.array(scenarioRecordSchema).max(50) })

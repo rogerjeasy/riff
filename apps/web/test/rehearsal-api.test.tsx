@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { scenarioSchema, resultSchema } from '../src/console/rehearsal/contracts.js';
 import { api } from '../src/lib/api.js';
 afterEach(() => vi.unstubAllGlobals());
 it('guards revision mutations and propagates stale errors without changing input', async () => {
@@ -52,4 +53,56 @@ it('rejects malformed oversized and unknown rehearsal response content', async (
     })),
   );
   await expect(api.rehearsalPreset('v', 'proof', 42)).rejects.toThrow();
+});
+it('accepts the exact normalized role/time domain, and rejects result byte overflow', () => {
+  const base = {
+    version: 1,
+    seed: 42,
+    initialAt: 0,
+    initialSession: null,
+    steps: [
+      {
+        kind: 'chat',
+        key: 'one',
+        event: {
+          id: 'e',
+          channelId: 'c',
+          viewerId: 'v',
+          roles: [],
+          text: 'hello',
+          at: Number.MAX_SAFE_INTEGER - 7_200_001,
+        },
+      },
+    ],
+    expectations: [],
+    provenance: { kind: 'synthetic' },
+  };
+  expect(scenarioSchema.safeParse(base).success).toBe(true);
+  const result = {
+    contractVersion: 1,
+    artifactId: 'a'.repeat(64),
+    scenarioHash: 'b'.repeat(64),
+    evidenceHash: 'c'.repeat(64),
+    seed: 42,
+    initialAt: 0,
+    provenance: { kind: 'synthetic' },
+    through: 0,
+    totalSteps: 0,
+    status: 'passed',
+    timeline: [],
+    cursor: { at: 0, session: null, stateDigest: 'd'.repeat(64), decision: null },
+    checks: [
+      {
+        id: 'check',
+        stepKey: 'one',
+        category: 'expectation',
+        kind: 'decision',
+        expected: 'x'.repeat(262145),
+        actual: null,
+        status: 'failed',
+        summary: 'too large',
+      },
+    ],
+  };
+  expect(resultSchema.safeParse(result).success).toBe(false);
 });
