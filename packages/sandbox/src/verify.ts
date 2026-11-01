@@ -8,6 +8,7 @@ import {
   type Scenario,
   type SessionSnapshot,
   type SessionAssertion,
+  type TwitchEventDetail,
 } from '@riff/sdk';
 import { artifactSchema, manifestSchema, scenariosSchema } from './contract.js';
 import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
@@ -29,6 +30,8 @@ export interface StepResult {
   viewer: string;
   roles: AudienceRole[];
   text: string;
+  /** Synthetic Twitch event for event-trigger steps (F19). */
+  twitch?: TwitchEventDetail;
   at: number;
   expect: DecisionCode;
   expectEffects: number | null;
@@ -167,6 +170,7 @@ export async function runScenarios(
           roles: step.roles,
           text: step.text,
           at: step.at,
+          ...(step.twitch ? { twitch: step.twitch } : {}),
         });
         const expectEffects = step.effects;
         const passed =
@@ -181,6 +185,7 @@ export async function runScenarios(
           viewer: step.viewer,
           roles: step.roles,
           text: step.text,
+          ...(step.twitch ? { twitch: step.twitch } : {}),
           at: step.at,
           expect: step.expect,
           expectEffects: expectEffects < 0 ? null : expectEffects,
@@ -213,6 +218,7 @@ export async function runScenarios(
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   if (manifest.experience) return sessionHostScenarios(manifest);
+  if (manifest.trigger.event) return eventHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
   const eligible: AudienceRole[] = audience.includes('viewer')
     ? ['viewer']
@@ -289,6 +295,106 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
         step('r2', 'ada', command, 1, 'ACCEPTED', -1),
       ],
     });
+  return scenarios;
+}
+
+/** Synthetic Twitch event detail for host and offline scenarios. Example: syntheticTwitchEvent('cheer', 100). */
+export function syntheticTwitchEvent(
+  kind: TwitchEventDetail['kind'],
+  amount: number,
+  options: { anonymous?: boolean; gift?: boolean } = {},
+): TwitchEventDetail {
+  const subscription = kind === 'subscribe' || kind === 'gift' || kind === 'resub';
+  return {
+    kind,
+    amount: kind === 'subscribe' ? 1 : Math.max(1, Math.trunc(amount)),
+    tier: subscription ? '1000' : null,
+    anonymous: Boolean(options.anonymous) && (kind === 'gift' || kind === 'cheer'),
+    gift: Boolean(options.gift) && kind === 'subscribe',
+  };
+}
+
+/**
+ * Host suite for F19 event triggers: the matching event admits, chat and other kinds
+ * are unrelated, amounts below the minimum never run the handler, redeliveries are
+ * ignored and the per-viewer allowance holds for events too.
+ */
+function eventHostScenarios(manifest: PermissionManifest): Scenario[] {
+  const event = manifest.trigger.event;
+  if (!event) return [];
+  const { maxPerViewer } = manifest.trigger;
+  const other = event.kind === 'raid' ? 'cheer' : 'raid';
+  const step = (
+    id: string,
+    viewer: string,
+    twitch: TwitchEventDetail | null,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+    text = '',
+  ): Scenario['steps'][number] => ({
+    id,
+    viewer,
+    roles: ['viewer'],
+    text,
+    at,
+    expect,
+    effects,
+    ...(twitch ? { twitch } : {}),
+  });
+  const hit = () => syntheticTwitchEvent(event.kind, event.minimum);
+  const perEvent = manifest.limits.effectsPerEvent;
+  const scenarios: Scenario[] = [
+    {
+      name: `A ${event.kind} at the minimum produces an effect`,
+      kind: 'happy',
+      steps: [step('e1', 'ada', hit(), 0, 'ACCEPTED', -1)],
+    },
+    {
+      name: 'Chat messages and other Twitch events do nothing',
+      kind: 'negative',
+      steps: [
+        step('n1', 'ben', null, 0, 'UNRELATED', 0, manifest.trigger.command),
+        step('n2', 'ben', null, 1, 'UNRELATED', 0, 'hello chat'),
+        step('n3', 'ben', syntheticTwitchEvent(other, 1_000), 2, 'UNRELATED', 0),
+      ],
+    },
+    {
+      name: 'A redelivered Twitch event never produces a second effect',
+      kind: 'duplicate',
+      steps: [
+        step('d1', 'ada', hit(), 0, 'ACCEPTED', -1),
+        step('d1', 'ada', hit(), 5, 'DUPLICATE', 0),
+      ],
+    },
+  ];
+  if (event.minimum > 1 && event.kind !== 'subscribe')
+    scenarios.push({
+      name: `Below ${event.minimum} does not run the handler`,
+      kind: 'limit',
+      steps: [
+        step(
+          'b1',
+          'ada',
+          syntheticTwitchEvent(event.kind, event.minimum - 1),
+          0,
+          'BELOW_MINIMUM',
+          0,
+        ),
+        step('b2', 'ada', hit(), 1, 'ACCEPTED', -1),
+      ],
+    });
+  if (maxPerViewer * perEvent <= manifest.limits.effectsPerMinute && maxPerViewer <= 20) {
+    const steps = Array.from({ length: maxPerViewer }, (_, i) =>
+      step(`a${i}`, 'ada', hit(), i, 'ACCEPTED', -1),
+    );
+    steps.push(step('over', 'ada', hit(), maxPerViewer, 'VIEWER_LIMIT', 0));
+    scenarios.push({
+      name: `Event allowance: ${maxPerViewer} per viewer, next blocked`,
+      kind: 'limit',
+      steps,
+    });
+  }
   return scenarios;
 }
 
@@ -510,7 +616,7 @@ function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
     lines.push(`Scenario "${result.name}" (${result.origin}) failed:`);
     for (const step of result.steps.filter((s) => !s.passed))
       lines.push(
-        `  step ${step.id} ${step.viewer} "${step.text}" @${step.at}ms expected ${step.expect}` +
+        `  step ${step.id} ${step.viewer} ${step.twitch ? `${step.twitch.kind}(${step.twitch.amount})` : `"${step.text}"`} @${step.at}ms expected ${step.expect}` +
           `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}`,
       );
   }

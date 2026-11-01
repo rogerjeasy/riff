@@ -33,6 +33,7 @@ export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   SESSION_FINISHED: 'This session has finished.',
   ALREADY_JOINED: 'This participant already joined; teams cannot be changed.',
   PARTICIPANT_LIMIT: 'The session participant limit has been reached.',
+  BELOW_MINIMUM: 'This Twitch event is below the minimum this interaction reacts to.',
 };
 const workerReply = z
   .object({
@@ -250,7 +251,13 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     state.lastAt = event.at;
     state.seen.set(event.id, event.at);
     if (experience) return runSession(event);
-    if (!matchesCommand(event.text, trigger.command)) return decision(event.id, 'UNRELATED', base);
+    // F19: event triggers admit only their Twitch event kind; chat triggers admit only chat.
+    if (trigger.event) {
+      if (event.twitch?.kind !== trigger.event.kind) return decision(event.id, 'UNRELATED', base);
+      if (event.twitch.amount < trigger.event.minimum)
+        return decision(event.id, 'BELOW_MINIMUM', base);
+    } else if (event.twitch || !matchesCommand(event.text, trigger.command))
+      return decision(event.id, 'UNRELATED', base);
     if (!event.roles.some((role) => trigger.audience.includes(role)))
       return decision(event.id, 'AUDIENCE', base);
     const history = (state.viewers.get(event.viewerId) ?? []).filter(
@@ -315,8 +322,12 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     // Clock transitions do not depend on guest execution; gameplay mutations do.
     const before = session;
     const staged = advanceSession(session, event.at, experience);
-    const team = experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
-    const contributes = matchesCommand(event.text, experience.contribution.command);
+    // Twitch platform events never join or contribute to a round.
+    const team = event.twitch
+      ? undefined
+      : experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
+    const contributes =
+      !event.twitch && matchesCommand(event.text, experience.contribution.command);
     if (!team && !contributes) {
       session = staged;
       return decision(event.id, 'UNRELATED', base);

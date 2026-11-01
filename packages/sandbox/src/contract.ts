@@ -10,12 +10,48 @@ import {
   SESSION_LIMITS,
   SDK_VERSION,
   TRIGGER_LIMITS,
+  EVENT_COMMAND_PATTERN,
+  EVENT_TRIGGER_LIMITS,
+  SUBSCRIPTION_TIERS,
+  TWITCH_EVENT_KINDS,
+  eventTriggerCommand,
   type DecisionCode,
 } from '@riff/sdk';
 
 import { sessionDefinitionSchema } from './session.js';
 
 const roleSchema = z.enum(AUDIENCE_ROLES);
+/** F19 normalized Twitch event detail; synthetic in previews, EventSub-derived live. */
+export const twitchEventDetailSchema = z
+  .object({
+    kind: z.enum(TWITCH_EVENT_KINDS),
+    amount: z.number().int().min(1).max(EVENT_TRIGGER_LIMITS.amountMax),
+    tier: z.enum(SUBSCRIPTION_TIERS).nullable(),
+    anonymous: z.boolean(),
+    gift: z.boolean(),
+  })
+  .strict()
+  .superRefine((detail, ctx) => {
+    const subscription = ['subscribe', 'gift', 'resub'].includes(detail.kind);
+    if (subscription !== (detail.tier !== null))
+      ctx.addIssue({ code: 'custom', message: 'Only subscription events carry a tier' });
+    if (detail.anonymous && !['gift', 'cheer'].includes(detail.kind))
+      ctx.addIssue({ code: 'custom', message: 'Only gifts and cheers can be anonymous' });
+    if (detail.gift && detail.kind !== 'subscribe')
+      ctx.addIssue({ code: 'custom', message: 'Only subscribe events can be gifted' });
+    if (detail.kind === 'subscribe' && detail.amount !== 1)
+      ctx.addIssue({ code: 'custom', message: 'A subscribe event has amount 1' });
+  });
+export const eventTriggerSchema = z
+  .object({
+    kind: z.enum(TWITCH_EVENT_KINDS),
+    minimum: z
+      .number()
+      .int()
+      .min(EVENT_TRIGGER_LIMITS.minimum.min)
+      .max(EVENT_TRIGGER_LIMITS.minimum.max),
+  })
+  .strict();
 const hasNoControlCharacters = (s: string) =>
   ![...s].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
@@ -29,7 +65,9 @@ export const manifestSchema = z
       .refine((list) => new Set(list).size === list.length, 'Capabilities must be unique'),
     trigger: z
       .object({
-        command: z.string().regex(new RegExp(TRIGGER_LIMITS.commandPattern)),
+        command: z
+          .string()
+          .regex(new RegExp(`${TRIGGER_LIMITS.commandPattern}|${EVENT_COMMAND_PATTERN}`)),
         audience: z
           .array(roleSchema)
           .min(1)
@@ -45,6 +83,7 @@ export const manifestSchema = z
           .int()
           .min(TRIGGER_LIMITS.windowMs.min)
           .max(TRIGGER_LIMITS.windowMs.max),
+        event: eventTriggerSchema.nullable().optional(),
       })
       .strict(),
     limits: z
@@ -69,6 +108,34 @@ export const manifestSchema = z
       });
     if (!manifest.experience && manifest.capabilities.includes('session'))
       ctx.addIssue({ code: 'custom', message: 'Session capability requires an experience' });
+    const event = manifest.trigger.event;
+    if (event) {
+      if (manifest.trigger.command !== eventTriggerCommand(event.kind))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['trigger', 'command'],
+          message: `Event triggers use the reserved command ${eventTriggerCommand(event.kind)}`,
+        });
+      if (manifest.experience)
+        ctx.addIssue({ code: 'custom', message: 'Event triggers cannot drive a session' });
+      if (event.kind === 'subscribe' && event.minimum !== 1)
+        ctx.addIssue({
+          code: 'custom',
+          path: ['trigger', 'event', 'minimum'],
+          message: 'Every subscribe event has amount 1; use minimum 1',
+        });
+      if (manifest.trigger.audience.length !== 1 || manifest.trigger.audience[0] !== 'viewer')
+        ctx.addIssue({
+          code: 'custom',
+          path: ['trigger', 'audience'],
+          message: "Event triggers use audience ['viewer']; EventSub carries no chat roles",
+        });
+    } else if (!new RegExp(TRIGGER_LIMITS.commandPattern).test(manifest.trigger.command))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['trigger', 'command'],
+        message: 'Reserved @event commands need trigger.event',
+      });
   });
 export const artifactSchema = z
   .object({
@@ -88,6 +155,7 @@ export const eventSchema = z
       .int()
       .nonnegative()
       .max(Number.MAX_SAFE_INTEGER - 2 * SESSION_LIMITS.durationMs.max),
+    twitch: twitchEventDetailSchema.nullable().optional(),
   })
   .strict();
 export const effectSchema = z
@@ -107,6 +175,7 @@ export const scenarioStepSchema = z
     id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
     expect: decisionCodeSchema,
     effects: z.number().int().min(0).max(EFFECT_LIMITS.perEvent),
+    twitch: twitchEventDetailSchema.nullable().optional(),
     session: z
       .object({
         phase: z.enum(['running', 'paused', 'finished']).optional(),

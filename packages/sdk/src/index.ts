@@ -1,3 +1,4 @@
+import type { EventTrigger, TwitchEventDetail } from './events.js';
 /** Public SDK version. 0.4.0 adds host-owned stateful sessions; 0.3.0 remains supported. */
 export const SDK_VERSION = '0.4.0' as const;
 
@@ -44,6 +45,8 @@ export interface ChatEvent {
   text: string;
   /** Ordered host observation time in milliseconds; replay supplies the original value. */
   at: number;
+  /** Set only for Twitch platform events (F19); chat messages omit it or carry null. */
+  twitch?: TwitchEventDetail | null | undefined;
 }
 export interface PermissionManifest {
   sdkVersion: typeof SDK_VERSION | '0.3.0';
@@ -56,6 +59,8 @@ export interface PermissionManifest {
     audience: AudienceRole[];
     maxPerViewer: number;
     windowMs: number;
+    /** F19: run on a Twitch event instead of chat; command is then eventTriggerCommand(kind). */
+    event?: EventTrigger | null | undefined;
   };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
@@ -157,7 +162,8 @@ export type DecisionCode =
   | 'SESSION_PAUSED'
   | 'SESSION_FINISHED'
   | 'ALREADY_JOINED'
-  | 'PARTICIPANT_LIMIT';
+  | 'PARTICIPANT_LIMIT'
+  | 'BELOW_MINIMUM';
 export const DECISION_CODES: readonly DecisionCode[] = [
   'ACCEPTED',
   'UNRELATED',
@@ -176,6 +182,7 @@ export const DECISION_CODES: readonly DecisionCode[] = [
   'SESSION_FINISHED',
   'ALREADY_JOINED',
   'PARTICIPANT_LIMIT',
+  'BELOW_MINIMUM',
 ];
 /** Viewer allowance after admission, for explanations. */
 export interface AllowanceSnapshot {
@@ -210,6 +217,8 @@ export interface ScenarioStep {
   at: number;
   /** Reuse an earlier step's id to model a duplicate delivery. */
   id: string;
+  /** F19: a labeled synthetic Twitch event instead of a chat message. */
+  twitch?: TwitchEventDetail | null | undefined;
   expect: DecisionCode;
   /** Exact number of effects expected for this step. */
   effects: number;
@@ -223,6 +232,7 @@ export interface Scenario {
 }
 export const SCENARIO_LIMITS = Object.freeze({ minScenarios: 3, maxScenarios: 12, maxSteps: 24 });
 export * from './guide.js';
+export * from './events.js';
 
 /** Host-reviewed activation boundary; stopped requires an already paused session. */
 export type SessionTransitionBoundary = 'immediate' | 'round-end' | 'stopped';

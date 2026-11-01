@@ -19,11 +19,14 @@ export {
   manifestSchema,
   scenarioSchema,
   scenariosSchema,
+  eventTriggerSchema,
+  twitchEventDetailSchema,
 } from './contract.js';
 export {
   analyzeSource,
   hostScenarios,
   runScenarios,
+  syntheticTwitchEvent,
   verifyCandidate,
   type Finding,
   type ScenarioResult,
