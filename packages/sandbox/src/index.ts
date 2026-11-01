@@ -68,3 +68,26 @@ export {
   type SessionTransitionAssessment,
   type SessionTransitionClassification,
 } from './transition.js';
+export {
+  REHEARSAL_CONTRACT_VERSION,
+  REHEARSAL_LIMITS,
+  RehearsalError,
+  rehearsalScenarioSchema,
+  rehearsalScenarioHash,
+  rehearsalStepSchema,
+  rehearsalExpectationSchema,
+  rehearsalProvenanceSchema,
+  type RehearsalErrorCode,
+  type RehearsalScenario,
+  type RehearsalStep,
+  type RehearsalExpectation,
+  type RehearsalProvenance,
+} from './rehearsal-contract.js';
+export {
+  runRehearsal,
+  type RunRehearsalInput,
+  type RehearsalResult,
+  type RehearsalFrame,
+  type RehearsalCheck,
+  type RehearsalDecision,
+} from './rehearsal.js';
