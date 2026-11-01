@@ -15,8 +15,8 @@ export default defineConfig({
       'packages/compiler/test/**/*.test.ts',
       'packages/twitch/test/**/*.test.ts',
       'packages/sandbox/test/{runtime,engine,verify}.test.ts',
-      'apps/server/test/{app,env,database,sessions,scenes,twitch-live}.test.ts',
-      'apps/web/test/{console,community,proposal-api,rehearsal-api,scenes,scene-contract,scene-live}.test.tsx',
+      'apps/server/test/{app,env,database,sessions,scenes,collaboration,collaboration-routes,collaboration-transport,collaboration-fencing,collaboration-overlay,twitch-live}.test.ts',
+      'apps/web/test/{console,community,proposal-api,rehearsal-api,scenes,scene-contract,scene-live,collaboration}.test.tsx',
     ],
   },
 });
