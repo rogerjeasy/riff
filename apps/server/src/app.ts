@@ -1,3 +1,10 @@
+import {
+  createChatAuthoringService,
+  type ChatAuthoringService,
+  type ChatReplies,
+} from './services/chat-authoring/service.js';
+import { chatAuthoringRepository } from './db/repositories/chat-authoring.js';
+import { registerChatAuthoringRoutes } from './routes/chat-authoring.js';
 import { createProductionService, type ProductionService } from './services/production/service.js';
 import { registerProductionRoutes } from './routes/production.js';
 import {
@@ -68,6 +75,8 @@ interface AppDependencies {
   peerFetch?: typeof fetch;
   /** Hosted console sign-in; omitted locally, where the console stays open. */
   console?: ConsoleAccess;
+  /** Test seam for host system chat replies; defaults to the Twitch connection. */
+  chatReplies?: ChatReplies;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -77,6 +86,7 @@ export function migrateConnection(database: DatabaseConnection) {
 }
 
 export interface RiffServices {
+  chatAuthoring: ChatAuthoringService;
   production: ProductionService;
   participation: ParticipationService;
   recipes: RecipeService;
@@ -155,7 +165,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   };
   const productionRef: { current?: ProductionService } = {};
   const participationRef: { current?: ParticipationService } = {};
+  const chatAuthoringRef: { current?: ChatAuthoringService } = {};
   const runtime = createLiveRuntime({
+    onAuthorChat: (message) => chatAuthoringRef.current?.handle(message) ?? false,
     onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
     onStop: () => {
@@ -165,6 +177,11 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
         /* Memory fencing precedes best-effort disconnect. */
       }
       participationRef.current?.stop();
+      try {
+        chatAuthoringRef.current?.stop('Everything was stopped.');
+      } catch {
+        /* Codes are fenced in memory first. */
+      }
       stopCollaboration();
     },
     repo,
@@ -265,7 +282,24 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     onStatus: (status) => {
       if (status.state !== 'connected') stopCollaboration();
     },
+    wantsChatWrite: () => chatAuthoringRef.current?.enabled() ?? false,
   });
+  const chatAuthoring = createChatAuthoringService({
+    storage: chatAuthoringRepository(database, HOME_CHANNEL),
+    repo,
+    hub,
+    authoring,
+    approve: (versionId, expected) => studio.approve(versionId, expected),
+    discard: (versionId) => studio.discard(versionId),
+    blocked: () => runtime.panicked,
+    chat: dependencies.chatReplies ?? {
+      send: (text, replyTo) => twitch.sendChat(text, replyTo),
+      status: () => twitch.chatReplies(),
+    },
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  chatAuthoringRef.current = chatAuthoring;
+  chatAuthoring.boot();
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
   const production = createProductionService({
     database,
@@ -399,6 +433,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     configured: !!sealer,
     ready: () => twitch.status.state === 'connected',
   });
+  registerChatAuthoringRoutes(app, chatAuthoring);
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
@@ -413,6 +448,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       );
   });
   app.addHook('onClose', async () => {
+    chatAuthoring.close();
     clearInterval(directorTimer);
     directorService.close();
     participation.close();
@@ -441,6 +477,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     app.get('/production-test', (_request, reply) => reply.sendFile('index.html'));
   }
   const services: RiffServices = {
+    chatAuthoring,
     production,
     participation,
     recipes,

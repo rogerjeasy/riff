@@ -191,7 +191,7 @@ export function ParticipationPanel() {
           <div className="panel-callout">
             <b>Late arrivals</b> can type <code>!riff help</code> (or <code>!riff help fr</code>,{' '}
             <code>es</code>, <code>de</code>) to bring today’s instructions back on stream. Limited
-            to once per viewer every 30 s and six times a minute per channel; Riff never posts in
+            to once per viewer every 30 s and six times a minute per channel; help never posts in
             chat. Visual priority for first-timers lives in the Adaptive director.
           </div>
         </div>

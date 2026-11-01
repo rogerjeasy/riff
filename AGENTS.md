@@ -847,3 +847,36 @@ it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/tex
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## In-chat authoring and owner chat approval — F10/F17
+
+`services/chat-authoring` (contract in its README) adds opt-in, broadcaster-only
+`!riff create|edit|approve|reject|status|cancel` and the `!approve` alias, handled by a
+runtime `onAuthorChat` hook after panic and before help/proposals. Owner = EventSub
+`broadcaster` badge plus `chatter_user_id === broadcaster_user_id` on a local message;
+names, text and other badges never authorize. Chat intent (control/bidi stripped,
+8–500 code points) goes through the same `authoring.start`, compiler queue and verifier as
+the console. Viewers and moderators never spend budget; chat compiles are limited to one
+pending and 3 per rolling 15 minutes per channel.
+
+A verified candidate that the console could approve without extra consent (no blockers,
+wider authority, live round-rule change or removed lineage) gets a 5-character code from
+an unambiguous alphabet, valid 5 minutes, bound to version, artifact and expected active
+version. Approval consumes it durably first, rechecks the binding and calls
+`studio.approve`. Reuse, expiry, wrong (5 per 10 minutes, then locked), stale and
+non-owner attempts are rejected with a reason in activity. Panic, disabling and console
+revoke invalidate codes memory-first and cancel the pending compile.
+
+Migration 0015 adds channel-scoped `chat_authoring_state`. Codes survive restart until
+expiry and are revalidated; persisted panic invalidates them on boot; an in-flight chat
+compile is cleared on boot with an activity entry. Private guarded routes:
+`GET /api/chat-authoring`, `POST /api/chat-authoring/settings` (`enabled`,
+`expectedRevision`), `POST /api/chat-authoring/codes/:id/revoke`.
+
+`packages/twitch` adds Helix Send Chat Message (`sendChatMessage`, no retries, 500-char
+cap, `for_source_only` omitted for user tokens) with a docs-sourced fixture, and
+`CHAT_WRITE_SCOPES = ['user:write:chat']`, requested at sign-in only while this feature is
+on. Replies are host-owned system text prefixed `Riff · `, budgeted to 10 per minute;
+generated code has no path to them. Without the scope the console shows a reconnect link.
+The console panel shows opt-in risk copy, the live code with countdown, revoke, budget and
+"From chat" provenance (also on the evidence card). No SDK, capability or env var changes.

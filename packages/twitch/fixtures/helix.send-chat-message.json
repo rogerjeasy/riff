@@ -1,0 +1,9 @@
+{
+  "_source": "https://dev.twitch.tv/docs/api/reference/#send-chat-message (Example Response, checked 2026-11-01)",
+  "data": [
+    {
+      "message_id": "abc-123-def",
+      "is_sent": true
+    }
+  ]
+}

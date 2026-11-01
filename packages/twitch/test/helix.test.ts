@@ -225,3 +225,61 @@ describe('Helix client', () => {
     expect(error.detail.issues?.join()).toContain('data.0.login');
   });
 });
+
+describe('Helix Send Chat Message', () => {
+  it('posts the documented body as the token user and parses the sent result', async () => {
+    const { client, calls } = setup([json(fixture('helix.send-chat-message.json'))]);
+    const result = await client.sendChatMessage({
+      broadcasterId: '12826',
+      senderId: '12826',
+      message: 'Riff · Compiling…',
+      replyParentMessageId: 'parent-1',
+    });
+    expect(result).toEqual({ messageId: 'abc-123-def', isSent: true, dropReason: null });
+    expect(calls[0]).toEqual({
+      url: 'https://api.twitch.tv/helix/chat/messages',
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${TOKEN}`,
+        'Client-Id': 'fake-client-id',
+        'Content-Type': 'application/json',
+      },
+      // for_source_only is rejected with a user access token, so it is never sent.
+      body: {
+        broadcaster_id: '12826',
+        sender_id: '12826',
+        message: 'Riff · Compiling…',
+        reply_parent_message_id: 'parent-1',
+      },
+    });
+  });
+
+  it('reports a dropped message with its documented reason', async () => {
+    const dropped = structuredClone(fixture('helix.send-chat-message.json'));
+    const [row] = dropped['data'] as Record<string, unknown>[];
+    row!['is_sent'] = false;
+    row!['drop_reason'] = { code: 'msg_rejected', message: 'held for review' };
+    const { client } = setup([json(dropped)]);
+    await expect(
+      client.sendChatMessage({ broadcasterId: '1', senderId: '1', message: 'Riff · hi' }),
+    ).resolves.toEqual({
+      messageId: 'abc-123-def',
+      isSent: false,
+      dropReason: { code: 'msg_rejected', message: 'held for review' },
+    });
+  });
+
+  it('never retries a chat mutation after a server error and refuses oversized text', async () => {
+    const { client, calls } = setup([json({ message: 'boom' }, 503), json({}, 200)]);
+    const error = await rejection(
+      client.sendChatMessage({ broadcasterId: '1', senderId: '1', message: 'Riff · hi' }),
+    );
+    expect(error.code).toBe('TWITCH_UNAVAILABLE');
+    expect(calls).toHaveLength(1);
+    const long = await rejection(
+      client.sendChatMessage({ broadcasterId: '1', senderId: '1', message: 'x'.repeat(501) }),
+    );
+    expect(long.code).toBe('TWITCH_INVALID_REQUEST');
+    expect(calls).toHaveLength(1);
+  });
+});

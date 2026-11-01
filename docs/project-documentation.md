@@ -555,6 +555,8 @@ Examples of error copy: “This version tried to send more messages than you all
 | `!riff panic` | Broadcaster or current trusted Twitch moderator | Emergency stop only |
 | `!riff approve <code>` | Broadcaster only; P1 | Activate the matching reviewed candidate |
 | `!approve` | Broadcaster only; P1 alias | Valid only with exactly one unambiguous pending candidate |
+| `!riff create <intent>` / `!riff edit <intent>` | Broadcaster only, opt-in; P2 | Compile a candidate for private review and a short-lived approval code |
+| `!riff reject <code>` / `!riff status` / `!riff cancel` | Broadcaster only, opt-in | Discard, report or stop the pending chat candidate |
 | `!riff resume` | Broadcaster only; later | Requires explicit confirmation of resume scope |
 | `!riff language fr` | The sending viewer; P1 | Store that viewer's chosen language |
 

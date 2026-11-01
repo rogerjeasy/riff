@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   buildAuthorizeUrl,
   CHAT_READ_SCOPES,
+  CHAT_WRITE_SCOPES,
   createEventSubClient,
   createHelixClient,
   exchangeCode,
@@ -12,6 +13,7 @@ import {
   validateAccessToken,
   type EventSubClient,
   type FetchLike,
+  type HelixClient,
 } from '@riff/twitch';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -52,11 +54,14 @@ export function createTwitchConnection(deps: {
   fetch?: FetchLike;
   log?: (message: string) => void;
   onStatus?: (status: TwitchStatus) => void;
+  /** Request `user:write:chat` at sign-in only when the creator opted into chat replies. */
+  wantsChatWrite?: () => boolean;
 }) {
   const { config, repo, hub, runtime, sealer } = deps;
   const doFetch = deps.fetch ?? (globalThis.fetch as unknown as FetchLike);
   const pendingStates = new Map<string, number>();
   let client: EventSubClient | null = null;
+  let helixClient: HelixClient | null = null;
   let status: TwitchStatus =
     config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' };
   const setStatus = (next: TwitchStatus) => {
@@ -108,6 +113,7 @@ export function createTwitchConnection(deps: {
       fetch: doFetch,
       ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
     });
+    helixClient = helix;
     setStatus({ state: 'connecting', login: login() });
     client = createEventSubClient({
       ...(config.eventSubUrl ? { url: config.eventSubUrl } : {}),
@@ -174,7 +180,9 @@ export function createTwitchConnection(deps: {
       return buildAuthorizeUrl({
         clientId: config.clientId,
         redirectUri: config.redirectUri,
-        scopes: CHAT_READ_SCOPES,
+        scopes: deps.wantsChatWrite?.()
+          ? [...CHAT_READ_SCOPES, ...CHAT_WRITE_SCOPES]
+          : CHAT_READ_SCOPES,
         state,
         forceVerify: true,
       });
@@ -215,9 +223,38 @@ export function createTwitchConnection(deps: {
       return identity.login;
     },
     start: connect,
+    /** Whether host system replies can be sent: connected with `user:write:chat`. */
+    chatReplies(): { available: boolean; reason: string | null } {
+      if (!config || !sealer) return { available: false, reason: 'Twitch is not configured.' };
+      const tokens = readTokens();
+      if (!tokens || !repo.state().twitchUserId)
+        return { available: false, reason: 'Connect Twitch to send chat replies.' };
+      if (!CHAT_WRITE_SCOPES.every((scope) => tokens.scopes.includes(scope)))
+        return {
+          available: false,
+          reason: 'Reconnect Twitch and approve “Send chat messages” (user:write:chat).',
+        };
+      if (status.state !== 'connected' || !helixClient)
+        return { available: false, reason: 'Twitch chat is not connected right now.' };
+      return { available: true, reason: null };
+    },
+    /** Host-owned system reply as the broadcaster. Generated code never reaches this. */
+    async sendChat(message: string, replyParentMessageId?: string) {
+      const broadcasterId = repo.state().twitchUserId;
+      if (!helixClient || !broadcasterId || !this.chatReplies().available)
+        throw new Error('Chat replies are unavailable.');
+      const result = await helixClient.sendChatMessage({
+        broadcasterId,
+        senderId: broadcasterId,
+        message,
+        ...(replyParentMessageId ? { replyParentMessageId } : {}),
+      });
+      if (!result.isSent) throw new Error('Twitch dropped the chat reply.');
+    },
     disconnect() {
       client?.stop();
       client = null;
+      helixClient = null;
       repo.updateState({ twitchTokens: null, twitchUserId: null, twitchLogin: null });
       setStatus(config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' });
     },

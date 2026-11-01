@@ -59,6 +59,8 @@ export function createLiveRuntime(deps: {
   now?: () => number;
   proposals?: ProposalService;
   onHelpChat?: (message: LiveChatMessage) => boolean;
+  /** Owner-only in-chat authoring (`!riff create|edit|approve|…`); true when consumed. */
+  onAuthorChat?: (message: LiveChatMessage) => boolean;
   onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
@@ -190,6 +192,7 @@ export function createLiveRuntime(deps: {
         api.panic(`!riff panic by ${message.viewerName}`);
       return [];
     }
+    if (!panic && deps.onAuthorChat?.(message)) return [];
     if (!panic && deps.onHelpChat?.(message)) return [];
     const command = deps.proposals?.handleCommand(
       {

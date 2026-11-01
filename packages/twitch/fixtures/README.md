@@ -11,4 +11,5 @@ are not allowed. Tests may change ids or the fields under test on a copy.
 | `session_welcome.json`, `session_keepalive.json`, `notification.json`, `session_reconnect.json`, `revocation.json` | Handling WebSocket Events examples                                             |
 | `helix.create-eventsub-subscription.json`                                                                          | Create EventSub Subscription, Example Response 2 (websocket)                   |
 | `helix.get-users.json`                                                                                             | Get Users example response                                                     |
+| `helix.send-chat-message.json`                                                                                     | Send Chat Message example response                                             |
 | `oauth.*.json`                                                                                                     | Authorization code grant, refresh and validate examples                        |

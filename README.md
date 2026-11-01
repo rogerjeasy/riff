@@ -332,12 +332,27 @@ change an approved live layout.
    `http://localhost:8787/auth/twitch/callback`.
 2. Set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` and `RIFF_SECRET`
    (`openssl rand -base64 32`) in `.env`, restart, and press **Connect Twitch**.
-   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest. If you
+   turn on **Chat authoring**, the next sign-in also asks for `user:write:chat` so Riff can
+   post short system replies (approval codes, results) as you.
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
    automated test `apps/server/test/twitch-live.test.ts` drives the same path with the
    documented EventSub protocol and fixtures.
+
+## In-chat authoring — F10/F17
+
+Off by default. Once you opt in from the **Chat authoring** card, your own broadcaster
+account can type `!riff create <idea>` (or `!riff edit <change>` for the one live
+interaction). Riff compiles and verifies it exactly like the console, shows the candidate
+with a **From chat** badge, and posts `Ready: approve with !riff approve K7Q3X (expires in
+5 min)`. `!riff approve <code>` (or `!approve` when one code is waiting) activates exactly
+that candidate; `!riff reject`, `!riff status` and `!riff cancel` round it out. Roles come
+only from Twitch badges and your account id; viewers and moderators cannot spend
+compiler budget. Changes that widen authority or alter a live round must still be
+approved in the console. Stop everything invalidates every code. See the
+[service contract](apps/server/src/services/chat-authoring/README.md).
 
 ## Deployment
 
