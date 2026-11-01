@@ -257,14 +257,12 @@ export const api = {
     expectedRevision: number,
     action: 'shortlist' | 'hide' | 'restore',
   ) {
-    return z
-      .object({ proposal: proposalSchema })
-      .parse(
-        await request('POST', `/api/proposals/${encodeURIComponent(id)}/moderate`, {
-          expectedRevision,
-          action,
-        }),
-      );
+    return z.object({ proposal: proposalSchema }).parse(
+      await request('POST', `/api/proposals/${encodeURIComponent(id)}/moderate`, {
+        expectedRevision,
+        action,
+      }),
+    );
   },
   proposalGrant: (accountId: string, enabled: boolean) =>
     request<{ ok: true }>('POST', '/api/proposals/grants', { accountId, enabled }),
@@ -277,13 +275,11 @@ export const api = {
       .parse(await request('POST', '/api/proposals/ballots', { proposalIds, durationSeconds }));
   },
   async closeProposalBallot(id: string, expectedRevision: number) {
-    return z
-      .object({ ballot: ballotSchema })
-      .parse(
-        await request('POST', `/api/proposals/ballots/${encodeURIComponent(id)}/close`, {
-          expectedRevision,
-        }),
-      );
+    return z.object({ ballot: ballotSchema }).parse(
+      await request('POST', `/api/proposals/ballots/${encodeURIComponent(id)}/close`, {
+        expectedRevision,
+      }),
+    );
   },
   async selectProposal(
     id: string,
@@ -291,15 +287,13 @@ export const api = {
     brief: string,
     baseVersionId: string | null,
   ) {
-    return z
-      .object({ selection: selectionSchema })
-      .parse(
-        await request('POST', `/api/proposals/${encodeURIComponent(id)}/select`, {
-          expectedRevision,
-          brief,
-          baseVersionId,
-        }),
-      );
+    return z.object({ selection: selectionSchema }).parse(
+      await request('POST', `/api/proposals/${encodeURIComponent(id)}/select`, {
+        expectedRevision,
+        brief,
+        baseVersionId,
+      }),
+    );
   },
   async revokeSelection(id: string) {
     return z

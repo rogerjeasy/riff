@@ -45,6 +45,27 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
+const TAB = {
+  '': 'All',
+  pending: 'To review',
+  shortlisted: 'Shortlisted',
+  selected: 'Selected',
+  hidden: 'Hidden',
+} as const;
+function chooseState(state: keyof typeof TAB) {
+  fireEvent.click(
+    within(screen.getByRole('tablist', { name: 'Proposal state' })).getByRole('tab', {
+      name: new RegExp(`^${TAB[state]}`),
+    }),
+  );
+}
+function selectedState() {
+  const tab = within(screen.getByRole('tablist', { name: 'Proposal state' }))
+    .getAllByRole('tab')
+    .find((t) => t.getAttribute('aria-selected') === 'true');
+  const label = tab?.textContent?.replace(/\d+$/, '') ?? '';
+  return (Object.keys(TAB) as (keyof typeof TAB)[]).find((key) => TAB[key] === label);
+}
 function setup(extra: Record<string, unknown> = {}) {
   const p = { ...props(), ...extra };
   vi.spyOn(api, 'proposals').mockResolvedValue(snapshot() as never);
@@ -59,9 +80,17 @@ it('groups duplicates, uses exact moderation revision and exposes private histor
     history: [{ id: 1, actor: 'creator', action: 'shortlist', revision: 2, at: 1 }],
   } as never);
   setup();
-  expect(await screen.findByText('3 contributors · grouped suggestion')).toBeTruthy();
+  expect(await screen.findByText('Suggested by 3 viewers')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'History' }));
-  expect(await screen.findByText(/creator · shortlist/)).toBeTruthy();
+  expect(
+    await within(await screen.findByRole('region', { name: 'Moderation history' })).findByText(
+      'Shortlisted',
+      { exact: false },
+    ),
+  ).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Moderation history' }).textContent).toContain(
+    'You · Shortlisted',
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
   await waitFor(() => expect(api.moderateProposal).toHaveBeenCalledWith('p1', 2, 'hide'));
 });
@@ -142,7 +171,7 @@ it('paginates bounded private inbox and creates revision-bound advisory ballots'
     expect(screen.getAllByRole('checkbox', { name: /Include in ballot/ })).toHaveLength(50),
   );
   fireEvent.click(screen.getAllByRole('checkbox', { name: /Include in ballot/ })[0]!);
-  fireEvent.click(screen.getByRole('button', { name: 'Open ballot' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Start vote/ }));
   await waitFor(() =>
     expect(api.createProposalBallot).toHaveBeenCalledWith([{ id: 'p0', revision: 2 }], 60),
   );
@@ -170,7 +199,7 @@ it('shows closed ties, current open countdown, and closes against the ballot rev
   const p = props();
   render(<ProposalInbox {...(p as unknown as Parameters<typeof ProposalInbox>[0])} />);
   expect(await screen.findByText(/Tie · creator decides/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Close ballot' }));
+  fireEvent.click(screen.getByRole('button', { name: 'End vote now' }));
   await waitFor(() => expect(api.closeProposalBallot).toHaveBeenCalledWith('b1', 4));
 });
 it('hands ready selected runs to existing candidate review without activation', async () => {
@@ -318,7 +347,7 @@ it('ignores a superseded inbox page response', async () => {
     .mockResolvedValue(snapshot([proposal('new', 'hidden')]) as never);
   const p = props();
   render(<ProposalInbox {...(p as unknown as Parameters<typeof ProposalInbox>[0])} />);
-  fireEvent.change(screen.getByLabelText('Proposal state'), { target: { value: 'hidden' } });
+  chooseState('hidden');
   expect(await screen.findByText('Change new to !splat and add two throws')).toBeTruthy();
   await act(async () => resolve(snapshot([proposal('old')])));
   expect(screen.queryByText('Change old to !splat and add two throws')).toBeNull();
@@ -438,7 +467,7 @@ it.each(['moderation', 'ballot'] as const)(
       ).toBe(false),
     );
     if (kind === 'moderation') fireEvent.click(screen.getAllByRole('button', { name: 'Hide' })[0]!);
-    else fireEvent.click(screen.getByRole('button', { name: 'Close ballot' }));
+    else fireEvent.click(screen.getByRole('button', { name: 'End vote now' }));
     fireEvent.click(screen.getAllByRole('button', { name: 'Review brief' })[1]!);
     fireEvent.change(screen.getByLabelText('Reviewed brief'), {
       target: { value: 'Keep this new independently edited brief' },
@@ -516,7 +545,7 @@ it.each(['valid', 'page-two', 'full-absent', 'hidden', 'stale', 'revoked'] as co
         (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
       ).toBe(false),
     );
-    fireEvent.change(screen.getByLabelText('Proposal state'), { target: { value: 'shortlisted' } });
+    chooseState('shortlisted');
     await waitFor(() =>
       expect(
         (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
@@ -533,9 +562,7 @@ it.each(['valid', 'page-two', 'full-absent', 'hidden', 'stale', 'revoked'] as co
         (screen.getByRole('button', { name: 'Refresh inbox' }) as HTMLButtonElement).disabled,
       ).toBe(false),
     );
-    expect((screen.getByLabelText('Proposal state') as HTMLSelectElement).value).toBe(
-      'shortlisted',
-    );
+    expect(selectedState()).toBe('shortlisted');
     if (mode === 'valid' || mode === 'page-two') {
       expect((screen.getByLabelText('Reviewed brief') as HTMLTextAreaElement).value).toBe(
         selection.brief,
@@ -582,7 +609,7 @@ it.each(['editor', 'query'] as const)(
       expect(api.proposals).toHaveBeenCalledWith({ state: 'selected', offset: 0, limit: 50 }),
     );
     if (change === 'editor') fireEvent.click(screen.getByRole('button', { name: 'Close brief' }));
-    else fireEvent.change(screen.getByLabelText('Proposal state'), { target: { value: 'hidden' } });
+    else chooseState('hidden');
     await act(async () => resolve(selected));
     await waitFor(() =>
       expect(
@@ -591,7 +618,6 @@ it.each(['editor', 'query'] as const)(
     );
     expect(screen.queryByLabelText('Reviewed brief')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Generate selected brief' })).toBeNull();
-    if (change === 'query')
-      expect((screen.getByLabelText('Proposal state') as HTMLSelectElement).value).toBe('hidden');
+    if (change === 'query') expect(selectedState()).toBe('hidden');
   },
 );

@@ -6,6 +6,7 @@ export const proposalSchema = z.object({
   channelId: id,
   text: z.string().max(500),
   normalizedText: z.string().max(500),
+  number: count.optional(),
   state: z.enum(['pending', 'shortlisted', 'hidden', 'selected']),
   revision: count,
   createdAt: count,
@@ -25,6 +26,7 @@ export const selectionSchema = z.object({
 export const ballotSchema = z.object({
   id,
   channelId: id,
+  number: count.optional(),
   revision: count,
   createdAt: count,
   deadlineAt: count,
@@ -57,6 +59,9 @@ export const proposalSnapshotSchema = z.object({
   grants: z.array(z.object({ id, channelId: id, accountId: id, createdAt: count })).max(100),
   ballots: z.array(ballotSchema).max(50),
   selections: z.array(selectionSchema).max(50),
+  counts: z
+    .object({ pending: count, shortlisted: count, selected: count, hidden: count })
+    .optional(),
 });
 export type Proposal = z.infer<typeof proposalSchema>;
 export type ProposalSelection = z.infer<typeof selectionSchema>;
