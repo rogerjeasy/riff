@@ -259,7 +259,7 @@ export const api = {
   },
   async rehearsalSave(
     input:
-      | { name: string; scenario: RehearsalScenario }
+      | { name: string; scenario: RehearsalScenario; sourceRunId?: string }
       | { name: string; recording: { versionId: string; sessionId: string; seed: number } },
     saved?: { id: string; revision: number },
     signal?: AbortSignal,

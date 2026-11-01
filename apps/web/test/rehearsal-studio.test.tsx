@@ -369,7 +369,7 @@ it('clears obsolete effects when seeking and rejects wrong-artifact or empty evi
   await waitFor(() => expect(api.rehearsalRun).toHaveBeenCalledTimes(2));
   expect(previewed).not.toHaveBeenCalled();
 });
-it('loads presets and host recordings, then saves the host selector and returned canonical inputs', async () => {
+it('imports and durably saves host recordings before edits, then reloads and runs the derivative', async () => {
   const recording = { versionId: 'v1', sessionId: 'session1' };
   const imported = {
     ...scenario,
@@ -381,6 +381,8 @@ it('loads presets and host recordings, then saves the host selector and returned
     },
   };
   vi.spyOn(api, 'rehearsalRecording').mockResolvedValue(imported);
+  const capture = { ...saved, revision: 0, scenario: imported };
+  vi.mocked(api.rehearsalSave).mockResolvedValueOnce(capture);
   render(
     <Rehearsal
       version={version}
@@ -403,27 +405,56 @@ it('loads presets and host recordings, then saves the host selector and returned
   );
   await waitFor(() =>
     expect(
-      (screen.getByRole('button', { name: 'Import current round' }) as HTMLButtonElement).disabled,
+      (screen.getByRole('button', { name: 'Import and save current round' }) as HTMLButtonElement)
+        .disabled,
     ).toBe(false),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Import current round' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Import and save current round' }));
   await screen.findByText(/Sanitized recording · pinned version/);
-  vi.mocked(api.rehearsalSave).mockResolvedValueOnce({
-    ...saved,
-    scenario: {
-      ...imported,
-      steps: [...imported.steps, { kind: 'advance', key: 'newer', at: 2000 }],
-    },
+  expect(api.rehearsalRecording).not.toHaveBeenCalled();
+  expect(api.rehearsalSave).toHaveBeenCalledWith(
+    { name: 'My scenario', recording: { ...recording, seed: 42 } },
+    undefined,
+    expect.any(AbortSignal),
+  );
+  expect(screen.getByText(/Recording imported and saved/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
+  expect(screen.getByText(/synthetic derivative \(on save\)/)).toBeTruthy();
+  let derivative = capture as ScenarioRecord;
+  vi.mocked(api.rehearsalSave).mockImplementationOnce(async (body) => {
+    if (!('scenario' in body)) throw new Error('Expected edited inputs');
+    derivative = {
+      ...capture,
+      revision: 1,
+      scenario: {
+        ...body.scenario,
+        provenance: { kind: 'synthetic-derivative', sourceScenarioHash: 'b'.repeat(64) },
+      },
+    };
+    return derivative;
   });
   fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+  await screen.findByText(/Stored revision 1/);
+  expect(vi.mocked(api.rehearsalSave).mock.calls[1]?.[1]).toEqual(capture);
+  expect(vi.mocked(api.rehearsalSave).mock.calls[1]?.[0]).toMatchObject({
+    scenario: { provenance: { kind: 'synthetic' } },
+  });
+  vi.mocked(api.rehearsalScenario).mockResolvedValueOnce(derivative);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload saved inputs' }));
+  await waitFor(() => expect(api.rehearsalScenario).toHaveBeenCalled());
   await waitFor(() =>
-    expect(api.rehearsalSave).toHaveBeenCalledWith(
-      { name: 'My scenario', recording: { ...recording, seed: 42 } },
-      undefined,
+    expect((screen.getByRole('button', { name: 'Run to end' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    ),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
+  await waitFor(() =>
+    expect(api.rehearsalRun).toHaveBeenCalledWith(
+      's1',
+      expect.objectContaining({ expectedRevision: 1, through: 3 }),
       expect.any(AbortSignal),
     ),
   );
-  await screen.findByText(/3 of 120 steps/);
   expect(previewed).not.toHaveBeenCalled();
 });
 it('plays successive fresh prefixes and pause cancels an in-flight operation', async () => {
@@ -564,7 +595,8 @@ it('hands a returned repair immediately to the existing app authoring run store'
 it('surfaces recording, comparison and channel capacity failures without dropping saved inputs', async () => {
   await open();
   expect(
-    (screen.getByRole('button', { name: 'Import current round' }) as HTMLButtonElement).disabled,
+    (screen.getByRole('button', { name: 'Import and save current round' }) as HTMLButtonElement)
+      .disabled,
   ).toBe(true);
   vi.mocked(api.rehearsalRun).mockRejectedValueOnce(
     new ApiError(
@@ -900,3 +932,53 @@ it('keeps a committed regression on refresh failure and offers an explicit compl
   });
   expect(screen.getByRole('option', { name: added.name })).toBeTruthy();
 });
+
+it.each(['sanitized-recording', 'synthetic-derivative'] as const)(
+  'retains adopted %s run sources on unchanged and edited saves',
+  async (kind) => {
+    const source: RehearsalScenario['provenance'] =
+      kind === 'sanitized-recording'
+        ? { kind, originVersionId: 'v1', originArtifactId: artifact, originSessionId: 'session1' }
+        : { kind, sourceScenarioHash: 'b'.repeat(64) };
+    const adopted = { ...replay(), scenario: { ...scenario, provenance: source } };
+    vi.mocked(api.rehearsalRegressions).mockResolvedValue([existingRegression()]);
+    vi.spyOn(api, 'rehearsalRerun').mockResolvedValue(adopted);
+    await open();
+    fireEvent.change(screen.getByLabelText('Saved regression'), {
+      target: { value: 'existing-regression' },
+    });
+    for (const changed of [false, true]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Rerun on selected version' }));
+      await screen.findByText(/Unsaved scenario/);
+      if (changed) {
+        fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '43' } });
+        expect(screen.getByText(/synthetic derivative \(on save\)/)).toBeTruthy();
+      }
+      fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+      await screen.findByText(/Stored revision 2/);
+      expect(vi.mocked(api.rehearsalSave).mock.lastCall).toEqual([
+        {
+          name: 'My scenario',
+          scenario: {
+            ...adopted.scenario,
+            seed: changed ? 43 : 42,
+            provenance: { kind: 'synthetic' },
+          },
+          sourceRunId: adopted.id,
+        },
+        undefined,
+        expect.any(AbortSignal),
+      ]);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Rerun on selected version' }));
+    await screen.findByText(/Unsaved scenario/);
+    fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '44' } });
+    vi.mocked(api.rehearsalSave).mockRejectedValueOnce(
+      new ApiError('That rehearsal item is unavailable.', 404, 'NOT_FOUND'),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+    await screen.findByText(/NOT_FOUND/);
+    expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('44');
+    expect(screen.getByText(/synthetic derivative \(on save\)/)).toBeTruthy();
+  },
+);

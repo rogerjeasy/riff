@@ -58,7 +58,7 @@ export function InteractiveStudio({
     refreshError: regressionRefreshError,
     refreshing: regressionsRefreshing,
   } = usePrivateLibrary<Regression>(api.rehearsalRegressions, 'Regression');
-  const [recordingSelector, setRecordingSelector] = useState<StudioProps['recording']>(null);
+  const [sourceRun, setSourceRun] = useState<RehearsalRun | null>(null);
   const [run, setRun] = useState<RehearsalRun | null>(null);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -130,7 +130,6 @@ export function InteractiveStudio({
     invalidate();
     setScenario({ ...next, provenance: { kind: 'synthetic' } });
     setDirty(true);
-    setRecordingSelector(null);
   }
   function load(record: ScenarioRecord) {
     invalidate();
@@ -138,15 +137,15 @@ export function InteractiveStudio({
     setScenario(record.scenario);
     setName(record.name);
     setDirty(false);
-    setRecordingSelector(null);
+    setSourceRun(null);
     setError(null);
   }
-  function unsaved(next: RehearsalScenario, selector: StudioProps['recording'] = null) {
+  function unsaved(next: RehearsalScenario) {
     invalidate();
     setSaved(null);
     setScenario(next);
     setDirty(true);
-    setRecordingSelector(selector);
+    setSourceRun(null);
     setError(null);
   }
   const validation = scenarioSchema.safeParse(scenario);
@@ -155,9 +154,11 @@ export function InteractiveStudio({
     void operation(
       (signal) =>
         api.rehearsalSave(
-          recordingSelector
-            ? { name, recording: { ...recordingSelector, seed: scenario.seed } }
-            : { name, scenario: { ...scenario, provenance: { kind: 'synthetic' } } },
+          {
+            name,
+            scenario: { ...scenario, provenance: { kind: 'synthetic' } },
+            ...(sourceRun ? { sourceRunId: sourceRun.id } : {}),
+          },
           saved ?? undefined,
           signal,
         ),
@@ -251,7 +252,7 @@ export function InteractiveStudio({
     setScenario(value.scenario);
     setSaved(null);
     setDirty(true);
-    setRecordingSelector(null);
+    setSourceRun(value);
     acceptRun(value, canPreview);
   }
   return (
@@ -357,17 +358,25 @@ export function InteractiveStudio({
         </button>
         <button
           className="button small"
-          disabled={!recording}
+          disabled={!recording || !name.trim()}
           onClick={() =>
             recording &&
             void operation(
               (s) =>
-                api.rehearsalRecording(recording.versionId, recording.sessionId, scenario.seed, s),
-              (value) => unsaved(value, recording),
+                api.rehearsalSave(
+                  { name, recording: { ...recording, seed: scenario.seed } },
+                  undefined,
+                  s,
+                ),
+              (record) => {
+                load(record);
+                commitScenarios((items) => [record, ...items.filter((x) => x.id !== record.id)]);
+                setNotice('Recording imported and saved. Edits derive from this pinned capture.');
+              },
             )
           }
         >
-          Import current round
+          Import and save current round
         </button>
         <button
           className="button primary small"
@@ -397,11 +406,11 @@ export function InteractiveStudio({
       <p className="note">
         {saved ? `Stored revision ${saved.revision}` : 'Unsaved scenario'} ·{' '}
         {dirty ? 'Save inputs before replay' : 'Saved exact inputs'} · Provenance:{' '}
-        {recordingSelector
-          ? 'sanitized-recording (host import)'
-          : dirty && saved && saved.scenario.provenance.kind !== 'synthetic'
-            ? 'synthetic derivative (on save)'
-            : scenario.provenance.kind}{' '}
+        {dirty &&
+        scenario.provenance.kind === 'synthetic' &&
+        (sourceRun || (saved && saved.scenario.provenance.kind !== 'synthetic'))
+          ? 'synthetic derivative (on save)'
+          : scenario.provenance.kind}{' '}
         · {scenario.initialSession ? 'Pinned initial snapshot' : 'Fresh start at logical origin'} ·{' '}
         {scenario.steps.length} of 120 steps · {scenario.expectations.length} of 20 expectations.
       </p>

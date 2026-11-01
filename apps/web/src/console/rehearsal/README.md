@@ -33,16 +33,19 @@
 Save scenario inputs before playback. Edits clear local evidence and require a new
 revision save. Stale saves retain typed work; **Reload library** refreshes the saved
 records; **Reload saved inputs** explicitly replaces the editor with the current
-stored revision. Saving a pristine host
-recording uses its recording selector; the returned sanitized inputs may be newer
-than the import preview, so prior evidence is cleared. Edits are synthetic and a
-stored recording's derivative provenance is granted by the host on update.
+stored revision. **Import and save current round** durably saves the sanitized
+capture before exposing it to edits, using the host recording selector. Later
+journal growth cannot change that capture. Name-only saves preserve provenance;
+input edits become derivatives of the exact saved capture on host update.
 
 Import requires an actual active version/session identity from the app. Unsupported
 journals, incompatible snapshots, operation capacity and size limits remain visible
 errors. Fresh-start comparison is explicitly labeled and is separate from preserving
 migration approval. Reduced and rerun inputs become an unsaved scenario for inspection;
-their immutable run is still available for regression saving. Reduction reports its
+their immutable run is still available for regression saving. New scenario saves
+retain that run as `sourceRunId` through edits; the host resolves ownership and
+grants unchanged provenance or an exact-source derivative. If the source was
+pruned, the save fails safely and typed inputs remain available. Reduction reports its
 24 replay / 2400 step budget and makes no global-minimality claim.
 
 No rehearsal output reaches live sinks. Saving and reducing never generate code;
