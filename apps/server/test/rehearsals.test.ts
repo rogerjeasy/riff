@@ -417,3 +417,125 @@ it('compares effect payloads independently from semantic state and refuses prefi
     app.riff.rehearsal.minimize(prefix.id, { side: 'primary', checkId: 'expect:two' }),
   ).rejects.toMatchObject({ code: 'INVALID_CHECK' });
 }, 60_000);
+
+it('bounds escaped aggregate compiler context while pinning all ten complete independent regressions', async () => {
+  const { compileOffline, compileRequestSchema } = await import('@riff/compiler');
+  const captured: unknown[] = [];
+  const app = await createApp({
+    logger: false,
+    transport: {
+      kind: 'offline',
+      model: null,
+      async open(input) {
+        captured.push(input);
+        return {
+          threadId: null,
+          async turn() {
+            return { output: compileOffline(input), usage: null };
+          },
+          async close() {},
+        };
+      },
+    },
+  });
+  apps.push(app);
+  const original = version(app);
+  const manifest = structuredClone(EXAMPLES[0]!.manifest);
+  manifest.trigger.maxPerViewer = 11;
+  manifest.limits.effectsPerMinute = 120;
+  const row = app.riff.repo.insertVersion({ ...original, parentVersionId: original.id, manifest });
+  const escaped: RehearsalScenario = {
+    version: 1,
+    seed: 1,
+    initialAt: 1000,
+    initialSession: null,
+    steps: Array.from({ length: 12 }, (_, i) => ({
+      kind: 'chat',
+      key: `step${i}`,
+      event: {
+        id: '\\'.repeat(97) + i,
+        channelId: '\\'.repeat(100),
+        viewerId: '\\'.repeat(100),
+        roles: ['viewer'],
+        text: '!tomato',
+        at: 1000 + i,
+      },
+    })),
+    expectations: [{ id: 'accepted', stepKey: 'step11', kind: 'decision', value: 'ACCEPTED' }],
+    provenance: { kind: 'synthetic' },
+  };
+  const saved = app.riff.rehearsal.create({ name: 'Escaped context', scenario: escaped });
+  const run = await app.riff.rehearsal.runScenario(saved.id, {
+    versionId: row.id,
+    expectedRevision: 0,
+  });
+  const minimized = await app.riff.rehearsal.minimize(run.id, {
+    side: 'primary',
+    checkId: 'expect:accepted',
+  });
+  expect(minimized.minimization?.removedSteps).toBe(0);
+  const retained = Array.from({ length: 10 }, (_, i) =>
+    app.riff.rehearsal.saveRegression({
+      name: `Retained ${i}`,
+      runId: minimized.id,
+      checkId: 'expect:accepted',
+    }),
+  );
+  const job = app.riff.authoring.start({
+    intent: 'Keep the interaction exactly as requested.',
+    baseVersionId: row.id,
+  });
+  await waitFor(() => !!job.result);
+  expect(captured).toHaveLength(1);
+  const request = compileRequestSchema.parse(captured[0]);
+  expect(Buffer.byteLength(JSON.stringify(request.rehearsalContext), 'utf8')).toBeLessThanOrEqual(
+    96 * 1024,
+  );
+  expect(request.rehearsalContext?.regressions.map((item) => item.id).sort()).toEqual(
+    retained.map((item) => item.id).sort(),
+  );
+  expect(
+    request.rehearsalContext?.regressions.some((item) => JSON.parse(item.scenario).omitted),
+  ).toBe(true);
+  for (const item of request.rehearsalContext?.regressions ?? []) {
+    expect(item).toMatchObject({
+      originVersionId: row.id,
+      scenarioHash: run.result.scenarioHash,
+      checkId: 'expect:accepted',
+      expected: 'ACCEPTED',
+      actual: 'VIEWER_LIMIT',
+    });
+  }
+  expect(job.stage).toBe('failed');
+  const candidate = app.riff.repo.version(job.result!.versionId!)!;
+  const evidence = candidate.evidence as {
+    verification: { ok: boolean };
+    rehearsal: {
+      regressionId: string;
+      ok: boolean;
+      result: { totalSteps: number; checks: unknown[] };
+    }[];
+  };
+  expect(evidence.verification.ok).toBe(false);
+  expect(evidence.rehearsal.map((item) => item.regressionId).sort()).toEqual(
+    retained.map((item) => item.id).sort(),
+  );
+  for (const item of evidence.rehearsal) {
+    expect(item).toMatchObject({
+      originVersionId: row.id,
+      originArtifactId: run.artifactId,
+      scenarioHash: run.result.scenarioHash,
+    });
+    expect(item.ok).toBe(false);
+    expect(item.result.totalSteps).toBe(12);
+    expect(item.result.checks).toContainEqual(
+      expect.objectContaining({
+        id: 'expect:accepted',
+        expected: 'ACCEPTED',
+        actual: 'VIEWER_LIMIT',
+        status: 'failed',
+      }),
+    );
+  }
+  expect(app.riff.repo.runs()[0]!.attempts as unknown[]).toHaveLength(2);
+}, 60_000);

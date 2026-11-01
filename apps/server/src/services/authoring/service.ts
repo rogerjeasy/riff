@@ -237,6 +237,26 @@ export function createAuthoringService(deps: {
             }),
           }
         : undefined;
+      if (rehearsalContext) {
+        // Inner JSON is a string here: its quotes/backslashes escape again. Budget
+        // the final serialized envelope, preserving every identity and host check.
+        const contextBytes = () => Buffer.byteLength(JSON.stringify(rehearsalContext), 'utf8');
+        const largestSamples = [...rehearsalContext.regressions].sort(
+          (a, b) =>
+            Buffer.byteLength(JSON.stringify(b.scenario), 'utf8') -
+            Buffer.byteLength(JSON.stringify(a.scenario), 'utf8'),
+        );
+        for (const item of largestSamples) {
+          if (contextBytes() <= 96 * 1024) break;
+          item.scenario = JSON.stringify({
+            partial: true,
+            target: pinned.find((regression) => regression.id === item.id)?.failure.stepKey,
+            omitted: 'Input omitted to fit aggregate compiler evidence budget.',
+          });
+        }
+        if (contextBytes() > 96 * 1024)
+          throw new AuthoringError('CONFLICT', 'Private compiler evidence is unavailable.');
+      }
       if (queue.position(repo.channelId) >= 3)
         throw new AuthoringError('QUEUE_FULL', new QueueFullError().message);
       const snapshot: RunSnapshot = {
