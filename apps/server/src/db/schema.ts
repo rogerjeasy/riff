@@ -6,6 +6,9 @@ import type {
   RegressionRecord,
 } from '../services/rehearsal/contract.js';
 import type {
+  DirectorState,
+  RecipeState,
+  RecipeProfile,
   ExperienceDefinition,
   SessionTransitionPlan,
   SessionSnapshot,
@@ -584,4 +587,35 @@ export const collaborationConnections = sqliteTable('collaboration_connections',
     .references(() => channels.id),
   sealed: text('sealed').notNull(),
   updatedAt: integer('updated_at').notNull(),
+});
+
+/** Durable, channel-scoped director review and control state; never pending cosmetics. */
+export const directorState = sqliteTable('director_state', {
+  channelId: text('channel_id').primaryKey(),
+  value: text('value', { mode: 'json' }).$type<Omit<DirectorState, 'telemetry'>>().notNull(),
+  batches: text('batches', { mode: 'json' }).$type<number[]>().notNull().default([]),
+});
+
+/** Portable recipe state; private imports/reviews remain channel-scoped. */
+export const recipeState = sqliteTable('recipe_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' })
+    .$type<
+      RecipeState & {
+        exports: string[];
+        installations: Record<
+          string,
+          {
+            versionId: string;
+            automationId: string;
+            sourceDigest: string;
+            profile: RecipeProfile;
+          }
+        >;
+        rateKeys: Record<string, number[]>;
+      }
+    >()
+    .notNull(),
 });

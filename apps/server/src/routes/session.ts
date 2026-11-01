@@ -24,6 +24,10 @@ const PUBLIC_ROUTES = new Set([
   '/api/session/login',
   '/api/session/logout',
   '/ws/overlay',
+  '/recipes',
+  '/directory/recipes',
+  '/directory/recipes/:digest',
+  '/directory/recipes/:digest/report',
 ]);
 /**
  * Decide on the route Fastify actually matched, never on our own reading of the raw URL:

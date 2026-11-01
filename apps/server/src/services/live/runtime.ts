@@ -67,6 +67,7 @@ export function createLiveRuntime(deps: {
   const sessions = createSessionControl({ repo, hub, overlay, now });
   let queue: Promise<unknown> = Promise.resolve();
   let closed = false;
+  let pendingChat = 0;
   const engines = new Map<string, { engine: ExecutionEngine; version: VersionRow }>();
   // Admission counters live per automation, not per version: edits and rollbacks
   // never hand a viewer a fresh allowance.
@@ -156,6 +157,7 @@ export function createLiveRuntime(deps: {
     hub.publish('studio', null);
   }
   function start(automationId: string, version: VersionRow) {
+    overlay.invalidatePresentation();
     engines.get(automationId)?.engine.stop();
     const stored = experienceOf(version) ? sessions.recover(version) : null;
     const engine = createEngine(
@@ -319,7 +321,7 @@ export function createLiveRuntime(deps: {
         code: fence === generation ? decision.code : 'STOPPED',
         message:
           decision.code === 'ACCEPTED'
-            ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} effect${delivered === 1 ? '' : 's'} sent to the overlay`
+            ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
     }
@@ -421,6 +423,7 @@ export function createLiveRuntime(deps: {
       throw error;
     }
     // No await separates the committed version from replacing the prepared engine.
+    overlay.invalidatePresentation();
     engines.get(reviewed.automationId)?.engine.stop();
     engines.delete(reviewed.automationId);
     if (automation.status === 'live')
@@ -601,8 +604,42 @@ export function createLiveRuntime(deps: {
           this.panic(`!riff panic by ${message.viewerName}`);
         return Promise.resolve([]);
       }
+      if (closed || panic) return Promise.resolve([]);
+      if (pendingChat >= 128) {
+        const reason =
+          'The gameplay queue is full. This action was not admitted or counted; try again shortly.';
+        const at = now();
+        const decisions: ExecutionDecision[] = [...engines.values()].map(({ engine }) => ({
+          eventId: message.id,
+          artifactId: engine.artifactId,
+          mode: 'live',
+          code: 'CAPACITY',
+          reason,
+          effects: [],
+          viewerId: message.viewerId,
+          at,
+          allowance: null,
+        }));
+        publishActivity({
+          at,
+          kind: 'decision',
+          automationId: null,
+          versionId: null,
+          eventId: message.id,
+          viewer: message.viewerName,
+          code: 'CAPACITY',
+          message: reason,
+        });
+        lastEvent = { at, viewer: message.viewerName, code: 'CAPACITY' };
+        return Promise.resolve(decisions);
+      }
       const fence = generation;
-      const next = queue.then(() => (fence === generation && !closed ? processChat(message) : []));
+      pendingChat++;
+      const next = queue
+        .then(() => (fence === generation && !closed ? processChat(message) : []))
+        .finally(() => {
+          pendingChat--;
+        });
       queue = next.catch(() => undefined);
       return next;
     },
@@ -642,6 +679,7 @@ export function createLiveRuntime(deps: {
     },
     resetSession(automationId: string, version: VersionRow) {
       repo.assertVersionLineage(version.id);
+      overlay.invalidatePresentation();
       generation++;
       stop(automationId);
       repo.atomic(() => {

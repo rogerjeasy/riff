@@ -66,6 +66,7 @@ export function createSceneService(deps: {
   hub: Hub;
   transport: CompilerTransport;
   queue: ReturnType<typeof createCompileQueue>;
+  presentation?: (versionId: string) => { instructions: string[]; reducedMotion: boolean } | null;
 }) {
   const { repo, runtime, overlay, hub } = deps;
   const records = sceneRepository(deps.database, repo.channelId);
@@ -114,7 +115,7 @@ export function createSceneService(deps: {
       artifactId: version.artifactId,
       appliedRevision: head?.appliedRevision ?? null,
       history,
-      instructions: instructionsFor(version),
+      instructions: deps.presentation?.(version.id)?.instructions ?? instructionsFor(version),
       checks: [...checks],
     };
   }
@@ -236,13 +237,15 @@ export function createSceneService(deps: {
             const current = state(version.id);
             const applied = current.history.find((r) => r.revision === current.appliedRevision);
             const scene = sceneSchema.parse(applied?.scene ?? DEFAULT_SCENE);
+            const presentation = deps.presentation?.(version.id);
             frames.push({
+              ...(presentation ? { reducedMotion: presentation.reducedMotion } : {}),
               automationId: a.id,
               versionId: version.id,
               revision: applied?.revision ?? 0,
               digest: applied?.digest ?? digest(version.id, current.artifactId, 0, DEFAULT_SCENE),
               scene,
-              instructions: instructionsFor(version),
+              instructions: presentation?.instructions ?? instructionsFor(version),
             });
           } catch {
             /* Invalid persisted presentation is withdrawn, never forwarded. */

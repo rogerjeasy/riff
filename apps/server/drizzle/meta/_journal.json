@@ -85,6 +85,20 @@
       "when": 1793528462398,
       "tag": "0011_shared_experiences",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1793537425368,
+      "tag": "0012_adaptive_director",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1793538173055,
+      "tag": "0013_contextual_recipes",
+      "breakpoints": true
     }
   ]
 }

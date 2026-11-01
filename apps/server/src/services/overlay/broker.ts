@@ -2,6 +2,7 @@ import type { SharedPresentationFrame } from '../collaboration/contract.js';
 import type { CommunityProjection } from '../proposals/projection.js';
 import { randomUUID } from 'node:crypto';
 import type {
+  DirectorFrame,
   ExecutionDecision,
   ExperienceDefinition,
   SessionSnapshot,
@@ -24,6 +25,7 @@ export type OverlayMessage =
         viewer: string | null;
         automationId?: string;
         versionId?: string;
+        intensity?: number;
       };
     }
   | { v: 1; type: 'instructions'; payload: { lines: string[] } }
@@ -33,6 +35,7 @@ export type OverlayMessage =
   | { v: 1; type: 'test'; payload: { at: number } };
 
 export interface SceneProjection {
+  reducedMotion?: boolean;
   automationId: string;
   versionId: string;
   revision: number;
@@ -58,7 +61,18 @@ export interface OverlaySocket {
  * Fan-out to OBS browser sources. Only live decisions are accepted: preview and
  * verification output have no path to a live overlay.
  */
-export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
+export function createOverlayBroker(
+  options: {
+    heartbeatMs?: number;
+    submit?: (
+      decision: ExecutionDecision,
+      viewer: string | null,
+      automationId?: string,
+      versionId?: string,
+    ) => number | null;
+    onClear?: (reason: 'panic' | 'pause' | 'rotate' | 'reset') => void;
+  } = {},
+) {
   const sockets = new Set<OverlaySocket>();
   let instructions: string[] = [];
   let sessions: SessionProjection[] = [];
@@ -154,7 +168,9 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       versionId?: string,
     ) {
       if (decision.mode !== 'live') throw new Error('Only live decisions may reach the overlay');
-      if (decision.code !== 'ACCEPTED') return 0;
+      if (decision.code !== 'ACCEPTED' || stopped) return 0;
+      const directed = options.submit?.(decision, viewer, automationId, versionId);
+      if (directed !== null && directed !== undefined) return directed;
       for (const effect of decision.effects)
         broadcast({
           v: 1,
@@ -170,11 +186,19 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
         });
       return decision.effects.length;
     },
+    /** Activation, version swap or round reset: queued cosmetics belong to the old authority. */
+    invalidatePresentation() {
+      options.onClear?.('reset');
+    },
+    present(frame: DirectorFrame) {
+      if (!stopped) broadcast({ v: 1, type: 'effect', payload: frame });
+    },
     setInstructions(lines: string[]) {
       instructions = lines.slice(0, 4);
       broadcast({ v: 1, type: 'instructions', payload: { lines: instructions } });
     },
     clear(reason: 'panic' | 'pause' | 'rotate') {
+      options.onClear?.(reason);
       // Clear the cached projection too: the next authoritative member heartbeat
       // must rehydrate clients even when no aggregate value changed.
       collaboration = null;

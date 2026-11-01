@@ -1,3 +1,8 @@
+import { createRecipeService, type RecipeService } from './services/recipes/service.js';
+import { registerRecipeRoutes } from './routes/recipes.js';
+import { createDirectorService, type DirectorService } from './services/director/service.js';
+import { directorRepository } from './db/repositories/director.js';
+import { registerDirectorRoutes } from './routes/director.js';
 import { createCoordinator } from './services/collaboration/coordinator.js';
 import { createCollaborationMember } from './services/collaboration/member.js';
 import { createPeerTransport, type PeerTransport } from './services/collaboration/transport.js';
@@ -64,6 +69,8 @@ export function migrateConnection(database: DatabaseConnection) {
 }
 
 export interface RiffServices {
+  recipes: RecipeService;
+  director: DirectorService;
   collaboration: {
     coordinator: ReturnType<typeof createCoordinator>;
     member: ReturnType<typeof createCollaborationMember>;
@@ -95,7 +102,11 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   repo.ensure('Home channel');
 
   const hub = createHub();
-  const overlay = createOverlayBroker();
+  const directorRef: { current?: DirectorService } = {};
+  const overlay = createOverlayBroker({
+    submit: (...args) => directorRef.current?.submit(...args) ?? null,
+    onClear: (reason) => directorRef.current?.clear(reason),
+  });
   const proposals = createProposalService(
     database,
     HOME_CHANNEL,
@@ -143,11 +154,50 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   runtime.boot();
+  const directorService = createDirectorService({
+    storage: directorRepository(database, HOME_CHANNEL),
+    repo,
+    blocked: () => runtime.panicked,
+    emit: (frame) => overlay.present(frame),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  directorRef.current = directorService;
+  const directorTimer = setInterval(() => directorService.tick(), 100);
+  directorTimer.unref();
   const studio = createStudioService({ repo, hub, runtime, overlay });
   const rehearsal = createRehearsalService(repo);
   const transport = dependencies.transport ?? createOfflineTransport({ delayMs: 250 });
   const queue = createCompileQueue();
-  const scenes = createSceneService({ database, repo, runtime, overlay, hub, transport, queue });
+  const recipeRef: { current?: RecipeService } = {};
+  const scenes = createSceneService({
+    database,
+    repo,
+    runtime,
+    overlay,
+    hub,
+    transport,
+    queue,
+    presentation: (versionId) => recipeRef.current?.presentation(versionId) ?? null,
+  });
+  const recipes = createRecipeService({
+    database,
+    repo,
+    transport,
+    queue,
+    saveScene: (versionId, scene) => scenes.save(versionId, 0, scene),
+    rateSecret: dependencies.secret ?? null,
+    reservedCommands: () => {
+      const member = shared.current?.member.status();
+      if (!member || !['connected', 'paused'].includes(member.state)) return [];
+      const command = member.review?.contract.roles.find(
+        (role) => role.id === member.review?.roleId,
+      )?.command;
+      return command ? [command] : [];
+    },
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  recipeRef.current = recipes;
+  hub.publish('studio', null);
   const authoring = createAuthoringService({
     queue,
     inheritScene: scenes.inherit,
@@ -272,6 +322,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   registerRehearsalRoutes(app, { rehearsal, authoring });
   registerSceneRoutes(app, scenes);
+  registerDirectorRoutes(app, directorService);
+  registerRecipeRoutes(app, recipes, () => hub.publish('studio', null));
   registerCollaborationRoutes(app, {
     coordinator,
     member,
@@ -295,6 +347,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       );
   });
   app.addHook('onClose', async () => {
+    clearInterval(directorTimer);
+    directorService.close();
+    recipes.close();
     clearInterval(communityTimer);
     clearInterval(collaborationTimer);
     member.close();
@@ -312,8 +367,11 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   if (dependencies.webRoot) {
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
+    app.get('/recipes', (_request, reply) => reply.sendFile('index.html'));
   }
   const services: RiffServices = {
+    recipes,
+    director: directorService,
     collaboration,
     repo,
     runtime,
