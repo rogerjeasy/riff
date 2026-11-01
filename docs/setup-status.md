@@ -273,3 +273,15 @@ groups under three people suppressed and no per-viewer output. No migration or d
 Verification: 73 Vitest files / 775 tests passed (`vitest run --maxWorkers=4`; an unbounded
 run under heavy machine load hit 20-second timeouts in pre-existing heavy tests, which pass
 on re-run). Lint, strict types, formatting, build, bundle and focused secret checks passed.
+
+## In-chat authoring and owner chat approval — November 1, 2026
+
+F10/F17 add opt-in, broadcaster-only chat authoring (`!riff create|edit|approve|reject|
+status|cancel`, `!approve` alias) over the existing compiler queue, verifier and exact
+approval path, with short-lived single-use approval codes persisted in
+`chat_authoring_state` (migration 0015). Helix Send Chat Message replies were implemented
+from the documented request/response (fixture `helix.send-chat-message.json`) and tested
+against fakes only; a real `user:write:chat` send to a live channel has not been
+exercised. Tests cover badge/name/text spoofing, budget, fake-clock expiry, single use,
+stale binding, lockout, panic invalidation, restart and the EventSub → Helix reply path.
+See the [service contract](../apps/server/src/services/chat-authoring/README.md).

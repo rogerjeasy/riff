@@ -15,6 +15,13 @@ export const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
  */
 export const CHAT_READ_SCOPES: readonly string[] = TRIGGERS['chat.message'].scopes;
 
+/**
+ * Send Chat Message with a user access token: "A user access token that includes the
+ * user:write:chat scope." https://dev.twitch.tv/docs/api/reference/#send-chat-message
+ * Requested only when the creator opts into in-chat authoring replies.
+ */
+export const CHAT_WRITE_SCOPES: readonly string[] = ['user:write:chat'];
+
 export interface TwitchTokenSet {
   readonly accessToken: string;
   readonly refreshToken: string;

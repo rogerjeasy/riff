@@ -1,3 +1,4 @@
+import { ChatAuthoringPanel, useChatAuthoring } from './chat-authoring/panel.js';
 import { ProductionPanel } from './production/panel.js';
 import { ParticipationPanel } from './participation/panel.js';
 import { InsightsPanel } from './insights/panel.js';
@@ -129,6 +130,7 @@ function Steps({
 
 export function App() {
   const { studio, runs, connection, error, signedOut, refresh, setRuns } = useStudio();
+  const chatAuthoring = useChatAuthoring(studio);
   // Hosted instances require a console session; show "Sign out" only where it means something.
   const [sessionRequired, setSessionRequired] = useState(false);
   useEffect(() => {
@@ -300,6 +302,17 @@ export function App() {
               ?.scrollIntoView({ behavior: 'instant', block: 'start' });
           }}
         />
+        <ChatAuthoringPanel
+          state={chatAuthoring}
+          panic={studio.panic}
+          notify={notify}
+          onReview={(id) => {
+            setSelectedId(id);
+            document
+              .getElementById('describe-heading')
+              ?.scrollIntoView({ behavior: 'instant', block: 'start' });
+          }}
+        />
         <CollaborationPanel versions={allVersions} panic={studio.panic} />
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
@@ -342,6 +355,9 @@ export function App() {
                 automation={automation}
                 panic={studio.panic}
                 previewed={previewed.has(selected.id)}
+                fromChat={
+                  chatAuthoring.data?.candidates.some((c) => c.versionId === selected.id) ?? false
+                }
                 onTransitioned={async (message) => {
                   await refresh();
                   notify(message);

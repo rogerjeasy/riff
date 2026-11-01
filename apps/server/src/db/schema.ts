@@ -627,6 +627,13 @@ export const productionState = sqliteTable('production_state', {
     .references(() => channels.id),
   value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
 });
+/** In-chat authoring opt-in, the pending chat candidate, approval codes and budgets. */
+export const chatAuthoringState = sqliteTable('chat_authoring_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});
 /** Durable broadcast accessibility choices and bounded help receipts. */
 export const participationState = sqliteTable('participation_state', {
   channelId: text('channel_id')

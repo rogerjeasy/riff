@@ -34,7 +34,10 @@ export {
 export {
   HELIX_BASE_URL,
   MAX_USERS_PER_REQUEST,
+  MAX_CHAT_MESSAGE_LENGTH,
   createHelixClient,
+  type SendChatMessageInput,
+  type SendChatMessageResult,
   type CreateEventSubSubscriptionInput,
   type CreateEventSubSubscriptionResult,
   type EventSubSubscription,
@@ -44,6 +47,7 @@ export {
 } from './helix.js';
 export {
   CHAT_READ_SCOPES,
+  CHAT_WRITE_SCOPES,
   TWITCH_AUTHORIZE_URL,
   TWITCH_TOKEN_URL,
   TWITCH_VALIDATE_URL,

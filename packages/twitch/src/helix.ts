@@ -65,7 +65,30 @@ export interface HelixUser {
   readonly createdAt: string;
 }
 
+export interface SendChatMessageInput {
+  readonly broadcasterId: string;
+  /** Must match the user in the access token. */
+  readonly senderId: string;
+  /** Docs: "limited to a maximum of 500 characters". */
+  readonly message: string;
+  readonly replyParentMessageId?: string;
+}
+
+export interface SendChatMessageResult {
+  readonly messageId: string;
+  readonly isSent: boolean;
+  readonly dropReason: { readonly code: string; readonly message: string } | null;
+}
+
+/** Docs: "The message is limited to a maximum of 500 characters." */
+export const MAX_CHAT_MESSAGE_LENGTH = 500;
+
 export interface HelixClient {
+  /**
+   * POST /chat/messages with a user access token carrying `user:write:chat`.
+   * A mutation: it is attempted exactly once and never retried.
+   */
+  sendChatMessage(input: SendChatMessageInput): Promise<SendChatMessageResult>;
   createEventSubSubscription(
     input: CreateEventSubSubscriptionInput,
   ): Promise<CreateEventSubSubscriptionResult>;
@@ -107,6 +130,19 @@ const userSchema = z.looseObject({
 });
 const getUsersResponse = z.looseObject({ data: z.array(userSchema) });
 
+// https://dev.twitch.tv/docs/api/reference/#send-chat-message (response body)
+const sendChatMessageResponse = z.looseObject({
+  data: z
+    .array(
+      z.looseObject({
+        message_id: z.string(),
+        is_sent: z.boolean(),
+        drop_reason: z.looseObject({ code: z.string(), message: z.string() }).nullish(),
+      }),
+    )
+    .min(1),
+});
+
 /** Docs: "the sum total of the number of users you may look up is 100". */
 export const MAX_USERS_PER_REQUEST = 100;
 
@@ -138,6 +174,7 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
     path: string,
     endpointName: string,
     body?: unknown,
+    retries = maxRetries,
   ): Promise<unknown> {
     const url = `${baseUrl}${path}`;
     for (let attempt = 0; ; attempt += 1) {
@@ -170,7 +207,7 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
       const payload = await readJson(response);
       if (response.ok) return payload;
       const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt >= maxRetries)
+      if (!retryable || attempt >= retries)
         throw errorForStatus(response.status, endpointName, twitchMessageOf(payload), attempt + 1);
       const delay = delayFor(response, attempt);
       if (delay > maxDelayMs)
@@ -196,6 +233,52 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
   }
 
   return {
+    async sendChatMessage(input) {
+      const endpoint = 'POST /chat/messages';
+      if (
+        !input.broadcasterId ||
+        !input.senderId ||
+        !input.message ||
+        Array.from(input.message).length > MAX_CHAT_MESSAGE_LENGTH
+      )
+        throw new TwitchError('TWITCH_INVALID_REQUEST', 'This chat message cannot be sent.', {
+          endpoint,
+        });
+      // for_source_only is omitted: the docs reject it with a user access token.
+      const payload = await request(
+        'POST',
+        '/chat/messages',
+        endpoint,
+        {
+          broadcaster_id: input.broadcasterId,
+          sender_id: input.senderId,
+          message: input.message,
+          ...(input.replyParentMessageId
+            ? { reply_parent_message_id: input.replyParentMessageId }
+            : {}),
+        },
+        0,
+      );
+      const parsed = sendChatMessageResponse.safeParse(payload);
+      if (!parsed.success) throw invalid(endpoint, parsed.error);
+      const [row] = parsed.data.data;
+      if (!row)
+        throw new TwitchError(
+          'TWITCH_INVALID_RESPONSE',
+          'Twitch returned an unexpected response.',
+          {
+            endpoint,
+          },
+        );
+      return {
+        messageId: row.message_id,
+        isSent: row.is_sent,
+        dropReason: row.drop_reason
+          ? { code: row.drop_reason.code, message: row.drop_reason.message }
+          : null,
+      };
+    },
+
     async createEventSubSubscription(input) {
       if (!input.sessionId)
         throw new TwitchError('TWITCH_INVALID_REQUEST', 'A WebSocket session id is required.');
