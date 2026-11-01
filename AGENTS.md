@@ -829,9 +829,13 @@ confirmation enables the scoped live overlay. Rollback checks unchanged settings
 only removes a newly created scene item. Reconnect fences apply/confirm (new connection
 identity) but keeps an applied setup's sealed snapshot, so rollback and re-review still
 work. Reviewing or importing mappings only stages a draft; approval replaces live
-mappings and consumes the review; `/mappings/discard` drops it. Native external
-scripts/configuration migration is unsupported; strict `riff-production` imports stage
-an inspectable mapping diff. No adapter access is granted to generated code or previews.
+mappings and consumes the review; `/mappings/discard` drops it. Strict `riff-production`
+imports stage an inspectable mapping diff. A local-network Firebot v5 connector (preset
+lists/variables only; inbound events need a creator key, never stored) uses the same
+per-tool mapping and loop rules. `/import/preview` and `/import/drafts` read Streamer.bot,
+Firebot setup and OBS scene-collection exports as bounded data: scripts/code are listed for
+review and never run, and recognised items become composer intents or staged bridge
+reviews, idempotent by item id. No adapter access is granted to generated code or previews.
 Panic fences authority before cleanup; durable causal receipts, bounded queues and
 finished-round claims prevent replay/loops. See the production service README for limits.
 
