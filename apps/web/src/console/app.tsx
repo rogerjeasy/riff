@@ -1,3 +1,5 @@
+import { RecipeLibrary } from './recipes/library.js';
+import { DirectorPanel } from './director/panel.js';
 import { CollaborationPanel } from './collaboration/panel.js';
 import { CanvasEditor } from './canvas/editor.js';
 import { SignIn } from './sign-in.js';
@@ -296,6 +298,14 @@ export function App() {
           }}
         />
         <CollaborationPanel versions={allVersions} panic={studio.panic} />
+        <DirectorPanel versions={allVersions} panic={studio.panic} />
+        <RecipeLibrary
+          versions={allVersions}
+          onReview={(id) => {
+            void refresh();
+            setSelectedId(id);
+          }}
+        />
         <div className="workspace">
           <div className="col">
             <Composer

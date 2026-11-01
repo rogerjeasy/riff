@@ -220,6 +220,7 @@ export const sceneProjectionSchema = z
     revision,
     digest,
     scene: sceneSchema,
+    reducedMotion: z.boolean().optional(),
     instructions: z.array(z.string().max(200)).max(4).optional(),
   })
   .strict();

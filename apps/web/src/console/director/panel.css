@@ -1,0 +1,211 @@
+/* F37 adaptive director: quiet-chat vs burst ranges, private proof and live controls. */
+.director-ranges {
+  display: grid;
+  gap: 6px;
+  max-width: 620px;
+}
+.director-range-head,
+.director-range-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.3fr) 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.director-range-head {
+  font-size: 11.5px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.director-range-head small {
+  display: block;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 600;
+  color: var(--muted);
+}
+.director-range-head span:nth-child(3) small {
+  color: var(--codex);
+}
+.director-range-row [role='rowheader'] {
+  font-size: 14px;
+  font-weight: 600;
+}
+.director-range-row small {
+  color: var(--faint);
+  font-weight: 500;
+}
+.director-extra {
+  margin-top: 16px;
+  max-width: 760px;
+}
+.director-order {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+.director-order .segmented {
+  justify-self: start;
+}
+.director-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.director-problems {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 4px;
+}
+.director-form .panel-actions {
+  margin-top: 16px;
+}
+.director-unsaved {
+  color: var(--warn);
+  font-weight: 650;
+}
+.director-version {
+  min-width: 220px;
+}
+.director-run {
+  align-items: flex-end;
+}
+.director-evidence-head,
+.director-live-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+.director-evidence-head h4 {
+  margin-right: auto;
+}
+.director-approved {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
+}
+.director-approved > p {
+  grid-column: 1 / -1;
+}
+.director-end {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.director-end span {
+  font-size: 12px;
+  color: var(--faint);
+  font-weight: 650;
+}
+.director-end b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.director-controls {
+  display: grid;
+  gap: 12px;
+}
+.director-manual .panel-actions {
+  margin-top: 12px;
+}
+.director-now {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.director-queue {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.director-queue span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  background: linear-gradient(90deg, var(--good), var(--warn));
+  transition: width 0.4s ease;
+}
+.director-reason {
+  font-size: 13.5px;
+}
+.director-history-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+.director-history-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.director-history-list li > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .director-range-head,
+  .director-range-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .director-range-head [role='columnheader']:first-child {
+    display: none;
+  }
+  .director-range-row [role='rowheader'] {
+    grid-column: 1 / -1;
+  }
+  .director-history-list li {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .director-queue span {
+    transition: none;
+  }
+}
+.director-evidence-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.director-evidence-facts {
+  display: grid;
+  gap: 14px;
+}
+.director-evidence-facts .panel-stats {
+  grid-template-columns: repeat(auto-fit, minmax(min(104px, 100%), 1fr));
+}
+@media (max-width: 900px) {
+  .director-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 640px) {
+  .director-range-head,
+  .director-range-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .director-version {
+    min-width: 0;
+    width: 100%;
+  }
+}

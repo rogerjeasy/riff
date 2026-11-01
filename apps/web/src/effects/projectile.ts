@@ -18,6 +18,7 @@ const SPLAT: Record<Asset, string> = {
 
 export interface LaunchOptions {
   asset: Asset;
+  intensity?: number | undefined;
   /** Normalized launch position in [0, 1]. */
   x: number;
   /** Normalized target point inside the stage. */
@@ -38,7 +39,10 @@ export function launch(stage: HTMLElement, options: LaunchOptions): boolean {
   if (stage.querySelectorAll('[data-projectile]').length >= max) return false;
   const width = stage.clientWidth || 1280;
   const height = stage.clientHeight || 720;
-  const size = Math.max(36, Math.min(96, width * 0.06));
+  const intensity = Number.isFinite(options.intensity)
+    ? Math.max(25, Math.min(100, options.intensity ?? 100))
+    : 100;
+  const size = (Math.max(36, Math.min(96, width * 0.06)) * intensity) / 100;
   const target = options.target ?? { x: 0.5, y: 0.42 };
   const startX = Math.min(1, Math.max(0, options.x)) * (width - size);
   const startY = height + size;

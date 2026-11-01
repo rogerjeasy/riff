@@ -246,7 +246,7 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
 }
 export function launchSceneEffect(
   root: HTMLElement,
-  effect: { asset: LaunchOptions['asset']; x: number },
+  effect: { asset: LaunchOptions['asset']; x: number; intensity?: number | undefined },
   options: Omit<LaunchOptions, 'asset' | 'x' | 'target'> = {},
 ) {
   const layer = root.querySelector<HTMLElement>('[data-scene-kind="effects"]');

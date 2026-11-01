@@ -303,6 +303,7 @@ export function createSceneOverlay(
     },
     render,
     effect(effect: {
+      intensity?: number | undefined;
       automationId?: string | undefined;
       versionId?: string | undefined;
       asset: Asset;
@@ -316,7 +317,7 @@ export function createSceneOverlay(
       if (!layer) return false;
       render();
       return launchSceneEffect(layer, effect, {
-        reducedMotion: options.reducedMotion,
+        reducedMotion: options.reducedMotion || p?.reducedMotion === true,
         label: options.showLabels ? (effect.viewer ?? null) : null,
       });
     },

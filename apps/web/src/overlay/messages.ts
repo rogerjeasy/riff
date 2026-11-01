@@ -35,6 +35,7 @@ export const overlayMessageSchema = z.discriminatedUnion('type', [
     v: z.literal(1),
     type: z.literal('effect'),
     payload: z.object({
+      intensity: z.number().int().min(25).max(100).optional(),
       id: z.string(),
       automationId: z.string().optional(),
       versionId: z.string().optional(),
