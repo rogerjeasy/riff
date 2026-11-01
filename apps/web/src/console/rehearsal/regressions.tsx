@@ -15,7 +15,7 @@ interface Props {
   busy: boolean;
   operation: Operation;
   adoptRun: (value: RehearsalRun, canPreview: boolean) => void;
-  setRegressions: Dispatch<SetStateAction<Regression[]>>;
+  publishRegressions: Dispatch<SetStateAction<Regression[]>>;
   setNotice: (text: string) => void;
   setPlaying: (value: boolean) => void;
   onRun?: ((run: Run) => void) | undefined;
@@ -28,7 +28,7 @@ export function RegressionPanel({
   busy,
   operation,
   adoptRun,
-  setRegressions,
+  publishRegressions,
   setNotice,
   setPlaying,
   onRun,
@@ -122,7 +122,7 @@ export function RegressionPanel({
                     s,
                   ),
                 (value) => {
-                  setRegressions((items) => [value, ...items]);
+                  publishRegressions((items) => [value, ...items]);
                   setRegressionId(value.id);
                   setReviewed(false);
                   setNotice('Regression saved. Generation remains a separate action.');
@@ -187,7 +187,7 @@ export function RegressionPanel({
               void operation(
                 (s) => api.rehearsalDeleteRegression(regression.id, s),
                 () => {
-                  setRegressions((items) => items.filter((g) => g.id !== regression.id));
+                  publishRegressions((items) => items.filter((g) => g.id !== regression.id));
                   setRegressionId('');
                   setReviewed(false);
                 },

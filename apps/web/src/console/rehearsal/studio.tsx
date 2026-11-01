@@ -1,7 +1,7 @@
 import { InputEditor } from './input-editor.js';
 import { Timeline } from './timeline.js';
 import { RegressionPanel } from './regressions.js';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type SetStateAction } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import type { Run, Version } from '../../lib/types.js';
 import { clearStage, launch } from '../../effects/projectile.js';
@@ -56,6 +56,17 @@ export function InteractiveStudio({
   const [freshStart, setFreshStart] = useState(true);
   const [preset, setPreset] = useState<(typeof presets)[number]>('proof');
   const epoch = useRef(0);
+  const scenarioGeneration = useRef(0);
+  const regressionGeneration = useRef(0);
+  // All library snapshots and mutations publish through their own freshness boundary.
+  function publishScenarios(update: SetStateAction<ScenarioRecord[]>) {
+    scenarioGeneration.current++;
+    setLibrary(update);
+  }
+  function publishRegressions(update: SetStateAction<Regression[]>) {
+    regressionGeneration.current++;
+    setRegressions(update);
+  }
   const request = useRef<AbortController | null>(null);
   const primaryStage = useRef<HTMLDivElement>(null);
   const compareStage = useRef<HTMLDivElement>(null);
@@ -72,18 +83,43 @@ export function InteractiveStudio({
   }
   useEffect(() => {
     const c = new AbortController();
-    const own = epoch.current;
-    void Promise.all([api.rehearsalScenarios(c.signal), api.rehearsalRegressions(c.signal)])
-      .then(([s, g]) => {
-        if (!c.signal.aborted && own === epoch.current) {
-          setLibrary(s);
-          setRegressions(g);
-        }
+    const scenariosAtStart = scenarioGeneration.current;
+    const regressionsAtStart = regressionGeneration.current;
+    const errorEpoch = epoch.current;
+    void api
+      .rehearsalScenarios(c.signal)
+      .then((items) => {
+        if (!c.signal.aborted && scenarioGeneration.current === scenariosAtStart)
+          publishScenarios(items);
       })
       .catch((cause) => {
-        if (!c.signal.aborted && own === epoch.current)
+        if (
+          !c.signal.aborted &&
+          scenarioGeneration.current === scenariosAtStart &&
+          epoch.current === errorEpoch
+        )
           setError(
-            cause instanceof ApiError ? cause.message : 'The private library could not load.',
+            cause instanceof ApiError
+              ? cause.message
+              : 'The private scenario library could not load.',
+          );
+      });
+    void api
+      .rehearsalRegressions(c.signal)
+      .then((items) => {
+        if (!c.signal.aborted && regressionGeneration.current === regressionsAtStart)
+          publishRegressions(items);
+      })
+      .catch((cause) => {
+        if (
+          !c.signal.aborted &&
+          regressionGeneration.current === regressionsAtStart &&
+          epoch.current === errorEpoch
+        )
+          setError(
+            cause instanceof ApiError
+              ? cause.message
+              : 'The private regression library could not load.',
           );
       });
     return () => {
@@ -165,7 +201,7 @@ export function InteractiveStudio({
         ),
       (record) => {
         load(record);
-        setLibrary((items) => [record, ...items.filter((x) => x.id !== record.id)]);
+        publishScenarios((items) => [record, ...items.filter((x) => x.id !== record.id)]);
         setNotice('Saved inputs returned by the host; previous evidence cleared.');
       },
     );
@@ -288,7 +324,7 @@ export function InteractiveStudio({
         <button
           className="button small"
           disabled={busy}
-          onClick={() => void operation((s) => api.rehearsalScenarios(s), setLibrary)}
+          onClick={() => void operation((s) => api.rehearsalScenarios(s), publishScenarios)}
         >
           Reload library
         </button>
@@ -384,7 +420,7 @@ export function InteractiveStudio({
             void operation(
               (s) => api.rehearsalDeleteScenario(saved.id, saved.revision, s),
               () => {
-                setLibrary((items) => items.filter((x) => x.id !== saved.id));
+                publishScenarios((items) => items.filter((x) => x.id !== saved.id));
                 unsaved(scenario);
                 setNotice('Scenario deleted. Retained regressions remain in the library.');
               },
@@ -464,7 +500,7 @@ export function InteractiveStudio({
         busy={busy}
         operation={operation}
         adoptRun={adoptRun}
-        setRegressions={setRegressions}
+        publishRegressions={publishRegressions}
         setNotice={setNotice}
         setPlaying={setPlaying}
         onRun={onRun}

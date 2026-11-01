@@ -722,3 +722,78 @@ it('ignores an obsolete bootstrap failure after a successful scenario save', asy
   expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
   expect(screen.getByText(/Saved inputs returned by the host/)).toBeTruthy();
 });
+function existingRegression(): Regression {
+  return {
+    id: 'existing-regression',
+    name: 'Existing saved regression',
+    automationId: 'a1',
+    originVersionId: 'v1',
+    originArtifactId: artifact,
+    sourceRunId: 'older-run',
+    scenario,
+    checkId: 'expect:count',
+    failure: {
+      id: 'expect:count',
+      stepKey: 'one',
+      category: 'expectation',
+      kind: 'effects',
+      expected: 2,
+      actual: 1,
+    },
+    failedEvidenceHash: 'c'.repeat(64),
+    createdAt: 0,
+  };
+}
+it('loads both untouched libraries after local typing without replacing the typed scenario name', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  fireEvent.change(screen.getByLabelText('Scenario name'), {
+    target: { value: 'My unsaved typed name' },
+  });
+  await act(async () => {
+    bootstrap.scenarios.resolve([saved]);
+    bootstrap.regressions.resolve([existingRegression()]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'Existing saved regression' })).toBeTruthy();
+  expect((screen.getByLabelText('Scenario name') as HTMLInputElement).value).toBe(
+    'My unsaved typed name',
+  );
+});
+it('fills the untouched regression library after a scenario-only save while retaining the newly saved scenario', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await createDuringBootstrap();
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([existingRegression()]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'Existing saved regression' })).toBeTruthy();
+});
+it('fills pending regressions independently of a newer scenario-only library reload', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  vi.mocked(api.rehearsalScenarios).mockResolvedValue([{ ...saved, revision: 8 }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload library' }));
+  await screen.findByRole('option', { name: 'My scenario · revision 8' });
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([existingRegression()]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 8' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'Existing saved regression' })).toBeTruthy();
+});
+it('loads scenarios still pending after the independent regression library has loaded and been mutated', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await act(async () => bootstrap.regressions.resolve([existingRegression()]));
+  await screen.findByRole('option', { name: 'Existing saved regression' });
+  vi.spyOn(api, 'rehearsalDeleteRegression').mockResolvedValue({});
+  fireEvent.change(screen.getByLabelText('Saved regression'), {
+    target: { value: 'existing-regression' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Delete regression' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('option', { name: 'Existing saved regression' })).toBeNull(),
+  );
+  await act(async () => bootstrap.scenarios.resolve([saved]));
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect(screen.queryByRole('option', { name: 'Existing saved regression' })).toBeNull();
+});
