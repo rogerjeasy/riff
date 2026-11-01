@@ -3,6 +3,9 @@ import { z } from 'zod';
 import {
   buildAuthorizeUrl,
   CHAT_READ_SCOPES,
+  CHANNEL_POINTS_SCOPES,
+  PREDICTION_SCOPES,
+  normalizeRedemption,
   createEventSubClient,
   createHelixClient,
   exchangeCode,
@@ -12,6 +15,8 @@ import {
   validateAccessToken,
   type EventSubClient,
   type FetchLike,
+  type HelixClient,
+  type NormalizedRedemption,
 } from '@riff/twitch';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -38,6 +43,18 @@ export type TwitchStatus =
   | { state: 'disconnected' }
   | { state: 'connecting' | 'connected' | 'reconnecting'; login: string | null }
   | { state: 'error'; login: string | null; message: string };
+/** Optional feature consent requested on top of chat (F22). */
+export type TwitchFeature = 'channel-points' | 'predictions';
+const FEATURE_SCOPES: Record<TwitchFeature, readonly string[]> = {
+  'channel-points': CHANNEL_POINTS_SCOPES,
+  predictions: PREDICTION_SCOPES,
+};
+/** Authenticated Helix access for host services; never handed to guest code. */
+export interface TwitchApi {
+  helix: HelixClient;
+  broadcasterId: string;
+  scopes: readonly string[];
+}
 
 /**
  * Owns the broadcaster's Twitch authorization and the EventSub chat subscription.
@@ -52,11 +69,14 @@ export function createTwitchConnection(deps: {
   fetch?: FetchLike;
   log?: (message: string) => void;
   onStatus?: (status: TwitchStatus) => void;
+  onRedemption?: (redemption: NormalizedRedemption) => void;
 }) {
   const { config, repo, hub, runtime, sealer } = deps;
   const doFetch = deps.fetch ?? (globalThis.fetch as unknown as FetchLike);
   const pendingStates = new Map<string, number>();
   let client: EventSubClient | null = null;
+  let helixClient: HelixClient | null = null;
+  let redemptions: 'unrequested' | 'subscribed' | 'failed' = 'unrequested';
   let status: TwitchStatus =
     config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' };
   const setStatus = (next: TwitchStatus) => {
@@ -108,6 +128,8 @@ export function createTwitchConnection(deps: {
       fetch: doFetch,
       ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
     });
+    helixClient = helix;
+    redemptions = 'unrequested';
     setStatus({ state: 'connecting', login: login() });
     client = createEventSubClient({
       ...(config.eventSubUrl ? { url: config.eventSubUrl } : {}),
@@ -119,9 +141,35 @@ export function createTwitchConnection(deps: {
           condition: { broadcaster_user_id: broadcasterId, user_id: broadcasterId },
           sessionId,
         });
+        // Redemptions are optional: a failure leaves chat working and is shown in the console.
+        if (CHANNEL_POINTS_SCOPES.every((scope) => readTokens()?.scopes.includes(scope))) {
+          const points = TRIGGERS['points.redeem'];
+          try {
+            await helix.createEventSubSubscription({
+              type: points.type,
+              version: points.version,
+              condition: { broadcaster_user_id: broadcasterId },
+              sessionId,
+            });
+            redemptions = 'subscribed';
+          } catch (error) {
+            redemptions = 'failed';
+            deps.log?.(
+              `Redemption subscription failed: ${error instanceof Error ? error.message : 'unknown'}`,
+            );
+          }
+        }
         setStatus({ state: 'connected', login: login() });
       },
       onNotification(notification) {
+        if (notification.subscriptionType === TRIGGERS['points.redeem'].type) {
+          const redemption = normalizeRedemption(notification.event, {
+            messageId: notification.messageId,
+            receivedAt: notification.receivedAt,
+          });
+          if (redemption && redemption.channelId === broadcasterId) deps.onRedemption?.(redemption);
+          return;
+        }
         if (notification.subscriptionType !== TRIGGERS['chat.message'].type) return;
         const message = normalizeChatMessage(notification.event, {
           messageId: notification.messageId,
@@ -167,14 +215,36 @@ export function createTwitchConnection(deps: {
       return status;
     },
     configured: Boolean(config && sealer),
-    beginAuthorization() {
+    /** Host-only Helix access, or null when not connected. */
+    api(): TwitchApi | null {
+      const tokens = readTokens();
+      const broadcasterId = repo.state().twitchUserId;
+      if (!helixClient || !tokens || !broadcasterId) return null;
+      return { helix: helixClient, broadcasterId, scopes: tokens.scopes };
+    },
+    /** Granted scopes, without exposing tokens. */
+    scopes(): readonly string[] {
+      return readTokens()?.scopes ?? [];
+    },
+    get redemptions() {
+      return redemptions;
+    },
+    beginAuthorization(features: readonly TwitchFeature[] = []) {
       if (!config) throw new Error('Twitch is not configured');
       const state = randomBytes(16).toString('base64url');
       pendingStates.set(state, Date.now() + 10 * 60_000);
+      // Keep previously granted feature consent when adding another feature.
+      const scopes = [
+        ...new Set([
+          ...CHAT_READ_SCOPES,
+          ...(readTokens()?.scopes ?? []),
+          ...features.flatMap((feature) => FEATURE_SCOPES[feature]),
+        ]),
+      ];
       return buildAuthorizeUrl({
         clientId: config.clientId,
         redirectUri: config.redirectUri,
-        scopes: CHAT_READ_SCOPES,
+        scopes,
         state,
         forceVerify: true,
       });
@@ -218,6 +288,7 @@ export function createTwitchConnection(deps: {
     disconnect() {
       client?.stop();
       client = null;
+      helixClient = null;
       repo.updateState({ twitchTokens: null, twitchUserId: null, twitchLogin: null });
       setStatus(config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' });
     },
