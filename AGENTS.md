@@ -387,7 +387,14 @@ pnpm run doctor       tool and dependency inventory (explicit run avoids pnpm bu
 the UI, used by CI and e2e) or `codex` (Codex SDK at runtime). `.env.example` is the
 configuration inventory; `apps/server/src/env.ts` validates it (loopback binding,
 explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optional
-EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
+EventSub/Helix overrides for the Twitch CLI mock, and hosted console sign-in via
+`RIFF_CONSOLE_PASSWORD` (≥16 chars) and `RIFF_CONSOLE_ACCESS_TOKEN` (≥32 chars)). When a
+password is set, `routes/session.ts` gates `/api/*`, `/ws/console` and `/auth/*` behind a
+signed HttpOnly, SameSite=Lax session cookie (Secure over HTTPS, 30 days, key derived from
+`RIFF_SECRET` and the password). `/api/health`, `/api/session*`, `/ws/overlay`, `/peer/*` and
+static files stay public. `POST /api/session/login` is rate-limited, and `?access=<token>` on
+any GET trades the dock link for a session. Unset, the console stays open for local use.
+Migrations run at server boot.
 Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
 `experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
 `admission_events`, `session_transitions`, `proposals`, `proposal_contributors`,

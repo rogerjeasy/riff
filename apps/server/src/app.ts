@@ -23,6 +23,7 @@ import { openDatabase, type DatabaseConnection } from './db/client.js';
 import { forChannel } from './db/repositories/studio.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerMutationGuard } from './routes/guard.js';
+import { registerConsoleSession, type ConsoleAccess } from './routes/session.js';
 import { registerRealtimeRoutes } from './routes/realtime.js';
 import { registerStudioRoutes } from './routes/studio.js';
 import { registerTwitchRoutes } from './routes/twitch.js';
@@ -52,6 +53,8 @@ interface AppDependencies {
   fetch?: FetchLike;
   now?: () => number;
   peerFetch?: typeof fetch;
+  /** Hosted console sign-in; omitted locally, where the console stays open. */
+  console?: ConsoleAccess;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -246,6 +249,13 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   await app.register(websocket, { options: { maxPayload: 4096 } });
   registerMutationGuard(app);
+  registerConsoleSession(app, {
+    password: dependencies.console?.password ?? null,
+    accessToken: dependencies.console?.accessToken ?? null,
+    secret: dependencies.secret ?? null,
+    secure: publicUrl.startsWith('https://'),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
   registerHealthRoute(
     app,
     dependencies.checkDatabase ?? (() => Boolean(database.client.prepare('SELECT 1').get())),

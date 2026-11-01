@@ -21,6 +21,9 @@ const schema = z
     RIFF_COMPILER_MODEL: optional,
     RIFF_COMPILER_EFFORT: z.enum(['minimal', 'low', 'medium', 'high']).default('low'),
     RIFF_SECRET: optional,
+    /** Hosted console sign-in. Unset locally: the console is then open on loopback. */
+    RIFF_CONSOLE_PASSWORD: optional,
+    RIFF_CONSOLE_ACCESS_TOKEN: optional,
     TWITCH_CLIENT_ID: optional,
     TWITCH_CLIENT_SECRET: optional,
     TWITCH_EVENTSUB_WS_URL: optional,
@@ -34,6 +37,17 @@ const schema = z
       'Binding all interfaces requires RIFF_ALLOW_REMOTE=true; keep container ports on loopback.',
     path: ['RIFF_HOST'],
   })
+  .refine((value) => !value.RIFF_CONSOLE_PASSWORD || value.RIFF_CONSOLE_PASSWORD.length >= 16, {
+    message: 'RIFF_CONSOLE_PASSWORD must be at least 16 characters.',
+    path: ['RIFF_CONSOLE_PASSWORD'],
+  })
+  .refine(
+    (value) => !value.RIFF_CONSOLE_ACCESS_TOKEN || value.RIFF_CONSOLE_ACCESS_TOKEN.length >= 32,
+    {
+      message: 'RIFF_CONSOLE_ACCESS_TOKEN must be at least 32 characters.',
+      path: ['RIFF_CONSOLE_ACCESS_TOKEN'],
+    },
+  )
   .refine((value) => !value.RIFF_SECRET || value.RIFF_SECRET.length >= 32, {
     message: 'RIFF_SECRET must be at least 32 characters (try: openssl rand -base64 32).',
     path: ['RIFF_SECRET'],
@@ -56,6 +70,10 @@ export function parseEnv(input: Record<string, string | undefined>) {
     compilerModel: env.RIFF_COMPILER_MODEL,
     compilerEffort: env.RIFF_COMPILER_EFFORT,
     secret: env.RIFF_SECRET,
+    console: {
+      password: env.RIFF_CONSOLE_PASSWORD,
+      accessToken: env.RIFF_CONSOLE_ACCESS_TOKEN,
+    },
     twitch:
       env.TWITCH_CLIENT_ID && env.TWITCH_CLIENT_SECRET
         ? {

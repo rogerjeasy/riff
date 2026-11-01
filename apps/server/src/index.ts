@@ -19,6 +19,7 @@ try {
     database,
     publicUrl: environment.publicUrl,
     secret: environment.secret,
+    console: environment.console,
     twitch: environment.twitch,
     transport:
       environment.compilerMode === 'codex'
