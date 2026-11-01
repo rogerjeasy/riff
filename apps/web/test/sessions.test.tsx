@@ -1,3 +1,4 @@
+import { defaultScene } from '../src/scenes/schema.js';
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -891,14 +892,35 @@ describe('overlay session lifecycle', () => {
         FakeSocket.current?.onmessage?.({ data: JSON.stringify({ v: 1, type, payload }) });
       const populate = () => {
         send('sessions', {
-          sessions: [{ automationId: 'a1', title: definition.title, definition, snapshot }],
+          sessions: [
+            { automationId: 'a1', versionId: 'v1', title: definition.title, definition, snapshot },
+          ],
+        });
+        send('scenes', {
+          scenes: [
+            {
+              automationId: 'a1',
+              versionId: 'v1',
+              revision: 1,
+              digest: 'a'.repeat(64),
+              scene: defaultScene(),
+              instructions: ['Type !throw'],
+            },
+          ],
         });
         send('instructions', { lines: ['Type !throw'] });
-        send('effect', { id: 'e', asset: 'tomato', x: 0.5, viewer: null });
-        expect(document.querySelector('.session-hud')).not.toBeNull();
+        send('effect', {
+          id: 'e',
+          automationId: 'a1',
+          versionId: 'v1',
+          asset: 'tomato',
+          x: 0.5,
+          viewer: null,
+        });
+        expect(document.querySelector('[data-scene-kind=scoreboard]')).not.toBeNull();
       };
       const expectClear = () => {
-        expect(document.querySelector('.session-hud')).toBeNull();
+        expect(document.querySelector('[data-scene-kind=scoreboard]')).toBeNull();
         expect(document.querySelector('[data-projectile]')).toBeNull();
         expect(document.getElementById('instructions')?.textContent).toBe('');
       };
@@ -923,4 +945,54 @@ describe('overlay session lifecycle', () => {
       window.history.replaceState({}, '', '/');
     }
   });
+});
+it('renders an accepted quick-proof effect with the newly returned session timing', async () => {
+  const scene = defaultScene();
+  scene.nodes.find((n) => n.kind === 'effects')!.timing = {
+    trigger: 'round-start',
+    delayMs: 0,
+    durationMs: 5000,
+  };
+  const atStart = {
+    ...snapshot,
+    phase: 'running' as const,
+    remainingMs: definition.durationMs,
+    deadlineAt: definition.durationMs,
+    updatedAt: 0,
+  };
+  vi.spyOn(api, 'preview').mockResolvedValue({
+    provenance: 'synthetic',
+    artifactId: version.artifactId!,
+    seed: 42,
+    durationMs: 1,
+    session: atStart,
+    decisions: [
+      {
+        eventId: 'first',
+        artifactId: version.artifactId!,
+        viewerId: 'alice',
+        at: 0,
+        mode: 'preview',
+        allowance: null,
+        code: 'ACCEPTED',
+        reason: 'Accepted',
+        effects: [{ kind: 'projectile', asset: 'tomato', x: 0.5 }],
+      },
+    ],
+  });
+  const rendered = render(
+    <Rehearsal version={version} scene={scene} onPreviewed={() => undefined} />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await screen.findByTestId('decision');
+  await waitFor(() => expect(rendered.container.querySelector('[data-projectile]')).not.toBeNull());
+});
+it('uses the host instruction projection verbatim in private rehearsal', () => {
+  const instructions = ['Join a team: !red / !blue', 'Everyone: !throw · 3 throws per round'];
+  const result = render(
+    <Rehearsal version={version} instructions={instructions} onPreviewed={() => undefined} />,
+  );
+  expect(
+    result.container.querySelector('[data-scene-kind=instructions]')?.getAttribute('aria-label'),
+  ).toBe(instructions.join(' · '));
 });

@@ -1,4 +1,7 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { renderScene, launchSceneEffect } from '../../scenes/render.js';
+import { defaultScene, type Scene, type SceneState } from '../../scenes/schema.js';
+import { sceneApi } from '../canvas/api.js';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Decision, SessionSnapshot, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import { explain, formatClock, shortHash, tone } from '../format.js';
@@ -9,6 +12,8 @@ import { codeLabel, describeCheck, logicalClock, stepTitle, timeOf, verdict } fr
 type Frame = RehearsalResult['timeline'][number];
 type Check = RehearsalResult['checks'][number];
 interface Props {
+  instructions?: string[] | undefined;
+  scene?: Scene | undefined;
   version: Version;
   versions: Version[];
   scenario: RehearsalScenario;
@@ -55,6 +60,41 @@ export function Player(props: Props) {
   const label = (v: Version | undefined) => (v ? `${v.title} v${v.number}` : 'Unknown version');
   const summary = evidence ? verdict(evidence.result) : null;
   const options = versions.filter((v) => v.id !== version.id && v.artifactId);
+  const primaryVersion = versions.find((v) => v.id === run?.versionId) ?? version;
+  const [alternateScene, setAlternateScene] = useState<SceneState | null>(null);
+  const [primarySceneError, setPrimarySceneError] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setAlternateScene(null);
+    setPrimarySceneError(false);
+    if (primaryVersion.id !== version.id)
+      void sceneApi.read(primaryVersion.id, controller.signal).then(
+        (s) => {
+          if (!controller.signal.aborted) setAlternateScene(s);
+        },
+        () => {
+          if (!controller.signal.aborted) setPrimarySceneError(true);
+        },
+      );
+    return () => controller.abort();
+  }, [primaryVersion.id, version.id]);
+  const [compareSceneError, setCompareSceneError] = useState(false);
+  const [comparedScene, setComparedScene] = useState<SceneState | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    setComparedScene(null);
+    setCompareSceneError(false);
+    if (compare)
+      void sceneApi.read(compare, controller.signal).then(
+        (s) => {
+          if (!controller.signal.aborted) setComparedScene(s);
+        },
+        () => {
+          if (!controller.signal.aborted) setCompareSceneError(true);
+        },
+      );
+    return () => controller.abort();
+  }, [compare]);
   const list = useRef<HTMLOListElement>(null);
   useEffect(() => {
     list.current
@@ -68,6 +108,12 @@ export function Player(props: Props) {
 
   return (
     <section className="player" aria-label="Scenario player">
+      {(primarySceneError || compareSceneError) && (
+        <p role="status" className="note">
+          A saved scene could not be loaded. That stage shows the safe default layout; retry by
+          reselecting its version before reviewing presentation.
+        </p>
+      )}
       <div className={`player-stages ${compare ? 'split' : ''}`}>
         <StageView
           title={
@@ -75,6 +121,17 @@ export function Player(props: Props) {
               ? label(versions.find((v) => v.id === (run?.versionId ?? version.id)) ?? version)
               : null
           }
+          scene={
+            primaryVersion.id === version.id
+              ? (props.scene ?? defaultScene())
+              : (alternateScene?.scene ?? defaultScene())
+          }
+          instructions={
+            primaryVersion.id === version.id ? props.instructions : alternateScene?.instructions
+          }
+          version={primaryVersion}
+          at={time}
+          finishAt={frames.find((f) => f.summary?.phase === 'finished')?.at}
           stage={props.primaryStage}
           ariaLabel="Private current primary effects"
           frame={frame}
@@ -86,6 +143,11 @@ export function Player(props: Props) {
         {compare && (
           <StageView
             title={label(comparison)}
+            scene={comparedScene?.scene ?? defaultScene()}
+            instructions={comparedScene?.instructions}
+            version={comparison ?? version}
+            at={time}
+            finishAt={compareFrames.find((f) => f.summary?.phase === 'finished')?.at}
             stage={props.compareStage}
             ariaLabel="Private current comparison effects"
             frame={compareFrame}
@@ -443,6 +505,11 @@ export function Player(props: Props) {
 }
 
 function StageView(props: {
+  instructions?: string[] | undefined;
+  scene: Scene;
+  version: Version;
+  at: number;
+  finishAt: number | undefined;
   title: string | null;
   stage: RefObject<HTMLDivElement | null>;
   ariaLabel: string;
@@ -452,6 +519,55 @@ function StageView(props: {
   origin: string;
   teams?: { id: string; label: string }[] | undefined;
 }) {
+  const lastFrame = useRef('');
+  useEffect(() => {
+    const root = props.stage.current;
+    if (!root) return;
+    const d = props.version.manifest.experience;
+    const summary = props.frame?.summary;
+    const session =
+      props.session ??
+      (summary
+        ? {
+            id: 'timeline',
+            phase: summary.phase,
+            startedAt: 0,
+            deadlineAt: summary.phase === 'running' ? props.at + summary.remainingMs : null,
+            remainingMs: summary.remainingMs,
+            updatedAt: summary.phase === 'finished' ? (props.finishAt ?? props.at) : props.at,
+            revision: 0,
+            participants: {},
+            scores: summary.scores,
+            winner: summary.winner,
+            outcome: null,
+          }
+        : null);
+    renderScene(root, props.scene, {
+      now: props.at,
+      definition: d,
+      snapshot: session,
+      instructions: props.instructions ?? [`Type ${props.version.manifest.trigger.command}`],
+      guides: true,
+    });
+    const key = props.frame ? `${props.version.id}:${props.frame.at}:${props.frame.key}` : '';
+    if (key !== lastFrame.current)
+      for (const effect of props.frame?.decision?.effects ?? [])
+        launchSceneEffect(root, effect, {
+          reducedMotion:
+            typeof matchMedia === 'function' &&
+            matchMedia('(prefers-reduced-motion: reduce)').matches,
+          label: props.frame?.decision?.viewerId ?? null,
+        });
+    lastFrame.current = key;
+  }, [
+    props.scene,
+    props.frame,
+    props.session,
+    props.at,
+    props.finishAt,
+    props.version,
+    props.stage,
+  ]);
   const name = (id: string) => props.teams?.find((t) => t.id === id)?.label ?? id;
   const scores = props.session?.scores ?? props.frame?.summary?.scores;
   const phase = props.session?.phase ?? props.frame?.summary?.phase;
@@ -466,17 +582,13 @@ function StageView(props: {
           className="stage interactive-stage"
           role="img"
           aria-label={props.ariaLabel}
-        >
-          <div className="stage-cam" aria-hidden="true">
-            <span>Your camera</span>
-          </div>
-        </div>
-        <div className="stage-hud" aria-hidden="true">
+        ></div>
+        <div className="scene-preview-status" aria-hidden="true">
           <span className="mono">⏱ {logicalClock(props.clock)}</span>
           <span>{props.origin}</span>
         </div>
         {scores && (
-          <div className="stage-score" aria-label="Round score at this step">
+          <div className="scene-score-summary" aria-label="Round score at this step">
             {Object.entries(scores).map(([team, score]) => (
               <span key={team}>
                 {name(team)} <strong>{score}</strong>
@@ -518,7 +630,7 @@ function Outcome(props: {
       </p>
       <p className="note">
         {d.effects.length
-          ? `${d.effects.length} effect${d.effects.length === 1 ? '' : 's'} on stage (${d.effects.map((e) => e.asset).join(', ')})`
+          ? `${d.effects.length} effect${d.effects.length === 1 ? '' : 's'} emitted (${d.effects.map((e) => e.asset).join(', ')})`
           : 'Nothing shown on stage'}
         {/* Stateless outcomes already explain the allowance in the sentence above. */}
         {a && (props.version.manifest.experience || !['ACCEPTED', 'VIEWER_LIMIT'].includes(d.code))

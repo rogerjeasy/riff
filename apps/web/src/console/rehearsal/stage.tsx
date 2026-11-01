@@ -1,8 +1,10 @@
+import { defaultScene, type Scene } from '../../scenes/schema.js';
+import { renderScene, launchSceneEffect } from '../../scenes/render.js';
 import { InteractiveStudio } from './studio.js';
 import type { StudioProps } from './studio.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
-import { clearStage, launch } from '../../effects/projectile.js';
+import { clearStage } from '../../effects/projectile.js';
 import type { Decision, PreviewResult, Role, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import { CODE_LABEL, explain, formatClock, formatDuration, shortHash, tone } from '../format.js';
@@ -34,6 +36,8 @@ const reducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 export function Rehearsal(props: {
+  instructions?: string[] | undefined;
+  scene?: Scene | undefined;
   version: Version | null;
   onPreviewed: (versionId: string) => void;
   versions?: Version[];
@@ -57,6 +61,17 @@ export function Rehearsal(props: {
   const definition = version?.manifest.experience;
   const session = result?.session ?? result?.decisions.at(-1)?.session;
   const command = version?.manifest.trigger.command ?? '!tomato';
+
+  useEffect(() => {
+    if (stage.current && version)
+      renderScene(stage.current, props.scene ?? defaultScene(), {
+        now: clock,
+        definition,
+        snapshot: session,
+        instructions: props.instructions ?? [`Type ${command}`],
+        guides: true,
+      });
+  }, [props.scene, props.instructions, clock, definition, session, command, version]);
 
   const reset = useCallback(() => {
     request.current?.abort();
@@ -102,14 +117,27 @@ export function Rehearsal(props: {
         const fresh = evidence.decisions.slice(shown.current);
         shown.current = evidence.decisions.length;
         if (stage.current)
-          for (const decision of fresh)
+          for (const decision of fresh) {
+            renderScene(stage.current, props.scene ?? defaultScene(), {
+              now: decision.at ?? next.at(-1)?.at ?? clock,
+              definition,
+              snapshot: decision.session ?? evidence.session,
+              instructions: props.instructions ?? [`Type ${command}`],
+              guides: true,
+            });
             for (const effect of decision.effects)
-              launch(stage.current, {
-                asset: effect.asset,
-                x: effect.x,
-                reducedMotion: reducedMotion(),
-                label: PERSONAS.find((p) => p.id === decision.viewerId)?.name ?? null,
-              });
+              launchSceneEffect(
+                stage.current,
+                {
+                  asset: effect.asset,
+                  x: effect.x,
+                },
+                {
+                  reducedMotion: reducedMotion(),
+                  label: PERSONAS.find((p) => p.id === decision.viewerId)?.name ?? null,
+                },
+              );
+          }
       } catch (cause) {
         if (!controller.signal.aborted)
           setError(cause instanceof ApiError ? cause.message : 'The rehearsal could not run.');
@@ -274,6 +302,8 @@ export function Rehearsal(props: {
         <InteractiveStudio
           key={`${version.id}:${version.artifactId}`}
           version={version}
+          instructions={props.instructions}
+          scene={props.scene}
           versions={props.versions ?? [version]}
           recording={props.recording}
           onPreviewed={props.onPreviewed}
@@ -286,24 +316,12 @@ export function Rehearsal(props: {
             ref={stage}
             className="stage"
             role="img"
-            aria-label={`Private overlay preview. ${accepted} effects shown, ${blocked} messages blocked or ignored.`}
-          >
-            <div className="stage-cam" aria-hidden="true">
-              <span>Your camera</span>
-            </div>
-            {!version && (
-              <p className="stage-empty">Generate an interaction to rehearse it here.</p>
-            )}
-            {version && decisions.length === 0 && (
-              <p className="stage-empty">
-                Pick a viewer and send {command} — or run the proof sequence.
-              </p>
-            )}
-          </div>
-          <div className="stage-hud" aria-hidden="true">
+            aria-label={`Private overlay preview. ${accepted} accepted events, ${blocked} messages blocked or ignored. Scene timing controls effect visibility.`}
+          ></div>
+          <div className="scene-preview-status" aria-hidden="true">
             <span className="mono">⏱ {formatClock(clock)}</span>
             <span>
-              {accepted} thrown · {blocked} blocked/ignored
+              {accepted} accepted · {blocked} blocked/ignored
             </span>
           </div>
         </div>

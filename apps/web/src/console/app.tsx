@@ -1,3 +1,5 @@
+import { CanvasEditor } from './canvas/editor.js';
+import { type Scene } from '../scenes/schema.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
 import { useStudio } from '../lib/use-studio.js';
@@ -120,6 +122,11 @@ function Steps({
 
 export function App() {
   const { studio, runs, connection, error, refresh, setRuns } = useStudio();
+  const [sceneDraft, setSceneDraft] = useState<{
+    versionId: string;
+    scene: Scene;
+    instructions: string[];
+  } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [previewed, setPreviewed] = useState<Set<string>>(new Set());
@@ -159,6 +166,12 @@ export function App() {
     allVersions.find((v) => v.status === 'active') ??
     null;
   const automation = studio?.automations.find((a) => a.id === selected?.automationId);
+  const onScene = useCallback(
+    (scene: Scene, instructions: string[]) => {
+      if (selected) setSceneDraft({ versionId: selected.id, scene, instructions });
+    },
+    [selected?.id],
+  );
   const editing =
     automation?.versions.find((v) => v.id === automation.activeVersionId) ??
     (selected?.status === 'candidate' ? null : selected);
@@ -331,6 +344,10 @@ export function App() {
           </div>
           <div className="col">
             <Rehearsal
+              instructions={
+                sceneDraft?.versionId === selected?.id ? sceneDraft?.instructions : undefined
+              }
+              scene={sceneDraft?.versionId === selected?.id ? sceneDraft?.scene : undefined}
               version={selected && selected.evidence.verification.artifactId ? selected : null}
               onPreviewed={(id) =>
                 setPreviewed((set) => (set.has(id) ? set : new Set(set).add(id)))
@@ -346,6 +363,16 @@ export function App() {
                 setRunId(started.id);
               }}
             />
+            {selected?.artifactId && (
+              <CanvasEditor
+                key={selected.id}
+                version={selected}
+                panic={studio.panic}
+                compiler={studio.compiler.kind}
+                onScene={onScene}
+                onBehaviorEdit={() => document.getElementById('intent')?.focus()}
+              />
+            )}
             <LivePanel
               studio={studio}
               selectedVersionId={selected?.id ?? null}

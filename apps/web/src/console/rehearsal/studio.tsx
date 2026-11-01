@@ -1,3 +1,4 @@
+import type { Scene } from '../../scenes/schema.js';
 import { usePrivateLibrary } from './library.js';
 import { InputEditor, type ExpectationDraft } from './input-editor.js';
 import { Player } from './timeline.js';
@@ -5,7 +6,7 @@ import { RegressionPanel, type FailureFocus } from './regressions.js';
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import type { Run, Version } from '../../lib/types.js';
-import { clearStage, launch } from '../../effects/projectile.js';
+import { clearStage } from '../../effects/projectile.js';
 import { shortHash } from '../format.js';
 import {
   presets,
@@ -18,6 +19,8 @@ import {
 import { PRESET_TEXT, friendlyError } from './labels.js';
 
 export interface StudioProps {
+  instructions?: string[] | undefined;
+  scene?: Scene | undefined;
   version: Version;
   versions: Version[];
   recording?: { versionId: string; sessionId: string } | null | undefined;
@@ -33,9 +36,6 @@ const blank = (): RehearsalScenario => ({
   expectations: [],
   provenance: { kind: 'synthetic' },
 });
-type Effect = NonNullable<RehearsalRun['result']['cursor']['decision']>;
-const reducedMotion = () =>
-  typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Client-side playback over frames the host already replayed once: ≤600 ms a step, ~15 s total. */
 const stepMs = (total: number) =>
   Math.max(120, Math.min(600, Math.floor(15_000 / Math.max(1, total))));
@@ -45,6 +45,8 @@ const SCRUB_MS = 180;
 /** Each request owns an epoch, abort signal and immutable version/revision context. */
 export function InteractiveStudio({
   version,
+  instructions,
+  scene,
   versions,
   recording,
   onPreviewed,
@@ -207,16 +209,6 @@ export function InteractiveStudio({
       },
     );
   }
-  function animate(decision: Effect | null | undefined, node: HTMLDivElement | null) {
-    if (!node) return;
-    for (const effect of decision?.effects ?? [])
-      launch(node, {
-        asset: effect.asset,
-        x: effect.x,
-        reducedMotion: reducedMotion(),
-        label: decision?.viewerId ?? null,
-      });
-  }
   function credit(value: RehearsalRun, canPreview: boolean) {
     const r = value.result;
     if (
@@ -238,10 +230,6 @@ export function InteractiveStudio({
     setRun(value);
     setCursor(value.result.through);
     clearEffects();
-    if (value.result.through > 0) {
-      animate(value.result.cursor.decision, primaryStage.current);
-      if (value.comparison) animate(value.comparison.cursor.decision, compareStage.current);
-    }
     credit(value, canPreview);
   }
   /**
@@ -352,9 +340,6 @@ export function InteractiveStudio({
         if (!full) return seek(cursor + 1);
         const next = cursor + 1;
         setCursor(next);
-        animate(full.result.timeline[next - 1]?.decision, primaryStage.current);
-        if (full.comparison)
-          animate(full.comparison.timeline[next - 1]?.decision, compareStage.current);
         if (next === total) {
           setRun(full);
           setPlaying(false);
@@ -561,6 +546,8 @@ export function InteractiveStudio({
       )}
 
       <Player
+        instructions={instructions}
+        scene={scene}
         version={version}
         versions={versions}
         scenario={scenario}

@@ -122,6 +122,7 @@ export const sessionSnapshotSchema = z
   });
 export const overlaySessionSchema = z
   .object({
+    versionId: z.string().optional(),
     automationId: z.string().min(1).max(200),
     title: z.string().min(1).max(200),
     definition: experienceDefinitionSchema,

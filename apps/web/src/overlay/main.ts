@@ -1,9 +1,9 @@
 import { renderCommunity } from './community.js';
 import type { Community } from '../community/schema.js';
 import { overlayMessageSchema } from './messages.js';
-import { createSessionHud } from '../sessions/presentation.js';
+import { createSceneOverlay } from '../scenes/live.js';
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
-import { clearStage, launch, type Asset } from '../effects/projectile.js';
+import { clearStage } from '../effects/projectile.js';
 import './overlay.css';
 
 // The overlay is a read-only consumer: it validates every message, ignores unknown
@@ -15,14 +15,10 @@ const instructions = document.getElementById('instructions') as HTMLElement;
 const notice = document.getElementById('notice') as HTMLElement;
 const params = new URLSearchParams(location.search);
 const key = params.get('key') ?? '';
-const [tx, ty] = (params.get('target') ?? '0.5,0.42').split(',').map(Number);
-const target = {
-  x: tx !== undefined && Number.isFinite(tx) ? tx : 0.5,
-  y: ty !== undefined && Number.isFinite(ty) ? ty : 0.42,
-};
 const showLabels = params.get('labels') === '1';
 const reducedMotion =
   params.get('motion') === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+const sceneOverlay = createSceneOverlay(stage, { reducedMotion, showLabels });
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 let retry = 0;
 let community: Community | null = null;
@@ -30,21 +26,31 @@ const communityRoot = document.createElement('section');
 communityRoot.className = 'overlay-community';
 communityRoot.setAttribute('aria-label', 'Community co-creation');
 root.append(communityRoot);
-const sessionsRoot = document.createElement('div');
-sessionsRoot.className = 'overlay-sessions';
-root.append(sessionsRoot);
-let sessions: { definition: ExperienceDefinition; snapshot: SessionSnapshot }[] = [];
-function renderSessions() {
-  sessionsRoot.replaceChildren(
-    ...sessions.map((session) =>
-      createSessionHud(session.definition, session.snapshot, { now: Date.now() }),
-    ),
-  );
+function renderCommunitySafely() {
+  const area = sceneOverlay.communityRegion();
+  renderCommunity(communityRoot, area ? community : null, Date.now());
+  // A compact card in the bottom-right corner of the free area, never stretched across it.
+  if (area)
+    Object.assign(communityRoot.style, {
+      left: 'auto',
+      top: 'auto',
+      right: `${(1000 - area.x - area.width) / 10}%`,
+      bottom: `${(1000 - area.y - area.height) / 10}%`,
+      maxWidth: `min(520px, ${area.width / 10}%)`,
+      maxHeight: `${area.height / 10}%`,
+      overflow: 'hidden',
+    });
 }
+let sessions: {
+  automationId: string;
+  versionId?: string | undefined;
+  definition: ExperienceDefinition;
+  snapshot: SessionSnapshot;
+}[] = [];
 setInterval(() => {
-  renderSessions();
-  renderCommunity(communityRoot, community, Date.now());
-}, 1000);
+  sceneOverlay.render();
+  renderCommunitySafely();
+}, 250);
 function clearOverlay(withdrawCommunity = true) {
   if (withdrawCommunity) {
     community = null;
@@ -53,7 +59,7 @@ function clearOverlay(withdrawCommunity = true) {
   clearStage(stage);
   setInstructions([]);
   sessions = [];
-  sessionsRoot.replaceChildren();
+  sceneOverlay.clear();
   notice.hidden = true;
 }
 
@@ -104,6 +110,15 @@ function connect() {
       return;
     }
     if (!parsed.success) {
+      if (
+        raw &&
+        typeof raw === 'object' &&
+        'type' in raw &&
+        (raw.type === 'scenes' || raw.type === 'sessions')
+      ) {
+        sceneOverlay.clear();
+        sessions = [];
+      }
       if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'community') {
         // A rejected replacement cannot leave withdrawn text cached on screen.
         community = null;
@@ -117,22 +132,20 @@ function connect() {
       retry = 0;
       root.dataset.mode = 'live';
     } else if (data.type === 'effect') {
-      launch(stage, {
-        asset: data.payload.asset as Asset,
-        x: data.payload.x,
-        target,
-        label: showLabels ? data.payload.viewer : null,
-        reducedMotion,
-      });
-    } else if (data.type === 'instructions') setInstructions(data.payload.lines);
-    else if (data.type === 'sessions') {
+      sceneOverlay.effect(data.payload);
+    } else if (data.type === 'instructions') setInstructions([]);
+    else if (data.type === 'scenes') {
+      sceneOverlay.setScenes(data.payload.scenes);
+      sceneOverlay.setSessions(sessions);
+      renderCommunitySafely();
+    } else if (data.type === 'sessions') {
       sessions = data.payload.sessions;
-      renderSessions();
+      sceneOverlay.setSessions(sessions);
     } else if (data.type === 'community') {
       // The broker fences publication during panic; a fresh frame also resumes
       // community on the same socket after explicit channel recovery.
       community = data.payload;
-      renderCommunity(communityRoot, community, Date.now());
+      renderCommunitySafely();
     } else if (data.type === 'clear') {
       clearOverlay(data.payload.reason !== 'pause');
     } else if (data.type === 'test') flash('✓ Riff overlay connected');

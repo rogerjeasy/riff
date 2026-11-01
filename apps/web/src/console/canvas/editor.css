@@ -1,0 +1,263 @@
+.canvas-editor {
+  padding: 20px;
+  display: grid;
+  gap: 14px;
+}
+.canvas-editor .card-head {
+  padding: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.canvas-head-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.canvas-status {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted, #b9b3c9);
+}
+.canvas-body {
+  display: grid;
+  gap: 14px;
+}
+.canvas-body[hidden] {
+  display: none;
+}
+.canvas-problems ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.canvas-review h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+.canvas-review-label {
+  margin: 8px 0 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.canvas-diff {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+.canvas-sharing {
+  border-left: 3px solid #ffb37a;
+  padding-left: 8px;
+}
+.canvas-review > details {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.canvas-review > details > summary {
+  cursor: pointer;
+}
+.canvas-editor label.canvas-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.canvas-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.canvas-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.canvas-toolbar label,
+.canvas-review > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.canvas-editor input[type='checkbox'] {
+  width: auto;
+}
+.canvas-board {
+  position: relative;
+  aspect-ratio: 16/9;
+  width: 100%;
+  background: #1c1a29;
+  border: 1px solid #5f5776;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.canvas-board[data-mobile='true'] {
+  max-width: 390px;
+  justify-self: center;
+}
+.canvas-picture,
+.canvas-handles {
+  position: absolute;
+  inset: 0;
+}
+.canvas-handle {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px dashed transparent;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+  color: #fff;
+}
+.canvas-handle[data-selected='true'] {
+  border: 2px solid #ffb37a;
+}
+.canvas-handle:focus-visible {
+  outline: 3px solid #b8a8ff;
+  outline-offset: -4px;
+}
+/* Name tags sit in the corner opposite the panel's anchor, so they never cover its text. */
+.canvas-handle-name {
+  position: absolute;
+  background: #252132;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+.canvas-handle-name[data-x='end'] {
+  right: 2px;
+}
+.canvas-handle-name[data-x='start'] {
+  left: 2px;
+}
+.canvas-handle-name[data-y='end'] {
+  bottom: 2px;
+}
+.canvas-handle-name[data-y='start'] {
+  top: 2px;
+}
+.canvas-handle[data-invalid='true'] {
+  border: 2px solid #ff6b6b;
+  background: rgb(255 107 107 / 0.12);
+}
+.canvas-handle[data-invalid='true'] .canvas-handle-name {
+  background: #8a2b2b;
+}
+.canvas-resize {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 14px;
+  height: 14px;
+  background: #ffb37a;
+  border-radius: 3px 0 3px 0;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+/* Area grips straddle the middle of each area's top edge, clear of panel text. */
+.canvas-region-grip {
+  position: absolute;
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #f6f3ff;
+  background: rgb(37 33 50 / 0.92);
+  border: 1px solid #5f5776;
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+  white-space: nowrap;
+}
+.canvas-region-grip[data-protected='true'] {
+  border-color: #ffb37a;
+}
+.canvas-region-grip[data-selected='true'] {
+  background: #ffb37a;
+  color: #1c1a29;
+}
+.canvas-region-grip:focus-visible {
+  outline: 3px solid #b8a8ff;
+}
+/* Region labels move to the grips; the picture keeps only the outline. */
+.canvas-picture .scene-guide-label {
+  visibility: hidden;
+}
+.canvas-properties {
+  display: grid;
+  gap: 12px;
+}
+.canvas-editor fieldset {
+  border: 1px solid #51485f;
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.canvas-numbers {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.canvas-editor input,
+.canvas-editor select,
+.canvas-editor textarea {
+  max-width: 100%;
+  min-width: 0;
+}
+.canvas-language {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #51485f;
+  padding-top: 14px;
+}
+.canvas-language textarea {
+  min-height: 76px;
+}
+.canvas-review {
+  border-top: 1px solid #51485f;
+  padding-top: 12px;
+}
+.canvas-review pre {
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+}
+.canvas-review > label,
+.canvas-review > button {
+  margin-top: 10px;
+}
+@media (max-width: 600px) {
+  /* Small boards show only the selected object's name, so tags don't hide the preview. */
+  .canvas-handle:not([data-selected='true']) .canvas-handle-name {
+    display: none;
+  }
+  .canvas-numbers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .canvas-editor {
+    padding: 14px;
+  }
+}
+.canvas-tracks {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+  text-align: left;
+}
+.canvas-tracks caption {
+  text-align: left;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.canvas-tracks td,
+.canvas-tracks th {
+  padding: 5px;
+  border-bottom: 1px solid #51485f;
+}
+.canvas-handle-name[data-x='end'][data-y='end'] {
+  right: 18px;
+}

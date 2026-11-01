@@ -202,7 +202,7 @@ async function transitionRequest(url: string, body: unknown): Promise<Transition
     .transition as unknown as Transition;
 }
 
-async function request<T>(
+export async function request<T>(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   url: string,
   body?: unknown,

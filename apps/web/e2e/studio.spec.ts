@@ -175,9 +175,9 @@ test('scenario studio plays one private replay with live scores and an accessibl
   await expect(rehearsal.getByText('Not saved yet')).toBeVisible();
   // Play saves the inputs, replays once, then animates frames with scores on the stage.
   await rehearsal.getByRole('button', { name: 'Play' }).click();
-  await expect(rehearsal.locator('.stage-score')).toContainText('Red 1');
+  await expect(rehearsal.locator('.scene-score-summary')).toContainText('Red 1');
   await expect(rehearsal.getByText(/Step 4 of 4/)).toBeVisible({ timeout: 10000 });
-  await expect(rehearsal.locator('.stage-score')).toContainText('Red wins');
+  await expect(rehearsal.locator('.scene-score-summary')).toContainText('Red wins');
   await expect(rehearsal.getByText(/Saved · revision 0/)).toBeVisible();
   await expect(rehearsal.getByRole('region', { name: 'Rehearsal result' })).toContainText(
     'Expectation met',
