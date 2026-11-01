@@ -15,8 +15,8 @@ export default defineConfig({
       'packages/compiler/test/**/*.test.ts',
       'packages/twitch/test/**/*.test.ts',
       'packages/sandbox/test/{runtime,engine,verify}.test.ts',
-      'apps/server/test/{app,env,database,sessions,twitch-live}.test.ts',
-      'apps/web/test/{console,community,proposal-api,rehearsal-api}.test.tsx',
+      'apps/server/test/{app,env,database,sessions,scenes,twitch-live}.test.ts',
+      'apps/web/test/{console,community,proposal-api,rehearsal-api,scenes,scene-contract,scene-live}.test.tsx',
     ],
   },
 });
