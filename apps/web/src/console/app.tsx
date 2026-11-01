@@ -193,7 +193,7 @@ export function App() {
         <span className="brand">
           riff<span>.</span>
         </span>
-        <p role="status">{error ?? 'Connecting to your local studio…'}</p>
+        <p role="status">{error ?? 'Connecting to your studio…'}</p>
       </main>
     );
   const liveCount = studio.automations.filter((a) => a.status === 'live').length;
