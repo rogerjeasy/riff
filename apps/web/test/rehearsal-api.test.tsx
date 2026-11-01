@@ -208,3 +208,37 @@ it('accepts computed host allowance deadlines beyond input headroom but within t
       }).success,
     ).toBe(false);
 });
+
+it('matches the exact host chat control-character predicate before submission', () => {
+  for (const code of [...Array.from({ length: 160 }, (_, i) => i), 0x2028, 0x1f600]) {
+    const input = {
+      version: 1,
+      seed: 42,
+      initialAt: 0,
+      initialSession: null,
+      provenance: { kind: 'synthetic' },
+      expectations: [],
+      steps: [
+        {
+          kind: 'chat',
+          key: 'one',
+          event: {
+            id: 'e',
+            viewerId: 'v',
+            channelId: 'c',
+            roles: [],
+            text: `hello${String.fromCodePoint(code)}`,
+            at: 0,
+          },
+        },
+      ],
+    };
+    const parsed = scenarioSchema.safeParse(input);
+    expect(parsed.success, `code point ${code}`).toBe(code >= 32 && code !== 127);
+    if (!parsed.success)
+      expect(parsed.error.issues[0]).toMatchObject({
+        path: ['steps', 0, 'event', 'text'],
+        message: 'Control characters forbidden',
+      });
+  }
+});

@@ -52,7 +52,13 @@ const event = z
     channelId: id,
     viewerId: id,
     roles: z.array(z.enum(['viewer', 'subscriber', 'moderator', 'broadcaster'])).max(4),
-    text: z.string().max(500),
+    text: z
+      .string()
+      .max(500)
+      .refine(
+        (s) => ![...s].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127),
+        'Control characters forbidden',
+      ),
     at,
   })
   .strict();
