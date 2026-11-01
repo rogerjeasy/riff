@@ -16,3 +16,7 @@ the existing allowance; it is an offline recording, not a model execution.
 prompt pack 6, with bounded private rehearsal evidence and a two-effect repair.
 It records no live model call. Compiler contract tests validate the request/output;
 server tests verify the response against immutable independent regression inputs.
+
+`channel-points-predictions.json` records deterministic offline outputs for prompt pack
+`riff-compiler/7`: a `points.redeem` Hydrate redemption and a `predictions` proposal. They
+are template responses, not model executions; the test suite replays them exactly.

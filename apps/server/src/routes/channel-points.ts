@@ -78,12 +78,10 @@ function fail(reply: FastifyReply, error: unknown) {
       .code(FEATURE_STATUS[error.code])
       .send({ code: error.code, message: error.message });
   reply.log.error({ err: error }, 'channel points request failed');
-  return reply
-    .code(500)
-    .send({
-      code: 'FAILED',
-      message: 'Riff could not complete that. Nothing was changed on Twitch.',
-    });
+  return reply.code(500).send({
+    code: 'FAILED',
+    message: 'Riff could not complete that. Nothing was changed on Twitch.',
+  });
 }
 function parsed<T>(schema: z.ZodType<T>, value: unknown, message: string): T {
   const result = schema.safeParse(value);
