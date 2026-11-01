@@ -263,7 +263,8 @@ packages/twitch    EventSub WebSocket lifecycle, Helix, OAuth, chat normalizatio
 **Trust model in one paragraph.** Codex never receives credentials, repository files or
 network tools: each compile runs in a fresh temp workspace holding only `TASK.md`,
 `SDK.md`, two `.d.ts` files and curated examples, a fresh `CODEX_HOME` with only the
-login, a read-only sandbox, and no web search. Its output is a strict JSON object; the
+login, a read-only sandbox, and no web search. Host-only scene edits use a quoted
+`TASK.md` scene contract instead of the guest SDK workspace. Its output is a strict JSON object; the
 host then runs manifest validation → restricted-syntax analysis → sandbox compile →
 the generated scenarios → a host-owned policy suite the compiler cannot edit, plus
 deterministic intent checks. Command matching, audience, per-viewer rolling windows,
@@ -279,6 +280,51 @@ protection and effect budgets (recorded in SQLite before any effect is sent). `S
 (console, dock or `!riff panic` from the broadcaster or a moderator) flips an in-memory
 fence first, clears the overlay, persists second and stays stopped across restarts
 until explicitly resumed.
+
+## Visual canvas
+
+**Stream layout · Arrange the overlay** sits under the rehearsal. It opens automatically
+once a version is live; for a candidate, press **Edit layout**. Drag an object to move it,
+or drag its corner to resize it. Drag an area's ⠿ handle to move the area together with
+everything inside it. Arrow keys move the selection 10 units (Shift moves 1), and Alt with
+the arrows resizes it. An object dropped wholly inside another open area moves into that
+area. Camera and captions are protected. **Phone-size preview** and **Reduced motion** use
+the same renderer as the stream.
+
+1. Choose **Scoreboard on the right**, or move the effects area. You can also select
+   **Celebration** and choose **After the round ends**. A rule-breaking draft stays
+   visible: the object is marked and a message names it, such as “Effects covers the
+   protected Camera region”.
+2. **Save layout**, then rehearse real chat above. The canvas sample round shows the
+   layout only; it is not test evidence.
+3. Read **Review and apply**. It lists plain changes from the applied layout, such as
+   “Scoreboard moved to 580, 20”, along with the exact document. Activate the behavior
+   through the existing workflow, then **Approve and apply layout**. The status changes
+   to “This layout is live”.
+4. Select Effects and type **Move left by 10 units**. **Draft this change** runs the
+   same host checks. A move inside an approved area becomes a small change you can apply
+   with **Apply layout change**. Changes to timing, sprites and protection need review again.
+5. Restore a previous layout from history to create a new revision. Concurrent edits
+   show a conflict; reload before saving again.
+
+On stream, every panel shrinks to fit its text inside its reserved box, and an idle
+scoreboard draws nothing. When several interactions are live, their instructions combine
+into one panel. A scoreboard moves to the nearest free spot in its own area, and is held
+back only if no spot exists. Effects keep playing but are cut away where another
+interaction's text or protected area sits. The audience card takes a compact free spot
+near a screen edge. The canvas warns when a layout shares space with another live
+interaction. Applying is blocked only when one interaction's objects would cover another's
+protected area.
+
+The runtime model receives the selected object or area and the current layout. Offline
+mode supports explicit directional moves and schedules such as **Show this 2 seconds after
+round end for 5 seconds**. It rejects other wording. Behavior and capability changes use
+Describe and its existing verification pipeline. New behavior versions keep an immutable
+copy of their parent's approved layout without bypassing behavior approval.
+
+Layouts allow only owned sprites and trusted text, bound to exact behavior artifacts.
+No canvas preview publishes to Twitch or the live overlay; only explicit application can
+change an approved live layout.
 
 ## Twitch
 

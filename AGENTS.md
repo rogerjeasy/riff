@@ -394,7 +394,7 @@ Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, 
 `proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
-`rehearsal_regressions`.
+`rehearsal_regressions`, `scene_heads`, `scene_revisions`.
 
 ---
 
@@ -645,3 +645,48 @@ state/check inspection, synchronized comparison and separate reduction/save/repa
 actions. Aborts and request epochs prevent stale responses from supplying evidence for
 another version. Only a complete nonempty passing primary replay marks its exact
 artifact previewed. Repair candidates return to the existing evidence/review flow.
+
+
+## Intent-aware visual canvas — F35
+
+Host-owned SceneDocument v1 binds normalized rectangles, protected regions, trusted
+nodes/assets and timing tracks to an exact immutable behavior version/artifact.
+SDK scene types grant no guest capability. Compiler and browser validate strict
+bounded schemas; compatibility tests keep their defaults and rejection rules aligned.
+Required protected camera/captions and readable persistent score/instruction nodes
+cannot be removed. All nodes stay inside unprotected regions; critical text cannot
+be overlapped. Coordinates are integers in 0–1000, maximum 12 regions/8 nodes,
+60-second delays/durations and 100 immutable revisions per behavior version.
+
+Migration 0010 adds channel-scoped scene heads and revisions. Private guarded routes:
+`GET /api/scenes/:versionId`, `POST /api/scenes/:versionId`, and POST suffixes
+`/generate`, `/undo`, `/apply`. All mutations use revision CAS; apply also echoes the
+exact scene digest, checks active healthy behavior, proposal lineage, panic and
+collisions with another live interaction's protected area (shared text space is resolved
+on stream, and responses carry `sharing` notes). Undo writes a new revision. History is validated and
+rehash-checked before use. Direct and language edits share this same storage path.
+Geometry-only updates inside an approved region are configuration revisions; region,
+asset, node or timing changes require review. Applying either is explicit. Approved
+parent presentation is copied immutably to new authored behavior versions; this carries
+only presentation approval and never activates the new behavior.
+
+Scene generation uses the existing shared compiler queue, isolated server transport,
+strict scene output schema, one repair and 180-second deadline. Selected IDs and
+current scene are quoted context, not authority. Host scene compiles use TASK.md only,
+not the guest SDK workspace. History records origin, prompt/thread/usage, quoted intent
+and selection. Offline mode accepts explicit directional moves and round-end schedules;
+unsupported behavior changes go through ordinary Describe/test/review.
+
+Overlay frames add `scenes`; production effect/session frames carry automation and
+version identities. Preview and live call the same browser renderer. Projectiles,
+labels and splats are clipped inside safe rectangles. Panels hug their text inside the
+reserved box; empty panels draw nothing. Across interactions, text is planned first:
+shared instructions merge into one panel, a conflicting scoreboard moves to free space
+in its own area (or is withheld), and effects get even-odd clip-path holes over other
+interactions' text and protected areas. The community card takes a compact free box
+near a screen edge, never over protected areas or visible text. Panic, pause/reset, rotation,
+disconnect and watchdog clear presentation; subsequent authoritative frames rehydrate.
+Small previews page instructions and scores at readable size; no text is executed.
+Canvas supports pointer/keyboard/numeric editing, timing tracks, region properties,
+private stream/mobile views, reduced motion, diff/digest review and durable undo.
+F34 uses its real logical state and timeline; the editor sample is labeled illustrative.

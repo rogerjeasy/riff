@@ -82,3 +82,60 @@ lint, types, formatting, build, bundle isolation, smoke and redacted secret scan
 pass. Full suite has the two previously documented socket-permission failures.
 Fresh review findings for panic durability, postcommit delivery and overlay rotation
 were reproduced with SQLite triggers/real services and fixed with regression tests.
+
+## Intent-aware visual canvas — November 1, 2026
+
+F35 now includes the bounded host scene contract, selected-object runtime generation,
+immutable SQLite scene revisions (migration 0010), revision/digest approval, configuration
+updates inside approved regions, inherited presentation, undo, and a keyboard/pointer
+canvas editor. Canvas, quick proof, F34 playback/comparison and live use the same
+trusted renderer and host-derived participation instructions. Mobile text pages at
+readable size; effects are clipped to safe bounds. No new guest capability or dependency.
+
+Final verification: **498 tests in 43 files passed**, excluding only the two existing
+socket-dependent tests; **15 tooling tests passed**. Lint/boundaries, strict types,
+formatting, production build, overlay bundle isolation, Fastify/SQLite smoke, focused
+secret checks and a redacted Gitleaks source-snapshot scan passed.
+
+The full-suite attempt encountered the existing `eventsub-ws.test.ts` socket EPERM
+and `twitch-live.test.ts` timeout caused by the denied localhost listener. Four
+stateful-workflow tests also exposed a fixed four-second polling assumption under
+concurrent WASM load. That helper now observes actual completion with a bounded
+15-second deadline; production timeouts and behavioral assertions are unchanged.
+The final available-suite run includes all stateful workflow tests and passes.
+
+The new `apps/web/e2e/visual-canvas.spec.ts` covers scene save/review/apply, contextual edits,
+private effects, mobile/reduced-motion controls and axe. Execution was attempted but
+server startup was denied at 127.0.0.1:8788 (EPERM). A separate headless Chromium
+launch was also denied by macOS MachPort permissions. No browser/visual/axe pass,
+real-model scene generation, or new real-Twitch execution is claimed.
+
+Independent review identified five presentation defects: cross-scene text overlaps,
+reset effects persisting, stale quick-proof timing, incorrect first-review baseline,
+and rehearsal/live instruction mismatch. All five were corrected with regression
+coverage. Scenes keep exact approved parent presentation when authoring descendants;
+this carries presentation approval only, never behavior activation. Scene-only
+requests cannot authorize behavior changes; those use the existing authoring workflow.
+
+A later review in a separate local instance with two live interactions found these live problems:
+
+- **Card coverage:** the audience card was stretched across the whole gameplay area, and
+  effects flew underneath it.
+- **Panel coverage:** the 400 × 200 text boxes were drawn as opaque panels across about
+  40% of the screen. Stateless interactions showed an empty dark scoreboard.
+- **Second interaction:** a second live interaction lost its instructions and scoreboard
+  without warning, and both interactions' effects layers were hidden.
+- **Dragging:** dragging the scoreboard sideways blanked the editor preview.
+
+Fixes:
+
+- **Panels:** they now hug their text, and empty panels draw nothing.
+- **Shared space:** shared instructions merge, scoreboards relocate, and effects are
+  clipped around other text instead of hidden. The audience card takes a compact free spot
+  near an edge. Text overlap no longer blocks apply; protected-area collisions still do.
+- **Editor:** drags clamp and re-home into the area they land in. Area grips, resize
+  handles, Alt+arrow resizing and quick left/right layouts were added. Invalid drafts stay
+  visible with named reasons, and save errors name the object at fault.
+- **Placement:** the editor sits under the rehearsal, collapsed until the version is live.
+
+The two-interaction case was checked visually in a separate local instance.
