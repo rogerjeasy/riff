@@ -13,6 +13,8 @@ export function useStudio() {
   const [runs, setRuns] = useState<Record<string, Run>>({});
   const [connection, setConnection] = useState<Connection>('connecting');
   const [error, setError] = useState<string | null>(null);
+  // Hosted instances answer SIGNED_OUT until the browser has a console session.
+  const [signedOut, setSignedOut] = useState(false);
   const refreshing = useRef<Promise<void> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -28,7 +30,9 @@ export function useStudio() {
           return merged;
         });
         setError(null);
+        setSignedOut(false);
       } catch (cause) {
+        if (cause instanceof ApiError && cause.code === 'SIGNED_OUT') setSignedOut(true);
         setError(cause instanceof ApiError ? cause.message : 'Could not load the studio.');
       } finally {
         refreshing.current = null;
@@ -120,5 +124,5 @@ export function useStudio() {
     };
   }, [refresh]);
 
-  return { studio, runs, connection, error, refresh, setRuns };
+  return { studio, runs, connection, error, signedOut, refresh, setRuns };
 }

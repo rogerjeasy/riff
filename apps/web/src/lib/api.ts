@@ -510,6 +510,14 @@ export const api = {
   auditSession: async (id: string): Promise<SessionAudit> =>
     auditSchema.parse(await request('POST', `/api/automations/${id}/session/audit`, {}))
       .audit as SessionAudit,
+  async session(signal?: AbortSignal) {
+    return z
+      .object({ required: z.boolean(), authenticated: z.boolean() })
+      .strict()
+      .parse(await request('GET', '/api/session', undefined, signal));
+  },
+  login: (password: string) => request('POST', '/api/session/login', { password }),
+  logout: () => request('POST', '/api/session/logout', {}),
   panic: () => request('POST', '/api/channel/panic', {}),
   resume: () => request('POST', '/api/channel/resume', { confirm: true }),
   overlay: () => request<{ url: string; connections: number }>('GET', '/api/overlay'),

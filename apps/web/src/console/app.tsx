@@ -1,5 +1,6 @@
 import { CollaborationPanel } from './collaboration/panel.js';
 import { CanvasEditor } from './canvas/editor.js';
+import { SignIn } from './sign-in.js';
 import { type Scene } from '../scenes/schema.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../lib/api.js';
@@ -122,7 +123,15 @@ function Steps({
 }
 
 export function App() {
-  const { studio, runs, connection, error, refresh, setRuns } = useStudio();
+  const { studio, runs, connection, error, signedOut, refresh, setRuns } = useStudio();
+  // Hosted instances require a console session; show "Sign out" only where it means something.
+  const [sessionRequired, setSessionRequired] = useState(false);
+  useEffect(() => {
+    void api.session().then(
+      (session) => setSessionRequired(session.required),
+      () => undefined,
+    );
+  }, []);
   const [sceneDraft, setSceneDraft] = useState<{
     versionId: string;
     scene: Scene;
@@ -177,6 +186,7 @@ export function App() {
     automation?.versions.find((v) => v.id === automation.activeVersionId) ??
     (selected?.status === 'candidate' ? null : selected);
 
+  if (signedOut && !studio) return <SignIn />;
   if (!studio)
     return (
       <main className="boot">
@@ -238,6 +248,15 @@ export function App() {
             </span>
           )}
         </nav>
+        {sessionRequired && (
+          <button
+            type="button"
+            className="button small ghost sign-out"
+            onClick={() => void api.logout().finally(() => location.reload())}
+          >
+            Sign out
+          </button>
+        )}
         <StopControl studio={studio} notify={notify} />
       </header>
       {studio.panic && (

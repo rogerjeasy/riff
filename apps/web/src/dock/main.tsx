@@ -3,17 +3,19 @@ import { createRoot } from 'react-dom/client';
 import { api } from '../lib/api.js';
 import { useStudio } from '../lib/use-studio.js';
 import { StopControl } from '../console/app.js';
+import { SignIn } from '../console/sign-in.js';
 import { ago, tone } from '../console/format.js';
 import '../styles/studio.css';
 
 /** OBS custom dock: stop, pause and incidents stay one click away during a show. */
 function Dock() {
-  const { studio, connection } = useStudio();
+  const { studio, connection, signedOut } = useStudio();
   const [message, setMessage] = useState<string | null>(null);
   const notify = useCallback((text: string) => {
     setMessage(text);
     setTimeout(() => setMessage(null), 4000);
   }, []);
+  if (signedOut && !studio) return <SignIn compact />;
   if (!studio)
     return (
       <main className="dock">
