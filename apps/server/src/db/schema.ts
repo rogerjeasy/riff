@@ -1,3 +1,4 @@
+import type { SharedContract, SharedMember } from '../services/collaboration/contract.js';
 import type { SceneRevision } from '../services/scenes/contract.js';
 import type {
   ScenarioRecord,
@@ -535,3 +536,52 @@ export const sceneRevisions = sqliteTable(
   },
   (t) => [uniqueIndex('scene_revision_identity').on(t.channelId, t.versionId, t.revision)],
 );
+
+/** One coordinator owns each shared runtime; private snapshots never cross its boundary. */
+export const collaborationSessions = sqliteTable(
+  'collaboration_sessions',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    contract: text('contract', { mode: 'json' }).$type<SharedContract>().notNull(),
+    snapshot: text('snapshot', { mode: 'json' }).$type<SessionSnapshot>().notNull(),
+    members: text('members', { mode: 'json' }).$type<SharedMember[]>().notNull(),
+    contributions: text('contributions', { mode: 'json' })
+      .$type<Record<string, number>>()
+      .notNull(),
+    status: text('status', { enum: ['waiting', 'running', 'paused', 'finished'] }).notNull(),
+    reason: text('reason'),
+    revision: integer('revision').notNull(),
+    started: integer('started', { mode: 'boolean' }).notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('collaboration_sessions_channel').on(table.channelId)],
+);
+export const collaborationReceipts = sqliteTable(
+  'collaboration_receipts',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => collaborationSessions.id),
+    eventId: text('event_id').notNull(),
+    code: text('code').notNull(),
+    at: integer('at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('collaboration_receipt_identity').on(table.sessionId, table.eventId),
+    index('collaboration_receipts_channel').on(table.channelId),
+  ],
+);
+/** Local member connection credentials are AES-GCM sealed, never public state. */
+export const collaborationConnections = sqliteTable('collaboration_connections', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  sealed: text('sealed').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+});
