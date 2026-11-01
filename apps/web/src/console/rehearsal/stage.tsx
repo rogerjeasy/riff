@@ -7,7 +7,17 @@ import { api, ApiError } from '../../lib/api.js';
 import { clearStage } from '../../effects/projectile.js';
 import type { Decision, PreviewResult, Role, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
-import { CODE_LABEL, explain, formatClock, formatDuration, shortHash, tone } from '../format.js';
+import {
+  CODE_LABEL,
+  explain,
+  formatClock,
+  formatDuration,
+  shortHash,
+  tone,
+  triggerInstruction,
+} from '../format.js';
+import { TwitchEventSimulator } from '../twitch/simulator.js';
+import { EVENT_COPY, syntheticEvent, type TwitchEventDetail } from '../twitch/contracts.js';
 
 interface Persona {
   id: string;
@@ -30,6 +40,8 @@ interface RehearsalEvent {
   roles: Role[];
   text: string;
   at: number;
+  /** F19: a labeled synthetic Twitch event instead of chat. */
+  twitch?: TwitchEventDetail;
 }
 const SEED = 42;
 const reducedMotion = () =>
@@ -61,6 +73,8 @@ export function Rehearsal(props: {
   const definition = version?.manifest.experience;
   const session = result?.session ?? result?.decisions.at(-1)?.session;
   const command = version?.manifest.trigger.command ?? '!tomato';
+  const eventTrigger = version?.manifest.trigger.event ?? null;
+  const instruction = version ? triggerInstruction(version.manifest) : `Type ${command}`;
 
   useEffect(() => {
     if (stage.current && version)
@@ -68,10 +82,10 @@ export function Rehearsal(props: {
         now: clock,
         definition,
         snapshot: session,
-        instructions: props.instructions ?? [`Type ${command}`],
+        instructions: props.instructions ?? [instruction],
         guides: true,
       });
-  }, [props.scene, props.instructions, clock, definition, session, command, version]);
+  }, [props.scene, props.instructions, clock, definition, session, instruction, version]);
 
   const reset = useCallback(() => {
     request.current?.abort();
@@ -87,8 +101,8 @@ export function Rehearsal(props: {
   }, []);
   useEffect(() => {
     reset();
-    setText(command);
-  }, [version?.id, version?.artifactId, command, reset]);
+    setText(eventTrigger ? 'hello chat!' : command);
+  }, [version?.id, version?.artifactId, command, eventTrigger, reset]);
   // A different interaction is a fresh rehearsal: start again as the default viewer.
   useEffect(() => setPersona(ALICE), [version?.id]);
   useEffect(() => () => request.current?.abort(), []);
@@ -122,7 +136,7 @@ export function Rehearsal(props: {
               now: decision.at ?? next.at(-1)?.at ?? clock,
               definition,
               snapshot: decision.session ?? evidence.session,
-              instructions: props.instructions ?? [`Type ${command}`],
+              instructions: props.instructions ?? [instruction],
               guides: true,
             });
             for (const effect of decision.effects)
@@ -161,6 +175,19 @@ export function Rehearsal(props: {
     void replay(next);
     return next;
   };
+  /** F19: queue one synthetic Twitch event from the selected (or anonymous) viewer. */
+  const sendEvent = (who: Persona, twitch: TwitchEventDetail) => {
+    const event: RehearsalEvent = {
+      id: `t${events.length}-${Date.now() % 100000}`,
+      channelId: 'private-preview',
+      viewerId: twitch.anonymous ? 'anonymous' : who.id,
+      roles: ['viewer'],
+      text: '',
+      at: clock,
+      twitch,
+    };
+    void replay([...events, event]);
+  };
 
   /** A scripted, honest run of the acceptance story, executed by the real engine. */
   async function proof() {
@@ -176,6 +203,47 @@ export function Rehearsal(props: {
     const outsider = PERSONAS.find((p) => !p.roles.some((r) => t.audience.includes(r)));
     const steps: { who: Persona; text: string; at: number; dup?: boolean }[] = [];
     let at = 0;
+    if (eventTrigger) {
+      // Threshold, allowance, redelivery and unrelated-input proof for an event trigger.
+      const { kind, minimum } = eventTrigger;
+      const hit = syntheticEvent(kind, Math.max(minimum, EVENT_COPY[kind].sample));
+      const twitchSteps: {
+        who: Persona;
+        twitch?: TwitchEventDetail;
+        text: string;
+        dup?: boolean;
+      }[] = [];
+      if (minimum > 1 && kind !== 'subscribe')
+        twitchSteps.push({ who: eligible, twitch: syntheticEvent(kind, minimum - 1), text: '' });
+      for (let i = 0; i < Math.min(t.maxPerViewer, 6) + 1; i++)
+        twitchSteps.push({ who: eligible, twitch: hit, text: '' });
+      if (second !== eligible) twitchSteps.push({ who: second, twitch: hit, text: '' });
+      twitchSteps.push({ who: second, twitch: hit, text: '', dup: true });
+      twitchSteps.push({ who: second, text: 'hello chat!' });
+      let list: RehearsalEvent[] = [];
+      for (const step of twitchSteps) {
+        if (sequence.current !== run) return;
+        const dupId = step.dup ? [...list].reverse().find((event) => event.twitch)?.id : undefined;
+        at += 400;
+        list = [
+          ...list,
+          {
+            id: dupId ?? `p${list.length}`,
+            channelId: 'private-preview',
+            viewerId: step.who.id,
+            roles: ['viewer'],
+            text: step.text,
+            at,
+            ...(step.twitch ? { twitch: step.twitch } : {}),
+          },
+        ];
+        setClock(at);
+        await replay(list);
+        await new Promise((resolve) => setTimeout(resolve, reducedMotion() ? 150 : 650));
+      }
+      if (sequence.current === run) setPlaying(false);
+      return;
+    }
     if (definition) {
       const firstTeam = definition.teams[0];
       const secondTeam = definition.teams[1] ?? firstTeam;
@@ -421,6 +489,15 @@ export function Rehearsal(props: {
           })}
         </div>
 
+        {eventTrigger && version && (
+          <TwitchEventSimulator
+            kind={eventTrigger.kind}
+            minimum={eventTrigger.minimum}
+            viewerName={persona.name}
+            disabled={disabled || events.length >= 120}
+            onSend={(twitch) => sendEvent(persona, twitch)}
+          />
+        )}
         <form
           className="chat-input"
           onSubmit={(event) => {
@@ -523,8 +600,21 @@ export function Rehearsal(props: {
                       : CODE_LABEL[decision.code]}
                   </span>
                   <span>
+                    {event?.twitch && (
+                      <span className="pill private twitch-sim-tag">
+                        Synthetic {EVENT_COPY[event.twitch.kind].noun}
+                        {event.twitch.kind === 'subscribe'
+                          ? ''
+                          : ` · ${event.twitch.amount} ${EVENT_COPY[event.twitch.kind].unit}`}
+                      </span>
+                    )}{' '}
                     {version
-                      ? explain(decision, event?.text ?? '', who, version.manifest)
+                      ? explain(
+                          decision,
+                          event?.text ?? '',
+                          event?.twitch?.anonymous ? 'Anonymous' : who,
+                          version.manifest,
+                        )
                       : decision.reason}
                   </span>
                   {decision.session && (

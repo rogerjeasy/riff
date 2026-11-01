@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import type { Version, SessionSnapshot } from '../../lib/types.js';
+import { triggerInstruction } from '../format.js';
 import {
   sceneSchema,
   defaultScene,
@@ -223,7 +224,7 @@ export function CanvasEditor({
   }, [version.id, version.artifactId]);
   useEffect(() => {
     if (draft && valid?.success)
-      onScene?.(draft, state?.instructions ?? [`Type ${version.manifest.trigger.command}`]);
+      onScene?.(draft, state?.instructions ?? [triggerInstruction(version.manifest)]);
   }, [draft, onScene, valid?.success, state?.instructions, version.manifest.trigger.command]);
   useEffect(() => {
     if (!stage.current || !draft) return;
@@ -246,7 +247,7 @@ export function CanvasEditor({
       now: clock,
       definition,
       snapshot,
-      instructions: state?.instructions ?? [`Type ${version.manifest.trigger.command}`],
+      instructions: state?.instructions ?? [triggerInstruction(version.manifest)],
       guides: true,
     });
   }, [

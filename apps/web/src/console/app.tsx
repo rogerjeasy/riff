@@ -1,5 +1,6 @@
 import { ProductionPanel } from './production/panel.js';
 import { ParticipationPanel } from './participation/panel.js';
+import { TwitchEventsPanel } from './twitch/event-triggers.js';
 import { RecipeLibrary } from './recipes/library.js';
 import { DirectorPanel } from './director/panel.js';
 import { CollaborationPanel } from './collaboration/panel.js';
@@ -15,6 +16,7 @@ import { Composer } from './authoring/composer.js';
 import { Evidence } from './review/evidence.js';
 import { Rehearsal } from './rehearsal/stage.js';
 import { ActivityFeed, LivePanel } from './live/live-panel.js';
+import { triggerSummary } from './format.js';
 
 interface Toast {
   id: number;
@@ -302,6 +304,7 @@ export function App() {
         <CollaborationPanel versions={allVersions} panic={studio.panic} />
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
+        <TwitchEventsPanel studio={studio} />
         <ProductionPanel versions={allVersions} panic={studio.panic} />
         <RecipeLibrary
           versions={allVersions}
@@ -352,7 +355,11 @@ export function App() {
                       automation?.activeVersionId ?? null,
                       resetSession,
                     );
-                    notify(`Live! Viewers can now type ${version.manifest.trigger.command}.`);
+                    notify(
+                      version.manifest.trigger.event
+                        ? `Live! ${triggerSummary(version.manifest)} now triggers it.`
+                        : `Live! Viewers can now type ${version.manifest.trigger.command}.`,
+                    );
                     await refresh();
                   } catch (cause) {
                     notify(cause instanceof ApiError ? cause.message : 'Approval failed.', 'bad');

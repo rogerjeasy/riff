@@ -1,6 +1,7 @@
 import type { RegressionEvidence } from '../console/rehearsal/contracts.js';
 import type { ProposalSnapshot } from '../console/proposals/contracts.js';
 import type { Community } from '../community/schema.js';
+import type { TwitchEventKind } from '../console/twitch/contracts.js';
 /** Wire types mirrored from the server. Validated at the boundary in api.ts. */
 export type Role = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
 export type Asset = 'tomato' | 'star' | 'heart';
@@ -21,7 +22,8 @@ export type DecisionCode =
   | 'SESSION_PAUSED'
   | 'SESSION_FINISHED'
   | 'ALREADY_JOINED'
-  | 'PARTICIPANT_LIMIT';
+  | 'PARTICIPANT_LIMIT'
+  | 'BELOW_MINIMUM';
 export interface ExperienceDefinition {
   version: 1;
   title: string;
@@ -77,7 +79,14 @@ export interface Manifest {
   experience?: ExperienceDefinition | null;
   sdkVersion: string;
   capabilities: string[];
-  trigger: { command: string; audience: Role[]; maxPerViewer: number; windowMs: number };
+  trigger: {
+    command: string;
+    audience: Role[];
+    maxPerViewer: number;
+    windowMs: number;
+    /** F19: set when the interaction runs on a Twitch event instead of chat. */
+    event?: { kind: TwitchEventKind; minimum: number } | null;
+  };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
 export interface Stage {

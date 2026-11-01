@@ -2,7 +2,7 @@ import { TransitionReview } from './transition-review.js';
 import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
-import { CODE_LABEL, shortHash } from '../format.js';
+import { CODE_LABEL, shortHash, triggerSummary } from '../format.js';
 import type { RegressionEvidence } from '../rehearsal/contracts.js';
 import { describeCheck } from '../rehearsal/labels.js';
 
@@ -92,7 +92,7 @@ function EvidenceCard(props: EvidenceProps) {
       <dl className="facts" aria-label="What this version does">
         <div>
           <dt>When it runs</dt>
-          <dd>{version.behavior.when || `Someone types ${version.manifest.trigger.command}`}</dd>
+          <dd>{version.behavior.when || triggerSummary(version.manifest)}</dd>
         </div>
         <div>
           <dt>What it does</dt>

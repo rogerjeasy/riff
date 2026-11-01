@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { dictionary, sessionSnapshotSchema } from '../../sessions/schemas.js';
+import { twitchEventDetailSchema } from '../twitch/contracts.js';
 const id = z.string().min(1).max(100);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
@@ -25,6 +26,7 @@ export const decisionCodes = [
   'SESSION_FINISHED',
   'ALREADY_JOINED',
   'PARTICIPANT_LIMIT',
+  'BELOW_MINIMUM',
 ] as const;
 export const presets = [
   'proof',
@@ -60,6 +62,8 @@ const event = z
         'Control characters forbidden',
       ),
     at,
+    // F19: labeled synthetic Twitch event inputs.
+    twitch: twitchEventDetailSchema.nullable().optional(),
   })
   .strict();
 const control = (kind: 'advance' | 'pause' | 'resume') =>
