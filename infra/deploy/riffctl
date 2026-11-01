@@ -143,8 +143,28 @@ write(os.path.join(deploy, 'riff.conf'), [f'BASE_DOMAIN={domain}', f'ACME_EMAIL=
 mode = check('RIFF_COMPILER_MODE', shared.get('RIFF_COMPILER_MODE') or 'mock')
 if mode not in ('mock', 'codex'):
     sys.exit('riffctl: RIFF_COMPILER_MODE must be mock or codex')
-lines = ['NODE_ENV=production', 'LOG_LEVEL=info', f'RIFF_COMPILER_MODE={mode}']
-for key in ('OPENAI_API_KEY', 'TWITCH_CLIENT_ID', 'TWITCH_CLIENT_SECRET'):
+effort = check('RIFF_COMPILER_EFFORT', shared.get('RIFF_COMPILER_EFFORT') or 'low')
+if effort not in ('minimal', 'low', 'medium', 'high'):
+    sys.exit('riffctl: RIFF_COMPILER_EFFORT must be minimal, low, medium or high')
+model = check('RIFF_COMPILER_MODEL', shared.get('RIFF_COMPILER_MODEL', ''))
+if model and not re.match(r'^[A-Za-z0-9._:-]{1,80}$', model):
+    sys.exit('riffctl: invalid RIFF_COMPILER_MODEL')
+api_key = check('OPENAI_API_KEY', shared.get('OPENAI_API_KEY', ''))
+if '$' in api_key:
+    sys.exit('riffctl: refusing unsafe value for OPENAI_API_KEY')
+if mode == 'codex' and not api_key:
+    sys.exit('riffctl: RIFF_COMPILER_MODE=codex needs OPENAI_API_KEY in riff/prod/shared')
+lines = [
+    'NODE_ENV=production',
+    'LOG_LEVEL=info',
+    f'RIFF_COMPILER_MODE={mode}',
+    f'RIFF_COMPILER_EFFORT={effort}',
+    f'RIFF_COMPILER_MODEL={model}',
+    # The Codex CLI reads either name for API-key authentication on a headless host.
+    f'OPENAI_API_KEY={api_key}',
+    f'CODEX_API_KEY={api_key}',
+]
+for key in ('TWITCH_CLIENT_ID', 'TWITCH_CLIENT_SECRET'):
     if '$' in str(shared.get(key, '')):
         sys.exit(f'riffctl: refusing unsafe value for {key}')
     lines.append(f"{key}={check(key, shared.get(key, ''))}")
