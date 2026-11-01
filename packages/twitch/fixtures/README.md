@@ -12,3 +12,4 @@ are not allowed. Tests may change ids or the fields under test on a copy.
 | `helix.create-eventsub-subscription.json`                                                                          | Create EventSub Subscription, Example Response 2 (websocket)                   |
 | `helix.get-users.json`                                                                                             | Get Users example response                                                     |
 | `oauth.*.json`                                                                                                     | Authorization code grant, refresh and validate examples                        |
+| `helix.create-poll.json`, `helix.get-polls.json`, `helix.end-poll.json`                                            | Create Poll, Get Polls and End Poll example responses                          |

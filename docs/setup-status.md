@@ -255,3 +255,12 @@ Verification for this increment: 685 tests in 66 socket-independent Vitest files
 isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
 source files passed. Two existing socket-dependent test files were excluded from the
 local run. CI includes the new production, participation and dock checks.
+
+## Native Twitch polls, announcements and shoutouts — November 1, 2026
+
+F21/F23 add Helix Create/Get/End Poll, Send Chat Announcement and Send a Shoutout
+(verified against the Twitch API reference and Polls guide on November 1, 2026), the
+`polls`, `chat.announce` and `shoutout` SDK capabilities, per-feature OAuth consent, the
+`twitch_feature_state` table and a console **Twitch features** panel. Tests use msw and
+doc-sourced fixtures; no live Twitch poll, announcement or shoutout was sent from this
+environment. The raiders-only shoutout policy awaits an incoming-raid trigger.

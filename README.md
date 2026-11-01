@@ -333,6 +333,12 @@ change an approved live layout.
 2. Set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` and `RIFF_SECRET`
    (`openssl rand -base64 32`) in `.env`, restart, and press **Connect Twitch**.
    Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+   Native polls, chat announcements and shoutouts (F21/F23) each ask for their own scope
+   (`channel:manage:polls`, `moderator:manage:announcements`, `moderator:manage:shoutouts`)
+   only when you press **Grant on Twitch** in the console's **Twitch features** panel.
+   Polls need an Affiliate or Partner channel; shoutouts go only to channels your policy
+   approves. Automations request them through `riff.polls`, `riff.chat.announce` and
+   `riff.shoutout`; rehearsals simulate them and Stop everything ends Riff's poll.
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
