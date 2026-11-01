@@ -14,8 +14,9 @@ export interface ParticipationInteraction {
   free: boolean;
   instructions: string[];
   objective: string;
-  /** The main chat command that contributes (or triggers a stateless effect). */
-  command: string;
+  /** The main chat command that contributes (or triggers a stateless effect); absent for
+   * Twitch event triggers (F19), which viewers cannot type. */
+  command?: string;
   /** Team join commands in team order; empty when the interaction has no teams. */
   joinCommands: string[];
   /** Eligible roles exactly as the host engine enforces them; `viewer` means everyone. */

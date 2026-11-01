@@ -148,7 +148,8 @@ export function createParticipationService(deps: {
             phase,
             free: m.trigger.audience.includes('viewer'),
             ...facts,
-            command: e?.contribution.command ?? m.trigger.command,
+            // Event triggers (F19) have no chat command to copy.
+            ...(m.trigger.event ? {} : { command: e?.contribution.command ?? m.trigger.command }),
             joinCommands: e?.teams.map((team) => team.joinCommand) ?? [],
             audience: [...m.trigger.audience],
             goal:

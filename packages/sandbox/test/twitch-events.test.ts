@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   artifactIdentity,
   createEngine,
+  createRehearsalPreset,
+  runRehearsal,
   eventSchema,
   hostScenarios,
   manifestSchema,
@@ -206,5 +208,20 @@ describe('F19 verification', () => {
     });
     expect(report.failureReport).toBeNull();
     expect(report.ok).toBe(true);
+  });
+});
+
+describe('F19 rehearsal presets', () => {
+  it('rehearses event triggers with labeled synthetic Twitch events, never chat stand-ins', async () => {
+    const scenario = createRehearsalPreset(artifact, 'proof', 11);
+    expect(scenario.provenance).toEqual({ kind: 'synthetic' });
+    const events = scenario.steps.flatMap((step) => (step.kind === 'chat' ? [step.event] : []));
+    expect(events.filter((event) => event.twitch)).toHaveLength(2);
+    expect(events.find((event) => event.twitch)?.twitch).toMatchObject({
+      kind: 'cheer',
+      amount: 100,
+    });
+    const result = await runRehearsal({ artifact, scenario });
+    expect(result.status).toBe('passed');
   });
 });

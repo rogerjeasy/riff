@@ -5,13 +5,21 @@ import {
   CHAT_READ_SCOPES,
   createEventSubClient,
   createHelixClient,
+  EVENT_TRIGGER_NAMES,
   exchangeCode,
+  missingScopes,
   normalizeChatMessage,
+  normalizeTwitchEvent,
   refreshAccessToken,
+  scopesForTriggers,
+  triggerCondition,
+  triggerForSubscription,
   TRIGGERS,
   validateAccessToken,
   type EventSubClient,
+  type EventTriggerName,
   type FetchLike,
+  type HelixClient,
 } from '@riff/twitch';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
@@ -40,6 +48,30 @@ export type TwitchStatus =
   | { state: 'error'; login: string | null; message: string };
 
 /**
+ * F19 per-family view for the console: whether a live interaction needs it, whether
+ * consent was granted, and the EventSub subscription state on the current session.
+ */
+export interface TwitchTriggerStatus {
+  name: EventTriggerName;
+  label: string;
+  eventSubType: string;
+  version: string;
+  docs: string;
+  consent: string;
+  scopes: string[];
+  missingScopes: string[];
+  /** A live interaction listens to this family. */
+  inUse: boolean;
+  subscription:
+    'active' | 'pending' | 'missing-consent' | 'failed' | 'revoked' | 'idle' | 'offline';
+  message: string | null;
+}
+interface SubscriptionState {
+  state: 'pending' | 'active' | 'failed' | 'revoked';
+  message: string | null;
+}
+
+/**
  * Owns the broadcaster's Twitch authorization and the EventSub chat subscription.
  * Chat identity and roles come only from authenticated EventSub payloads.
  */
@@ -57,6 +89,11 @@ export function createTwitchConnection(deps: {
   const doFetch = deps.fetch ?? (globalThis.fetch as unknown as FetchLike);
   const pendingStates = new Map<string, number>();
   let client: EventSubClient | null = null;
+  let helix: HelixClient | null = null;
+  let sessionId: string | null = null;
+  let broadcaster: string | null = null;
+  // Per-session EventSub state for platform triggers; reset on every fresh session.
+  const eventSubs = new Map<EventTriggerName, SubscriptionState>();
   let status: TwitchStatus =
     config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' };
   const setStatus = (next: TwitchStatus) => {
@@ -102,26 +139,61 @@ export function createTwitchConnection(deps: {
     if (!state.twitchUserId || !readTokens()) return;
     client?.stop();
     const broadcasterId = state.twitchUserId;
-    const helix = createHelixClient({
+    broadcaster = broadcasterId;
+    sessionId = null;
+    eventSubs.clear();
+    const helixClient = createHelixClient({
       clientId: config.clientId,
       getAccessToken: accessToken,
       fetch: doFetch,
       ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
     });
+    helix = helixClient;
     setStatus({ state: 'connecting', login: login() });
     client = createEventSubClient({
       ...(config.eventSubUrl ? { url: config.eventSubUrl } : {}),
-      async onWelcome(sessionId) {
+      async onWelcome(welcomed) {
+        // A fresh session: Twitch holds no subscriptions for it yet.
+        sessionId = welcomed;
+        eventSubs.clear();
         const trigger = TRIGGERS['chat.message'];
-        await helix.createEventSubSubscription({
+        await helixClient.createEventSubSubscription({
           type: trigger.type,
           version: trigger.version,
-          condition: { broadcaster_user_id: broadcasterId, user_id: broadcasterId },
-          sessionId,
+          condition: triggerCondition('chat.message', broadcasterId),
+          sessionId: welcomed,
         });
         setStatus({ state: 'connected', login: login() });
+        await syncEventSubscriptions();
       },
       onNotification(notification) {
+        const name = triggerForSubscription(
+          notification.subscriptionType,
+          notification.subscriptionVersion,
+        );
+        if (name && name !== 'chat.message') {
+          const event = normalizeTwitchEvent(name, notification.event, {
+            messageId: notification.messageId,
+            receivedAt: notification.receivedAt,
+          });
+          if (!event || event.channelId !== broadcasterId) return;
+          void runtime.handleTwitchEvent({
+            id: event.id,
+            channelId: event.channelId,
+            viewerId: event.viewerId,
+            viewerName: event.viewerName,
+            text: event.text,
+            twitch: {
+              kind: event.kind,
+              amount: event.amount,
+              tier: event.tier,
+              anonymous: event.anonymous,
+              gift: event.gift,
+            },
+            source: 'twitch',
+          });
+          return;
+        }
         if (notification.subscriptionType !== TRIGGERS['chat.message'].type) return;
         const message = normalizeChatMessage(notification.event, {
           messageId: notification.messageId,
@@ -141,14 +213,29 @@ export function createTwitchConnection(deps: {
         });
       },
       onRevocation(revocation) {
+        const name = triggerForSubscription(revocation.type, revocation.version);
+        if (name && name !== 'chat.message') {
+          // Losing one event family must not stop chat; surface it on that family.
+          eventSubs.set(name, {
+            state: 'revoked',
+            message: `Twitch revoked this subscription (${revocation.status}). Reconnect Twitch to grant access again.`,
+          });
+          hub.publish('twitch', status);
+          return;
+        }
         setStatus({
           state: 'error',
           login: login(),
           message: `Twitch revoked the chat subscription (${revocation.status}). Reconnect Twitch.`,
         });
       },
-      onState(next) {
+      onState(next, detail) {
         if (next === 'reconnecting') setStatus({ state: 'reconnecting', login: login() });
+        // A Twitch-directed reconnect carries subscriptions over to the new session id.
+        if (next === 'connected' && detail?.resumed && detail.sessionId) {
+          sessionId = detail.sessionId;
+          setStatus({ state: 'connected', login: login() });
+        }
       },
       onError(error) {
         deps.log?.(`EventSub error: ${error instanceof Error ? error.message : 'unknown'}`);
@@ -162,19 +249,126 @@ export function createTwitchConnection(deps: {
     client.start();
   }
 
+  /** One pass: create each missing subscription live interactions need and consent allows. */
+  async function syncOnce(): Promise<void> {
+    const granted = readTokens()?.scopes ?? [];
+    for (const name of runtime.eventTriggers()) {
+      const current = eventSubs.get(name)?.state;
+      if (current === 'active' || current === 'pending' || current === 'revoked') continue;
+      if (missingScopes(name, granted).length) continue;
+      const id = sessionId;
+      const target = broadcaster;
+      const api = helix;
+      if (!id || !target || !api) return;
+      const trigger = TRIGGERS[name];
+      eventSubs.set(name, { state: 'pending', message: null });
+      try {
+        await api.createEventSubSubscription({
+          type: trigger.type,
+          version: trigger.version,
+          condition: triggerCondition(name, target),
+          sessionId: id,
+        });
+        if (sessionId === id) eventSubs.set(name, { state: 'active', message: null });
+      } catch (error) {
+        deps.log?.(
+          `EventSub ${trigger.type} error: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+        if (sessionId === id)
+          eventSubs.set(name, {
+            state: 'failed',
+            message: 'Twitch refused this subscription. Reconnect Twitch, then try again.',
+          });
+      }
+      hub.publish('twitch', status);
+    }
+  }
+  let syncing: Promise<void> | null = null;
+  let again = false;
+  /**
+   * Create missing EventSub subscriptions for the platform triggers live interactions
+   * use. Idempotent per session; families without consent stay `missing-consent`.
+   * Calls during a pass schedule exactly one more pass instead of racing it.
+   */
+  function syncEventSubscriptions(): Promise<void> {
+    if (syncing) {
+      again = true;
+      return syncing;
+    }
+    const tracked = (async () => {
+      do {
+        again = false;
+        await syncOnce();
+      } while (again);
+    })().finally(() => {
+      syncing = null;
+    });
+    syncing = tracked;
+    return tracked;
+  }
+  // Activation, pause and rollback publish `studio`; follow them to subscribe on demand.
+  const unsubscribe = hub.subscribe((message) => {
+    if (message.type === 'studio' && sessionId) syncEventSubscriptions().catch(() => undefined);
+  });
+
+  function triggerStatus(): TwitchTriggerStatus[] {
+    const granted = readTokens()?.scopes ?? [];
+    const used = new Set(runtime.eventTriggers());
+    const connected = status.state === 'connected' && sessionId !== null;
+    return EVENT_TRIGGER_NAMES.map((name) => {
+      const trigger = TRIGGERS[name];
+      const missing = missingScopes(name, granted);
+      const sub = eventSubs.get(name);
+      const subscription: TwitchTriggerStatus['subscription'] = sub
+        ? sub.state
+        : !connected
+          ? 'offline'
+          : missing.length
+            ? 'missing-consent'
+            : 'idle';
+      return {
+        name,
+        label: trigger.label,
+        eventSubType: trigger.type,
+        version: trigger.version,
+        docs: trigger.docs,
+        consent: trigger.consent,
+        scopes: [...trigger.scopes],
+        missingScopes: missing,
+        inUse: used.has(name),
+        subscription,
+        message: sub?.message ?? null,
+      };
+    });
+  }
+
   return {
     get status(): TwitchStatus {
       return status;
     },
+    /** F19 platform trigger availability, consent and EventSub state. */
+    triggers: triggerStatus,
+    syncEventSubscriptions,
     configured: Boolean(config && sealer),
-    beginAuthorization() {
+    /**
+     * Authorization URL for chat plus the requested platform triggers. Already granted
+     * scopes are kept so adding a family never silently drops earlier consent.
+     */
+    beginAuthorization(triggers: readonly EventTriggerName[] = []) {
       if (!config) throw new Error('Twitch is not configured');
       const state = randomBytes(16).toString('base64url');
       pendingStates.set(state, Date.now() + 10 * 60_000);
+      const scopes = [
+        ...new Set([
+          ...CHAT_READ_SCOPES,
+          ...(readTokens()?.scopes ?? []),
+          ...scopesForTriggers(triggers),
+        ]),
+      ];
       return buildAuthorizeUrl({
         clientId: config.clientId,
         redirectUri: config.redirectUri,
-        scopes: CHAT_READ_SCOPES,
+        scopes,
         state,
         forceVerify: true,
       });
@@ -218,10 +412,13 @@ export function createTwitchConnection(deps: {
     disconnect() {
       client?.stop();
       client = null;
+      sessionId = null;
+      eventSubs.clear();
       repo.updateState({ twitchTokens: null, twitchUserId: null, twitchLogin: null });
       setStatus(config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' });
     },
     close() {
+      unsubscribe();
       client?.stop();
       client = null;
     },

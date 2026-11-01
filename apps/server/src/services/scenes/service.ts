@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
-import { DEFAULT_SCENE, type SceneDocument, type PermissionManifest } from '@riff/sdk';
+import {
+  DEFAULT_SCENE,
+  describeTrigger,
+  type SceneDocument,
+  type PermissionManifest,
+} from '@riff/sdk';
 import {
   canonicalScene,
   classifySceneEdit,
@@ -33,6 +38,7 @@ function instructionsFor(version: VersionRow): string[] {
     ? 'Everyone'
     : describeAudience(manifest.trigger.audience);
   const e = manifest.experience;
+  if (manifest.trigger.event) return [describeTrigger(manifest.trigger)];
   if (!e)
     return [
       `${who}: type ${manifest.trigger.command} · ${manifest.trigger.maxPerViewer} per ${describeWindow(manifest.trigger.windowMs)}`.slice(

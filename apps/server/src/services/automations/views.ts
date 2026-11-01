@@ -1,5 +1,5 @@
 import type { RegressionEvidence } from '../rehearsal/contract.js';
-import type { PermissionManifest } from '@riff/sdk';
+import { describeTrigger, type PermissionManifest } from '@riff/sdk';
 import type { IntentCheck } from '@riff/compiler';
 import type { VerificationReport } from '@riff/sandbox';
 import { assessSessionTransition, classifySessionTransition } from '@riff/sandbox';
@@ -49,6 +49,19 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
   const cmp = (x: number, y: number): Change['authority'] =>
     y > x ? 'more' : y < x ? 'less' : 'same';
   push('command', 'Command', a.trigger.command, b.trigger.command, 'same');
+  // F19: switching to a Twitch event or lowering its threshold widens what triggers it.
+  if (a.trigger.event || b.trigger.event)
+    push(
+      'event',
+      'Twitch event',
+      describeTrigger(a.trigger),
+      describeTrigger(b.trigger),
+      !b.trigger.event
+        ? 'same'
+        : a.trigger.event?.kind !== b.trigger.event.kind
+          ? 'more'
+          : cmp(-a.trigger.event.minimum, -b.trigger.event.minimum),
+    );
   push(
     'audience',
     'Who can trigger it',
