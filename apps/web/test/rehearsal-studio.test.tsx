@@ -595,3 +595,36 @@ it('labels new synthetic inputs accurately and explicitly reloads a stale saved 
   fireEvent.click(screen.getByRole('button', { name: 'Reload saved inputs' }));
   await screen.findByText(/Stored revision 3/);
 });
+it('keeps normal delivery identities distinct after save, studio reopen and reload while explicit duplication reuses identity', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'New scenario' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
+  let stored = saved;
+  vi.mocked(api.rehearsalSave).mockImplementationOnce(async (input) => {
+    if (!('scenario' in input)) throw new Error('Expected synthetic inputs');
+    stored = { ...saved, scenario: input.scenario };
+    return stored;
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+  await screen.findByText(/Stored revision 2/);
+  expect(stored.scenario.steps.map((s) => s.key)).toEqual(['step_1', 'step_3']);
+  expect(stored.scenario.steps.map((s) => (s.kind === 'chat' ? s.event.id : null))).toEqual([
+    'event_step_2',
+    'event_step_4',
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Return to quick proof' }));
+  vi.mocked(api.rehearsalScenarios).mockResolvedValue([stored]);
+  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  await screen.findByRole('option', { name: 'My scenario · revision 2' });
+  fireEvent.change(screen.getByLabelText('Saved scenario'), { target: { value: 's1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add chat step' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Duplicate last delivery' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+  await waitFor(() => expect(api.rehearsalSave).toHaveBeenCalledTimes(2));
+  const body = vi.mocked(api.rehearsalSave).mock.calls[1]?.[0];
+  if (!body || !('scenario' in body)) throw new Error('Expected scenario save');
+  const ids = body.scenario.steps.flatMap((s) => (s.kind === 'chat' ? [s.event.id] : []));
+  expect(new Set(ids.slice(0, 3)).size).toBe(3);
+  expect(ids[3]).toBe(ids[2]);
+});

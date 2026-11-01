@@ -41,6 +41,13 @@ export function InputEditor({
     } while (scenario.steps.some((s) => s.key === key));
     return key;
   }
+  function uniqueDeliveryId() {
+    let id: string;
+    do {
+      id = `event_${uniqueKey()}`;
+    } while (scenario.steps.some((step) => step.kind === 'chat' && step.event.id === id));
+    return id;
+  }
   const highTime = Math.max(scenario.initialAt, ...scenario.steps.map(timeOf));
   function addChat(duplicate = false) {
     const last = [...scenario.steps].reverse().find((s) => s.kind === 'chat');
@@ -51,7 +58,7 @@ export function InputEditor({
             kind: 'chat',
             key: uniqueKey(),
             event: {
-              id: `event_${uniqueKey()}`,
+              id: uniqueDeliveryId(),
               channelId: 'rehearsal',
               viewerId: viewer,
               roles: viewerRoles,
