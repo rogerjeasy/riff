@@ -1,0 +1,131 @@
+{
+  "promptVersion": "riff-scene/1",
+  "selectionId": "effects",
+  "intent": "Move right by 10 units",
+  "output": {
+    "scene": {
+      "version": 1,
+      "regions": [
+        {
+          "id": "camera",
+          "label": "Camera",
+          "kind": "camera",
+          "protected": true,
+          "rect": {
+            "x": 20,
+            "y": 20,
+            "width": 240,
+            "height": 300
+          }
+        },
+        {
+          "id": "captions",
+          "label": "Captions",
+          "kind": "captions",
+          "protected": true,
+          "rect": {
+            "x": 20,
+            "y": 880,
+            "width": 960,
+            "height": 100
+          }
+        },
+        {
+          "id": "gameplay",
+          "label": "Gameplay",
+          "kind": "gameplay",
+          "protected": false,
+          "rect": {
+            "x": 440,
+            "y": 20,
+            "width": 540,
+            "height": 840
+          }
+        },
+        {
+          "id": "scoreboard-region",
+          "label": "Scoreboard",
+          "kind": "scoreboard",
+          "protected": false,
+          "rect": {
+            "x": 20,
+            "y": 340,
+            "width": 400,
+            "height": 520
+          }
+        }
+      ],
+      "nodes": [
+        {
+          "id": "effects",
+          "kind": "effects",
+          "regionId": "gameplay",
+          "rect": {
+            "x": 470,
+            "y": 40,
+            "width": 500,
+            "height": 580
+          },
+          "asset": null,
+          "timing": {
+            "trigger": "always",
+            "delayMs": 0,
+            "durationMs": 0
+          }
+        },
+        {
+          "id": "scoreboard",
+          "kind": "scoreboard",
+          "regionId": "scoreboard-region",
+          "rect": {
+            "x": 20,
+            "y": 340,
+            "width": 400,
+            "height": 240
+          },
+          "asset": null,
+          "timing": {
+            "trigger": "always",
+            "delayMs": 0,
+            "durationMs": 0
+          }
+        },
+        {
+          "id": "instructions",
+          "kind": "instructions",
+          "regionId": "scoreboard-region",
+          "rect": {
+            "x": 20,
+            "y": 600,
+            "width": 400,
+            "height": 240
+          },
+          "asset": null,
+          "timing": {
+            "trigger": "always",
+            "delayMs": 0,
+            "durationMs": 0
+          }
+        },
+        {
+          "id": "celebration",
+          "kind": "celebration",
+          "regionId": "gameplay",
+          "rect": {
+            "x": 460,
+            "y": 640,
+            "width": 500,
+            "height": 180
+          },
+          "asset": "tomato",
+          "timing": {
+            "trigger": "round-end",
+            "delayMs": 0,
+            "durationMs": 5000
+          }
+        }
+      ]
+    },
+    "summary": "Moved the effects area right by ten grid units."
+  }
+}

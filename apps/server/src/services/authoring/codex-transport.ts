@@ -30,7 +30,7 @@ export function createCodexTransport(options: CodexTransportOptions): CompilerTr
   return {
     kind: 'codex',
     model: options.model,
-    async open(_request, files) {
+    async open(_request, files, turnOptions) {
       const root = await mkdtemp(join(tmpdir(), 'riff-compile-'));
       const workspace = join(root, 'workspace');
       const home = join(root, 'codex-home');
@@ -74,7 +74,7 @@ export function createCodexTransport(options: CodexTransportOptions): CompilerTr
         },
         async turn(prompt, { signal, onProgress }) {
           const { events } = await thread.runStreamed(prompt, {
-            outputSchema: COMPILE_OUTPUT_JSON_SCHEMA,
+            outputSchema: turnOptions?.outputSchema ?? COMPILE_OUTPUT_JSON_SCHEMA,
             signal,
           });
           let final = '';

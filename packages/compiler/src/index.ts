@@ -36,3 +36,16 @@ export type {
 export { buildPrompt, buildRepairPrompt, buildWorkspace, PROMPT_VERSION } from './workspace.js';
 
 export { PRESERVING_MIGRATION_SOURCE } from './experience-output.js';
+
+export {
+  sceneSchema,
+  overlaps,
+  contains,
+  canonicalScene,
+  classifySceneEdit,
+  compileScene,
+  SCENE_OUTPUT_JSON_SCHEMA,
+  SCENE_PROMPT_VERSION,
+  type SceneGenerationInput,
+  type SceneGenerationResult,
+} from './scene.js';

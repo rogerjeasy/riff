@@ -30,5 +30,9 @@ export interface CompilerSession {
 export interface CompilerTransport {
   readonly kind: 'codex' | 'offline';
   readonly model: string | null;
-  open(request: CompileRequest, files: Record<string, string>): Promise<CompilerSession>;
+  open(
+    request: CompileRequest,
+    files: Record<string, string>,
+    options?: { outputSchema: Record<string, unknown> },
+  ): Promise<CompilerSession>;
 }

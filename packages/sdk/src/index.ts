@@ -246,3 +246,12 @@ export interface SessionTransitionPlan {
   ];
   resets: readonly [];
 }
+
+export {
+  DEFAULT_SCENE,
+  SCENE_LIMITS,
+  type SceneDocument,
+  type SceneNode,
+  type SceneRegion,
+  type SceneRect,
+} from './scene.js';
