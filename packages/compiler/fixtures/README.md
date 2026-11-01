@@ -13,6 +13,12 @@ for prompt pack 5. It preserves the old team/scoring rules and adds two throws t
 the existing allowance; it is an offline recording, not a model execution.
 
 `rehearsal-repair.json` is a host-authored deterministic recorded-test response for
-prompt pack 6, with bounded private rehearsal evidence and a two-effect repair.
+prompt pack 6 (refreshed unchanged for pack 7, which only adds named timers), with bounded private rehearsal evidence and a two-effect repair.
 It records no live model call. Compiler contract tests validate the request/output;
 server tests verify the response against immutable independent regression inputs.
+
+`named-timers.json` records the deterministic offline F18 outputs for prompt pack
+`riff-compiler/7`: a repeating hydration reminder and a one-shot countdown celebration.
+They use capability `timer`, branch on `event.source === 'timer.fired'` and assert
+fires with step-level `timers` data. Offline recordings, not model executions; the
+compiler contract test replays them and server tests run them through the verifier.

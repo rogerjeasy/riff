@@ -401,7 +401,7 @@ Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, 
 `proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
-`rehearsal_regressions`, `scene_heads`, `scene_revisions`.
+`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `timers`.
 
 ---
 
@@ -847,3 +847,47 @@ it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/tex
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## Named timers — F18
+
+Capability `timer` (SDK 0.4.0, additive; artifact identities unchanged because
+`TIMER_LIMITS` is separate from `HOST_LIMITS`). `riff.timer.start(name, ms, {repeat?})`
+and `riff.timer.cancel(name)` return `Promise<void>`: the guest bridge only stages
+validated operations, applied after the handler succeeds and its admission is durable.
+Names match `^[a-z][a-z0-9_-]{0,31}$`, ms is 5 s–1 h, at most 10 distinct pending
+names per automation; violations fault (quarantine) like other bridge abuse. Starting
+an existing name replaces it from now; cancelling an unknown name is a no-op. Guests
+still have no `setTimeout`/`setInterval` (static analysis and the isolate refuse them).
+Timers are rejected inside stateful experiences, where round deadlines stay host-owned.
+
+Fires are the internal normalized source `timer.fired`, never a Twitch transport event:
+`{source, id, channelId, name, scheduledAt, firedAt, missed, at}` runs the SAME handler
+through the engine's identity/order/budget checks (no command, audience or viewer
+window) and the sandbox. A chat event that queues a timer call spends the viewer
+allowance like an emitted effect. Live fires record `admission_events` (viewer key
+`timer:<name>`) with the dedupe id `timer:<row id>:<scheduledAt>` before overlay
+delivery, so a crash between the decision and re-arming never fires twice.
+
+Migration 0015 adds channel-scoped `timers` (automation, owning version, name,
+interval, repeat, due time, creating event, fire count; unique per automation+name).
+The live runtime checks due rows on its existing 250 ms serialized tick. Restart
+policy, identical at boot and runtime: a fire up to 2 s late is on time; up to 30 s
+late it fires once with `missed: true`; beyond that it is skipped with a
+`TIMER_EXPIRED` activity record. Repeating timers re-arm on their original cadence
+(never a catch-up burst) before the handler runs, so the handler may still cancel them.
+Boot keeps only rows owned by the currently live version. Pause, panic (after the
+in-memory fence), version activation/rollback, quarantine and storage-failure pauses
+cancel timers with a `TIMER_CANCELLED` record; channel resume never recreates them.
+
+Preview, generated scenarios and rehearsal use `createVirtualTimers` on their own
+virtual clock and store (≤32 fires per advance), never the live scheduler. Scenario
+steps may assert `timers: {fired, effects}` for fires reached before the step;
+rehearsal frames carry `timers` and quick preview returns `timerFires`. Studio
+automation snapshots include `timers`; new guarded route
+`POST /api/automations/:id/timers/:name/cancel` (404 when already fired or cancelled).
+The console lists pending timers per live interaction with a local countdown, cadence
+and cancel control. There is no overlay countdown widget yet. Prompt pack
+`riff-compiler/7` documents the contract, and the offline compiler handles explicit
+"every N minutes"/"in N seconds" phrasing (`fixtures/named-timers.json`). A downstream
+test (`apps/server/test/capability-sync.test.ts`) asserts the d.ts, bridge and compiler
+validator expose the same capability set. No dependencies or env vars were added.

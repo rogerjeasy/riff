@@ -104,3 +104,19 @@ export {
   REHEARSAL_PRESETS,
   type RehearsalPreset,
 } from './rehearsal-presets.js';
+export {
+  applyTimerOps,
+  createVirtualTimers,
+  nextTimerSlot,
+  timerEventSchema,
+  timerLateness,
+  timerNameSchema,
+  timerOpSchema,
+  type TimerEntry,
+  type TimerFireEvent,
+  type TimerLateness,
+  type VirtualAdvance,
+  type VirtualTimerFire,
+  type VirtualTimers,
+} from './timers.js';
+export type { RehearsalTimerFire } from './rehearsal.js';

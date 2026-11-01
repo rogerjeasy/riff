@@ -9,6 +9,7 @@ import {
   SCENARIO_LIMITS,
   SESSION_LIMITS,
   SDK_VERSION,
+  TIMER_LIMITS,
   TRIGGER_LIMITS,
   type DecisionCode,
 } from '@riff/sdk';
@@ -69,6 +70,14 @@ export const manifestSchema = z
       });
     if (!manifest.experience && manifest.capabilities.includes('session'))
       ctx.addIssue({ code: 'custom', message: 'Session capability requires an experience' });
+    if (manifest.capabilities.includes('timer') && manifest.sdkVersion !== '0.4.0')
+      ctx.addIssue({ code: 'custom', message: 'Timer capability requires SDK 0.4.0' });
+    if (manifest.experience && manifest.capabilities.includes('timer'))
+      ctx.addIssue({
+        code: 'custom',
+        message:
+          'Timers are not available inside stateful experiences; round deadlines are host-owned',
+      });
   });
 export const artifactSchema = z
   .object({
@@ -107,6 +116,18 @@ export const scenarioStepSchema = z
     id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
     expect: decisionCodeSchema,
     effects: z.number().int().min(0).max(EFFECT_LIMITS.perEvent),
+    timers: z
+      .object({
+        fired: z.number().int().min(0).max(TIMER_LIMITS.previewFiresPerAdvance),
+        effects: z
+          .number()
+          .int()
+          .min(0)
+          .max(EFFECT_LIMITS.perEvent * TIMER_LIMITS.previewFiresPerAdvance),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     session: z
       .object({
         phase: z.enum(['running', 'paused', 'finished']).optional(),

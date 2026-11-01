@@ -8,11 +8,13 @@ import {
   type Scenario,
   type SessionSnapshot,
   type SessionAssertion,
+  type TimerAssertion,
 } from '@riff/sdk';
 import { artifactSchema, manifestSchema, scenariosSchema } from './contract.js';
 import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
 import { createSessionSnapshot } from './session.js';
 import { instrumentHandler } from './instrument.js';
+import { createVirtualTimers } from './timers.js';
 
 export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
 export type StageStatus = 'passed' | 'failed' | 'skipped';
@@ -25,6 +27,9 @@ export interface Finding {
 export interface StepResult {
   session?: SessionSnapshot;
   expectSession?: SessionAssertion;
+  /** Timer fires delivered on the virtual clock before this step, and their effects. */
+  timers?: TimerAssertion;
+  expectTimers?: TimerAssertion;
   id: string;
   viewer: string;
   roles: AudienceRole[];
@@ -72,8 +77,8 @@ const FORBIDDEN_IDENTIFIERS = new Map([
   ['fetch', 'Network access is not available'],
   ['XMLHttpRequest', 'Network access is not available'],
   ['WebSocket', 'Network access is not available'],
-  ['setTimeout', 'Timers are not available in this SDK version'],
-  ['setInterval', 'Timers are not available in this SDK version'],
+  ['setTimeout', 'Use riff.timer.start for a host-owned named timer'],
+  ['setInterval', 'Use riff.timer.start with { repeat: true } for a host-owned timer'],
   ['process', 'Host process access is not available'],
 ]);
 
@@ -150,9 +155,12 @@ export async function runScenarios(
   const results: ScenarioResult[] = [];
   for (const scenario of scenarios) {
     const started = performance.now();
+    // Each scenario owns a fresh virtual timer store on the scenario clock.
+    const timers = createVirtualTimers('verification');
     const engine = createEngine(artifact, {
       seed,
       mode: 'preview',
+      timers,
       ...(artifact.manifest.experience
         ? { session: createSessionSnapshot(artifact.manifest.experience, 0) }
         : {}),
@@ -160,6 +168,11 @@ export async function runScenarios(
     const steps: StepResult[] = [];
     try {
       for (const step of scenario.steps) {
+        const advanced = await timers.advance(engine, step.at);
+        const fired = {
+          fired: advanced.fires.length,
+          effects: advanced.fires.reduce((sum, fire) => sum + fire.decision.effects.length, 0),
+        };
         const decision = await engine.dispatch({
           id: step.id,
           channelId: 'verification',
@@ -168,8 +181,13 @@ export async function runScenarios(
           text: step.text,
           at: step.at,
         });
+        timers.apply(decision);
         const expectEffects = step.effects;
+        const timersMatch =
+          !step.timers ||
+          (step.timers.fired === fired.fired && step.timers.effects === fired.effects);
         const passed =
+          timersMatch &&
           matchesSessionAssertion(decision.session, step.session) &&
           decision.code === step.expect &&
           (expectEffects === -2 ||
@@ -186,6 +204,8 @@ export async function runScenarios(
           expectEffects: expectEffects < 0 ? null : expectEffects,
           ...(decision.session ? { session: decision.session } : {}),
           ...(step.session ? { expectSession: step.session } : {}),
+          ...(fired.fired || step.timers ? { timers: fired } : {}),
+          ...(step.timers ? { expectTimers: step.timers } : {}),
           actual: decision.code,
           actualEffects: decision.effects.length,
           passed,
@@ -217,6 +237,9 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   const eligible: AudienceRole[] = audience.includes('viewer')
     ? ['viewer']
     : [audience[0] ?? 'broadcaster', 'viewer'];
+  // A timer interaction may only schedule on chat and show effects when the timer fires,
+  // so accepted chat steps assert admission with any effect count (-2).
+  const anyEffects = manifest.capabilities.includes('timer');
   const step = (
     id: string,
     viewer: string,
@@ -225,7 +248,7 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
     expect: DecisionCode,
     effects: number,
     roles = eligible,
-  ) => ({ id, viewer, roles, text, at, expect, effects });
+  ) => ({ id, viewer, roles, text, at, expect, effects: anyEffects && effects < 0 ? -2 : effects });
   const perEvent = manifest.limits.effectsPerEvent;
   const perMinute = manifest.limits.effectsPerMinute;
   // Only assert what the budget guarantees regardless of how many effects a call emits.
@@ -511,7 +534,7 @@ function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
     for (const step of result.steps.filter((s) => !s.passed))
       lines.push(
         `  step ${step.id} ${step.viewer} "${step.text}" @${step.at}ms expected ${step.expect}` +
-          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}`,
+          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}${step.expectTimers ? `; timers expected ${JSON.stringify(step.expectTimers)}, got ${JSON.stringify(step.timers ?? { fired: 0, effects: 0 })}` : ''}`,
       );
   }
   const text = lines.join('\n');

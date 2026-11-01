@@ -950,6 +950,8 @@ Timers belong to the host and persist `channel`, automation/version, name, due t
 
 Proposed P1 policy: one-shot timers only, maximum ten pending per automation, maximum duration one hour. After restart, fire once if overdue by at most 30 seconds and still approved; otherwise expire it and log why. Preview uses a virtual clock and separate timer store. Panic cancels pending timers; resuming does not recreate canceled timers silently.
 
+**Implemented (F18, November 1, 2026):** capability `timer` follows this policy with named one-shot or opt-in repeating timers (5 s to one hour, ten distinct names per automation, restart replaces a name, repeats re-arm on their original cadence without catch-up). Fires within 2 s are on time, up to 30 s late are delivered once with `missed: true`, and older ones expire with an activity record. Pause, version activation/rollback and quarantine also cancel timers. Timers inside stateful sessions are not yet enabled. See the F18 section of AGENTS.md.
+
 ### 14.5 Rollback semantics
 
 Rollback activates a previously approved compatible version for future events. Cancel queued effects and pending timers from the replaced generation. Keep host abuse counters stable across versions. Existing live state is compatible only when its declared schema matches; otherwise require explicit reset confirmation. Never rewind already-sent chat, spent viewer actions, completed polls, or irreversible external effects.

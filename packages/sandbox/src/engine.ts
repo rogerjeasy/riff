@@ -9,11 +9,13 @@ import {
   type ExecutionMode,
   type ProjectileEffect,
   type SessionSnapshot,
+  type TimerOp,
 } from '@riff/sdk';
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
 import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { timerEventSchema, timerOpSchema, type TimerFireEvent } from './timers.js';
 
 export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   ACCEPTED: 'Accepted. The effect was staged.',
@@ -40,6 +42,7 @@ const workerReply = z
     id: z.number().int(),
     ok: z.boolean(),
     effects: z.array(effectSchema).max(EFFECT_LIMITS.perEvent),
+    timers: z.array(timerOpSchema).max(HOST_LIMITS.bridgeCallsPerEvent),
     cpuMicros: z.number().nonnegative(),
     fault: z.string().max(200).nullable(),
   })
@@ -78,6 +81,8 @@ export interface EngineOptions {
   effectBudget?: Pick<AdmissionState, 'effects'>;
   channelBudget?: ChannelBudget;
   onIncident?: (incident: Incident) => void;
+  /** Host-owned pending timer names for this automation (live store or virtual preview store). */
+  timers?: { active(): readonly string[] };
 }
 export type ExecutionEngine = ReturnType<typeof createEngine>;
 
@@ -132,6 +137,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       at?: number;
       allowance?: AllowanceSnapshot;
       reason?: string;
+      timers?: TimerOp[];
     } = {},
   ): ExecutionDecision => ({
     eventId: id,
@@ -143,6 +149,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     viewerId: extra.viewerId ?? null,
     at: extra.at ?? null,
     allowance: extra.allowance ?? null,
+    ...(extra.timers?.length ? { timers: extra.timers } : {}),
     ...(session ? { session: structuredClone(session) } : {}),
   });
 
@@ -177,7 +184,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     void current?.terminate();
   }
   async function execute(
-    event: z.infer<typeof eventSchema>,
+    event: z.infer<typeof eventSchema> | TimerFireEvent,
     eventSeed: number,
     snapshot: SessionSnapshot | null = null,
   ) {
@@ -216,7 +223,13 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       };
       current.on('message', onMessage);
       current.once('exit', onExit);
-      current.postMessage({ id, event, seed: eventSeed, session: snapshot });
+      current.postMessage({
+        id,
+        event,
+        seed: eventSeed,
+        session: snapshot,
+        timers: [...(options.timers?.active() ?? [])],
+      });
     });
   }
   function forget(at: number) {
@@ -297,7 +310,8 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
         ...base,
         allowance: allowance(history, event.at),
       });
-    if (reply.effects.length) {
+    // Queued timer calls are side effects too, so they spend the viewer allowance.
+    if (reply.effects.length || reply.timers.length) {
       history.push(event.at);
       state.effects.push(...reply.effects.map(() => event.at));
       shared?.effects.push(...reply.effects.map(() => event.at));
@@ -306,6 +320,67 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       ...base,
       effects: reply.effects,
       allowance: allowance(history, event.at),
+      timers: reply.timers,
+    });
+  }
+  /**
+   * Internal `timer.fired` delivery: identity, order and budget checks still apply, but
+   * there is no command, audience or viewer allowance because no viewer sent it.
+   */
+  async function runTimer(raw: unknown): Promise<ExecutionDecision> {
+    const parsed = timerEventSchema.safeParse(raw);
+    if (!parsed.success || experience || !artifact.manifest.capabilities.includes('timer')) {
+      const id = z.object({ id: z.string().max(100) }).safeParse(raw);
+      return decision(id.success ? id.data.id : '', 'INVALID_EVENT');
+    }
+    const event = parsed.data;
+    const base = { at: event.at };
+    if (stopped) return decision(event.id, 'STOPPED', base);
+    if (disabled) return decision(event.id, 'DISABLED', base);
+    if (state.channelId && state.channelId !== event.channelId)
+      return decision(event.id, 'INVALID_EVENT', base);
+    if (state.seen.has(event.id)) return decision(event.id, 'DUPLICATE', base);
+    if (event.at < state.lastAt) return decision(event.id, 'INVALID_EVENT', base);
+    forget(event.at);
+    if (mode === 'preview' && state.seen.size >= HOST_LIMITS.previewEvents)
+      return decision(event.id, 'CAPACITY', base);
+    // Only chat binds the engine to a transport channel; a fire after restart must not.
+    state.lastAt = event.at;
+    state.seen.set(event.id, event.at);
+    state.effects = state.effects.filter((at) => at > event.at - 60_000);
+    const shared = options.channelBudget;
+    if (shared) shared.effects = shared.effects.filter((at) => at > event.at - 60_000);
+    const remaining = Math.min(
+      limits.effectsPerMinute - state.effects.length,
+      shared ? shared.perMinute - shared.effects.length : Infinity,
+    );
+    if (remaining <= 0) return decision(event.id, 'CHANNEL_LIMIT', base);
+    const eventSeed =
+      createHash('sha256').update(`${seed}:${event.id}`).digest().readUInt32LE() || 1;
+    const reply = await execute(event, eventSeed);
+    if (stopped) return decision(event.id, 'STOPPED', base);
+    if (reply) lastCpuMicros = reply.cpuMicros;
+    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+      disabled = true;
+      discardWorker();
+      incident = {
+        eventId: event.id,
+        fault: reply?.fault ?? 'Exceeded the wall-clock, startup or worker limits',
+      };
+      options.onIncident?.(incident);
+      return decision(event.id, 'INCIDENT', {
+        ...base,
+        reason: `${DECISION_MESSAGES.INCIDENT} Cause: ${incident.fault}.`,
+      });
+    }
+    if (reply.effects.length > remaining) return decision(event.id, 'CHANNEL_LIMIT', base);
+    state.effects.push(...reply.effects.map(() => event.at));
+    shared?.effects.push(...reply.effects.map(() => event.at));
+    return decision(event.id, 'ACCEPTED', {
+      ...base,
+      effects: reply.effects,
+      timers: reply.timers,
+      reason: `Timer “${event.name}” fired${event.missed ? ' late (missed while Riff was unavailable)' : ''}.`,
     });
   }
   async function runSession(event: z.infer<typeof eventSchema>): Promise<ExecutionDecision> {
@@ -452,6 +527,12 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     /** Serialize admission and run the guest. Example: await engine.dispatch(event). */
     dispatch(event: unknown): Promise<ExecutionDecision> {
       const next = queue.then(() => run(event));
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /** Serialize a host timer fire with chat. Example: await engine.dispatchTimer(fire). */
+    dispatchTimer(event: unknown): Promise<ExecutionDecision> {
+      const next = queue.then(() => runTimer(event));
       queue = next.catch(() => undefined);
       return next;
     },

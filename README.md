@@ -85,6 +85,26 @@ Compatible rule edits use a reviewed migration; incompatible changes and startin
 new round require explicit full-reset consent. Prior event identities and cosmetic
 rate budgets remain protected.
 
+## Named timers — F18
+
+Describe a delay or a cadence and Riff schedules it on the host:
+
+> Every 10 minutes show a hydration reminder on the overlay.
+>
+> After !start, show a countdown and celebrate in 60 seconds.
+
+Generated handlers call `riff.timer.start(name, ms, { repeat })` or
+`riff.timer.cancel(name)`; there is still no guest `setTimeout`. A chat command
+starts a timer, starting the same name again restarts its countdown, and the fire
+runs the same sandboxed handler with a `timer.fired` event under the normal effect
+budgets. Timers persist in SQLite and resume after a restart: a fire that fell due
+while Riff was down is delivered once (marked missed) if it is at most 30 seconds
+late, otherwise it is skipped and logged. Pause, emergency stop, a new version,
+rollback and incidents cancel pending timers; resuming never brings them back.
+The live panel lists pending timers with a countdown and a **Cancel** button.
+Previews, generated tests and rehearsals use a private virtual clock, and the
+rehearsal timeline shows each timer fire.
+
 ## Live evolution — F32
 
 Edit a running Tomato Battle with:

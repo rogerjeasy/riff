@@ -108,6 +108,7 @@ export function createStudioService(deps: {
         return {
           ...automation,
           transitions: repo.transitionSummaries(automation.id),
+          timers: runtime.timers(automation.id),
           session:
             active && experienceOf(active) ? (repo.session(automation.id)?.snapshot ?? null) : null,
           versions: versions.map((v) => {
@@ -155,6 +156,15 @@ export function createStudioService(deps: {
           'The live version changed while you were reviewing. Review the new difference first.',
         );
       return goLive(version, 'approve', expected.resetSession);
+    },
+    /** Cancel one pending named timer of an interaction; unknown names are a 404. */
+    async cancelTimer(automationId: string, name: string) {
+      const automation = mustAutomation(automationId);
+      const removed = await runtime.cancelTimer(automation.id, name);
+      if (!removed)
+        throw new StudioError('NOT_FOUND', 'That timer already fired or was cancelled.');
+      changed();
+      return { cancelled: removed };
     },
     pause(automationId: string) {
       const automation = mustAutomation(automationId);

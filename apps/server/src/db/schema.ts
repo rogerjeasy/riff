@@ -634,3 +634,36 @@ export const participationState = sqliteTable('participation_state', {
     .references(() => channels.id),
   value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
 });
+
+/**
+ * Host-owned named timers (F18). One pending row per automation and name; restart
+ * replaces it. Rows survive restart and are resumed or expired under the shared grace
+ * policy. Pause, panic, version change, rollback and incidents delete them.
+ */
+export const timers = sqliteTable(
+  'timers',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id')
+      .notNull()
+      .references(() => automations.id),
+    versionId: text('version_id')
+      .notNull()
+      .references(() => versions.id),
+    name: text('name').notNull(),
+    intervalMs: integer('interval_ms').notNull(),
+    repeat: integer('repeat', { mode: 'boolean' }).notNull(),
+    scheduledAt: integer('scheduled_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+    /** The chat or timer event whose accepted handler queued this timer. */
+    createdBy: text('created_by').notNull(),
+    fires: integer('fires').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('timers_automation_name').on(table.channelId, table.automationId, table.name),
+    index('timers_channel_due').on(table.channelId, table.scheduledAt),
+  ],
+);
