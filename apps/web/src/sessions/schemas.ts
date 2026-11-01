@@ -56,7 +56,7 @@ export const experienceDefinitionSchema = z
       });
     }
   });
-function dictionary<T>(schema: z.ZodType<T>, max: number) {
+export function dictionary<T>(schema: z.ZodType<T>, max: number) {
   return z.unknown().transform((value, ctx): Record<string, T> => {
     // Viewer identities are data, including __proto__; never discard or inherit them.
     const result: Record<string, T> = Object.create(null);

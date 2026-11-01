@@ -29,6 +29,18 @@ export interface RehearsalFrame {
   at: number;
   decision: RehearsalDecision | null;
   stateDigest: string;
+  /**
+   * Compact presentation projection of the session after this step, so a client can
+   * animate a whole replay without one request per step. The full state is already
+   * bound by `stateDigest`; this projection is excluded from `evidenceHash`.
+   */
+  summary?: RehearsalFrameSummary | null;
+}
+export interface RehearsalFrameSummary {
+  phase: SessionSnapshot['phase'];
+  remainingMs: number;
+  scores: Record<string, number>;
+  winner: string | null;
 }
 export interface RehearsalCheck {
   id: string;
@@ -161,6 +173,7 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
     summary: 'Step has not been applied.',
   }));
   const timeline: RehearsalFrame[] = [];
+  const summaries: (RehearsalFrameSummary | null)[] = [];
   try {
     assertRehearsalActive(input.signal);
     for (const step of scenario.steps.slice(0, through)) {
@@ -238,6 +251,16 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
         decision,
         stateDigest: digest(),
       });
+      summaries.push(
+        session
+          ? {
+              phase: session.phase,
+              remainingMs: session.remainingMs,
+              scores: { ...session.scores },
+              winner: session.winner,
+            }
+          : null,
+      );
     }
     const evidence: Omit<RehearsalResult, 'evidenceHash'> = {
       contractVersion: REHEARSAL_CONTRACT_VERSION,
@@ -262,7 +285,11 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
       },
       checks,
     };
-    const result = { ...evidence, evidenceHash: rehearsalHash(evidence) };
+    const result: RehearsalResult = {
+      ...evidence,
+      evidenceHash: rehearsalHash(evidence),
+      timeline: timeline.map((frame, i) => ({ ...frame, summary: summaries[i] ?? null })),
+    };
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > REHEARSAL_LIMITS.resultBytes)
       throw new RehearsalError(
         'RESULT_LIMIT',

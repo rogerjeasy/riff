@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { sessionSnapshotSchema } from '../../sessions/schemas.js';
+import { dictionary, sessionSnapshotSchema } from '../../sessions/schemas.js';
 const id = z.string().min(1).max(100);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const key = z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/);
@@ -190,6 +190,17 @@ export const resultSchema = z
             at,
             decision: decisionSchema.nullable(),
             stateDigest: hash,
+            // Presentation-only session projection; older stored runs omit it.
+            summary: z
+              .object({
+                phase: z.enum(['running', 'paused', 'finished']),
+                remainingMs: count.max(3_600_000),
+                scores: dictionary(count.max(2_560_000), 8),
+                winner: z.string().max(32).nullable(),
+              })
+              .strict()
+              .nullable()
+              .optional(),
           })
           .strict(),
       )

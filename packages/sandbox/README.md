@@ -26,7 +26,11 @@ engine and replays that prefix, restoring admission windows, duplicate identitie
 seeded effects along with session state. Chat delivery IDs may repeat; scenario step
 keys must be unique. Explicit advance/pause/resume controls cannot rewind the clock.
 Results contain compact timeline decisions, one cursor snapshot, deterministic hashes,
-explicit expectation checks and automatic quarantine/consistency checks.
+explicit expectation checks and automatic quarantine/consistency checks. Each frame
+also carries a `summary` (phase, remaining time, scores, winner) so a client can play
+back a whole replay from one request. Each frame's `stateDigest` already binds that
+state, so the presentation projection is excluded from `evidenceHash`; evidence
+identities did not change when it was added.
 
 `createRehearsalPreset` supplies proof, crowd-burst, duplicate-delivery, late-arrival,
 exhaustion and deadline inputs from the artifact's manifest. Scenarios are bounded to

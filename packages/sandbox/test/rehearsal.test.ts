@@ -129,6 +129,32 @@ describe('private bounded rehearsal replay', () => {
     expect(prefix.checks.find((c) => c.id === 'expect:phase')?.status).toBe('pending');
   });
 
+  it('projects compact per-frame scores for one-request playback without changing evidence', async () => {
+    const input = scenario([
+      chat('join', 1, '!red'),
+      chat('throw', 2),
+      { kind: 'pause', key: 'pause', at: 100 },
+      { kind: 'advance', key: 'end', at: 2000 },
+    ]);
+    const full = await host.runRehearsal({ artifact: artifact(true), scenario: input });
+    expect(full.timeline.map((f) => f.summary)).toEqual([
+      { phase: 'running', remainingMs: 999, scores: { red: 0 }, winner: null },
+      { phase: 'running', remainingMs: 998, scores: { red: 2 }, winner: null },
+      { phase: 'paused', remainingMs: 900, scores: { red: 2 }, winner: null },
+      { phase: 'paused', remainingMs: 900, scores: { red: 2 }, winner: null },
+    ]);
+    // Presentation projections are bound by each state digest, not by a new evidence identity.
+    const { evidenceHash, timeline, ...rest } = full;
+    expect(evidenceHash).toBe(
+      host.rehearsalHash({ ...rest, timeline: timeline.map(({ summary: _, ...f }) => f) }),
+    );
+    const stateless = await host.runRehearsal({
+      artifact: artifact(),
+      scenario: scenario([chat('a', 1)]),
+    });
+    expect(stateless.timeline[0]?.summary).toBeNull();
+  });
+
   it('starts from a validated cloned snapshot and isolates injected objects across async dispatch', async () => {
     const initial = host.createSessionSnapshot(definition, 0, 'round');
     const input = {

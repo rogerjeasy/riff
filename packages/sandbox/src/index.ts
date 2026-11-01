@@ -74,6 +74,7 @@ export {
   RehearsalError,
   rehearsalScenarioSchema,
   rehearsalScenarioHash,
+  rehearsalHash,
   rehearsalStepSchema,
   rehearsalExpectationSchema,
   rehearsalProvenanceSchema,
@@ -88,6 +89,7 @@ export {
   type RunRehearsalInput,
   type RehearsalResult,
   type RehearsalFrame,
+  type RehearsalFrameSummary,
   type RehearsalCheck,
   type RehearsalDecision,
 } from './rehearsal.js';
