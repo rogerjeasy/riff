@@ -1,6 +1,7 @@
 import { assetMarkup, clearStage, launch, type LaunchOptions } from '../effects/projectile.js';
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import { sceneSchema, sceneShapeSchema, type Scene, type SceneNode, type Rect } from './schema.js';
+import { mechanicsLines } from '../sessions/mechanics-hud.js';
 import './scene.css';
 
 export interface SceneFrame {
@@ -177,8 +178,13 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
         const status = roundStatus(s, frame.now);
         children.push(label('scene-clock', status));
         const teams = d.teams.length ? d.teams : [{ id: 'community', label: 'Community' }];
-        fullText = [status, ...teams.map((t) => `${t.label}: ${s.scores[t.id] ?? 0}`)].join(' · ');
-        const maxFont = (boxHeight - padding * 2) / ((teams.length + 1) * 1.18);
+        const extra = mechanicsLines(d, s, frame.now);
+        fullText = [
+          status,
+          ...teams.map((t) => `${t.label}: ${s.scores[t.id] ?? 0}`),
+          ...extra,
+        ].join(' · ');
+        const maxFont = (boxHeight - padding * 2) / ((teams.length + 1 + extra.length) * 1.18);
         const rotating = compact || maxFont < 12;
         const rotatingTeam = teams[Math.floor(Math.max(0, frame.now) / 3000) % teams.length];
         const visible = rotating && rotatingTeam ? [rotatingTeam] : teams;
@@ -189,6 +195,13 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
               `${rotating && t.label.length > 7 ? t.label.slice(0, 6) + '…' : t.label}: ${s.scores[t.id] ?? 0}`,
             ),
           );
+        // Version 2 lines (round, health, burst, tier); compact views rotate one at a time.
+        const shownExtra = rotating
+          ? extra.length
+            ? [extra[Math.floor(Math.max(0, frame.now) / 3000) % extra.length] ?? '']
+            : []
+          : extra;
+        for (const line of shownExtra) children.push(label('scene-score scene-mechanics', line));
         for (const child of children)
           child.style.fontSize = `${rotating ? 12 : Math.min(32, viewportWidth * 0.02, maxFont)}px`;
       } else if (frame.guides)

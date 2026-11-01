@@ -31,7 +31,7 @@ describe('Channel Points and Predictions compiler contract', () => {
     expect(prompt).toContain('points.redeem');
     expect(prompt).toContain('riff.predictions.propose');
     expect(prompt).toMatch(/creator opens it and alone/);
-    expect(PROMPT_VERSION).toBe('riff-compiler/8');
+    expect(PROMPT_VERSION).toBe('riff-compiler/9');
   });
 
   it('compiles the hydrate redemption intent offline into a points.redeem candidate', () => {

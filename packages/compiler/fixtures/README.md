@@ -12,6 +12,12 @@ checks without credentials or a model call.
 for prompt pack 5. It preserves the old team/scoring rules and adds two throws to
 the existing allowance; it is an offline recording, not a model execution.
 
+`stateful-mechanics.json` records deterministic offline outputs for prompt pack
+`riff-compiler/7` (re-labelled `riff-compiler/9`): Shield Wall (distinct-viewer burst objective), Castle Siege (team
+health and elimination), a best-of-3 Tomato Battle and Community Garden (milestone
+unlock). They are template responses, not live model output; server tests run each
+through the full verifier including the independent version 2 host suite.
+
 `rehearsal-repair.json` is a host-authored deterministic recorded-test response for
 prompt pack 6 (refreshed unchanged for pack 7, which only adds named timers), with bounded private rehearsal evidence and a two-effect repair.
 It records no live model call. Compiler contract tests validate the request/output;
@@ -28,3 +34,5 @@ compiler contract test replays them and server tests run them through the verifi
 are template responses, not model executions; the test suite replays them exactly.
 
 `riff-compiler/8`: merges the timer and Channel Points/Predictions rules into one prompt pack; the two recorded fixtures above were re-labelled with no content change.
+
+`riff-compiler/9`: merges the F31 version 2 mechanics rules into the timer and Channel Points/Predictions pack; `named-timers.json`, `channel-points-predictions.json`, `stateful-mechanics.json` and `rehearsal-repair.json` were re-labelled with no content change.

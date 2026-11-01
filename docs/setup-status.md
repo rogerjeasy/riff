@@ -312,3 +312,26 @@ proposal capability (bridge, d.ts and validator in sync) and `trigger.kind`/`tri
 Settlement of redemptions is host policy; settlement of predictions requires a confirmed
 creator request. Verified with fixtures, fake Helix and a local EventSub WebSocket; no real
 Affiliate channel, reward or prediction was exercised.
+
+## Broader stateful mechanics (F31 definition version 2) — November 1, 2026
+
+Implemented additive experience definition version 2 on the SDK 0.4.0 bridge: best-of-N
+matches with per-round reset and intermission, team health pools with damage, healing and
+elimination, distinct-viewer burst objectives on a sliding host-clocked window (with
+optional shield), and score milestones that unlock tiers and locked commands. Seven new
+decision codes, an independent hand-derived host suite, compatibility rules (any change
+except labels or a longer break requires reset), four rehearsal presets, prompt pack
+`riff-compiler/7` (merged with timers and Channel Points as `riff-compiler/9`), offline templates for four example intents with a recorded fixture,
+and accessible HUD/scoreboard presentation (health meters, burst meter with window
+countdown, round and break countdown, tiers). Version 1 definitions and identities are
+unchanged. No tables, migrations, routes, env vars or dependencies were added.
+
+Verification: 779 tests in 74 Vitest files pass (35 new across sandbox, compiler, server and web);
+lint, boundary checks, strict types, production build and overlay bundle isolation pass.
+Live server tests cover concurrent burst/damage admission, restart across a round
+deadline, single round advancement and journal audit; no real-model version 2 compile or
+live Twitch round is claimed.
+
+Integration: version 2 mechanics actions ignore Channel Points redemptions exactly like
+version 1 sessions, and F30 insights group the seven new mechanics codes under one
+"Game rule" blocked reason.

@@ -2,7 +2,7 @@
   "provenance": {
     "transport": "recorded-test",
     "model": null,
-    "promptVersion": "riff-compiler/8",
+    "promptVersion": "riff-compiler/9",
     "note": "Host-authored deterministic response. No live model request."
   },
   "request": {

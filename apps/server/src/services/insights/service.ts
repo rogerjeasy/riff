@@ -46,6 +46,8 @@ const ADVICE: Record<BlockedReason, string> = {
   'participant-cap': 'consider allowing more participants',
   duplicate: 'these were redelivered events and safely ignored',
   capacity: 'the gameplay queue was full; consider a lower command cadence',
+  mechanics:
+    'these were blocked by the round mechanics, as designed; check the rules are clear on stream',
   error: 'review the activity feed for details',
 };
 

@@ -170,7 +170,10 @@ export function createParticipationService(deps: {
                       score,
                     }))
                 : [],
-            outcome: snapshot?.outcome ? phaseCopy(lang, snapshot.outcome) : null,
+            // Elimination has no reviewed translation yet; it is shown as a finished round.
+            outcome: snapshot?.outcome
+              ? phaseCopy(lang, snapshot.outcome === 'elimination' ? 'finished' : snapshot.outcome)
+              : null,
           });
           if (interactions.length >= 20) break;
         }

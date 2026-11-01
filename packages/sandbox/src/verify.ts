@@ -15,6 +15,7 @@ import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
 import { createSessionSnapshot } from './session.js';
 import { instrumentHandler } from './instrument.js';
 import { createVirtualTimers } from './timers.js';
+import { mechanicsHostScenarios } from './mechanics-suite.js';
 
 export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
 export type StageStatus = 'passed' | 'failed' | 'skipped';
@@ -235,6 +236,7 @@ export async function runScenarios(
  * internal session steps use -2 to check semantic state with any effect count.
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
+  if (manifest.experience?.mechanics) return mechanicsHostScenarios(manifest);
   if (manifest.experience) return sessionHostScenarios(manifest);
   if (manifest.trigger.kind === 'points.redeem') return redemptionHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
@@ -405,6 +407,18 @@ export function matchesSessionAssertion(
     return false;
   for (const [key, score] of Object.entries(expected.scores ?? {}))
     if (!Object.hasOwn(actual.scores, key) || actual.scores[key] !== score) return false;
+  if (expected.round !== undefined && actual.mechanics?.round !== expected.round) return false;
+  if (expected.winner !== undefined && actual.winner !== expected.winner) return false;
+  for (const [key, wins] of Object.entries(expected.wins ?? {}))
+    if (!actual.mechanics || actual.mechanics.wins[key] !== wins) return false;
+  for (const [key, standing] of Object.entries(expected.standings ?? {})) {
+    const found = actual.mechanics?.standings[key];
+    if (!found || !Object.hasOwn(actual.mechanics?.standings ?? {}, key)) return false;
+    if (standing.health !== undefined && found.health !== standing.health) return false;
+    if (standing.eliminated !== undefined && found.eliminated !== standing.eliminated) return false;
+    if (standing.bursts !== undefined && found.bursts !== standing.bursts) return false;
+    if (standing.tier !== undefined && found.unlocked.length !== standing.tier) return false;
+  }
   for (const [key, participant] of Object.entries(expected.participants ?? {})) {
     if (!Object.hasOwn(actual.participants, key)) return false;
     const found = actual.participants[key];

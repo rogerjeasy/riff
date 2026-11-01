@@ -1,5 +1,6 @@
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import './presentation.css';
+import { appendMechanics, mechanicsOutcome, mechanicsRules } from './mechanics-hud.js';
 
 export function sameDefinition(
   a: ExperienceDefinition | null | undefined,
@@ -20,9 +21,24 @@ export function sameDefinition(
           value.contribution.points,
           value.objective.kind,
           value.objective.target,
+          mechanicsKey(value.mechanics),
         ]
       : null;
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+/** Order-independent comparison key for version 2 mechanics (null for version 1). */
+function mechanicsKey(value: ExperienceDefinition['mechanics']): string | null {
+  const sorted = (input: unknown): unknown =>
+    Array.isArray(input)
+      ? input.map(sorted)
+      : input && typeof input === 'object'
+        ? Object.fromEntries(
+            Object.keys(input)
+              .sort()
+              .map((key) => [key, sorted((input as Record<string, unknown>)[key])]),
+          )
+        : input;
+  return value ? JSON.stringify(sorted(value)) : null;
 }
 function element(tag: 'section' | 'h3' | 'p' | 'span' | 'div', className: string, text?: string) {
   const node = document.createElement(tag);
@@ -66,6 +82,7 @@ export function createSessionHud(
       ),
     );
   hud.append(scores);
+  appendMechanics(hud, definition, snapshot, options.now ?? snapshot.updatedAt);
   const count = Object.keys(snapshot.participants).length;
   hud.append(
     element(
@@ -92,10 +109,12 @@ export function createSessionHud(
     element(
       'p',
       'session-rules',
-      `${joins ? `${joins}. Then ` : 'Join in with '}${definition.contribution.command} · ${definition.contribution.points} point${definition.contribution.points === 1 ? '' : 's'} per contribution. ${definition.objective.kind === 'collective-goal' ? `Reach ${definition.objective.target} points together.` : 'Highest team score wins.'} ${joins ? 'Teams stay fixed for this round.' : ''}`,
+      `${joins ? `${joins}. Then ` : 'Join in with '}${definition.contribution.command} · ${definition.contribution.points} point${definition.contribution.points === 1 ? '' : 's'} per contribution. ${definition.objective.kind === 'collective-goal' ? `Reach ${definition.objective.target} points together.` : definition.objective.kind === 'burst' ? `Trigger ${definition.mechanics?.burst?.label ?? 'the burst'} ${definition.objective.target === 1 ? 'once' : `${definition.objective.target} times`} to win.` : definition.mechanics?.health ? 'Last team standing wins.' : 'Highest team score wins.'} ${joins ? 'Teams stay fixed for this round.' : ''} ${mechanicsRules(definition)}`.trim(),
     ),
   );
-  if (snapshot.phase === 'finished') {
+  const v2Outcome = mechanicsOutcome(definition, snapshot);
+  if (v2Outcome) hud.append(element('p', 'session-outcome', v2Outcome));
+  else if (snapshot.phase === 'finished') {
     const winner = definition.teams.find((team) => team.id === snapshot.winner)?.label;
     const outcome =
       snapshot.outcome === 'goal'

@@ -32,3 +32,7 @@ explicit "every N minutes" (repeating) and "in/after N seconds" (one-shot) phras
 between 5 seconds and 1 hour; counted allowances such as "once every 30 seconds"
 stay rolling windows. A `timer` intent-check row compares the stated and scheduled
 interval. Timers inside stateful experiences remain unsupported.
+
+Prompt pack `riff-compiler/9` combines the timer, Channel Points/Predictions and F31
+version 2 mechanics rules (burst, health/elimination, best-of-N, milestones) in one
+prompt; the curated examples add Shield Wall and Castle Siege.

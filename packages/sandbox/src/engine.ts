@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
+import { mechanicsActionFor, stageMechanicsAction } from './mechanics.js';
 import { artifactSchema, eventSchema, effectSchema, predictionProposalSchema } from './contract.js';
 import { timerEventSchema, timerOpSchema, type TimerFireEvent } from './timers.js';
 
@@ -37,6 +38,13 @@ export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   SESSION_FINISHED: 'This session has finished.',
   ALREADY_JOINED: 'This participant already joined; teams cannot be changed.',
   PARTICIPANT_LIMIT: 'The session participant limit has been reached.',
+  ELIMINATED: 'This team has been eliminated for the rest of the round.',
+  LOCKED: 'This command unlocks at a later milestone.',
+  HEALTH_FULL: 'Health is already full, so nothing was spent.',
+  BURST_COUNTED: 'This viewer already counts toward the current burst.',
+  BURST_ACTIVE: 'The burst effect is already active.',
+  BURST_LIMIT: 'The burst limit for this round has been reached.',
+  ROUND_INTERMISSION: 'The next round has not started yet.',
 };
 const workerReply = z
   .object({
@@ -406,7 +414,36 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     // Clock transitions do not depend on guest execution; gameplay mutations do.
     const before = session;
     const staged = advanceSession(session, event.at, experience);
-    // Sessions are chat-only; a redemption never joins or contributes.
+    // Sessions are chat-only; a redemption never joins, contributes or acts.
+    if (experience.mechanics) {
+      const action = event.kind
+        ? undefined
+        : mechanicsActionFor(experience, matchesCommand, event.text);
+      if (!action) {
+        session = staged;
+        return decision(event.id, 'UNRELATED', base);
+      }
+      if (!event.roles.some((role) => trigger.audience.includes(role))) {
+        session = staged;
+        return decision(event.id, 'AUDIENCE', base);
+      }
+      if (staged.phase !== 'running') {
+        session = staged;
+        return decision(
+          event.id,
+          staged.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
+          base,
+        );
+      }
+      const stage = stageMechanicsAction(experience, staged, event, action);
+      if (!stage.invoke) {
+        session = staged;
+        return decision(event.id, stage.code, base);
+      }
+      // Like contributions, staged gameplay commits only after the guest succeeds.
+      const actor = staged.participants[event.viewerId];
+      return runGuest(event, before, staged, actor?.contributions ?? 0, stage.reason);
+    }
     const team = event.kind
       ? undefined
       : experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
@@ -479,6 +516,17 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       staged.winner = 'community';
       staged.outcome = 'goal';
     }
+    return runGuest(event, before, staged, participant.contributions);
+  }
+  async function runGuest(
+    event: z.infer<typeof eventSchema>,
+    before: SessionSnapshot,
+    staged: SessionSnapshot,
+    used: number,
+    acceptedReason?: string,
+  ): Promise<ExecutionDecision> {
+    if (!experience) throw new Error('Missing experience');
+    const base = { viewerId: event.viewerId, at: event.at };
     const eventSeed =
       createHash('sha256').update(`${seed}:${event.id}`).digest().readUInt32LE() || 1;
     const reply = await execute(event, eventSeed, staged);
@@ -513,14 +561,16 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       ...base,
       effects,
       allowance: {
-        used: participant.contributions,
+        used,
         max: experience.resource.perParticipant,
         windowMs: experience.durationMs,
         nextAt: null,
       },
       ...(effects.length < reply.effects.length
         ? { reason: 'Contribution accepted; visual effects suppressed by the channel budget.' }
-        : {}),
+        : acceptedReason
+          ? { reason: acceptedReason }
+          : {}),
     });
   }
   return {

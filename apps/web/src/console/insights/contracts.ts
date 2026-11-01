@@ -93,5 +93,6 @@ export const REASON_LABELS: Record<string, string> = {
   'participant-cap': 'Round full',
   duplicate: 'Duplicate delivery',
   capacity: 'Gameplay queue full',
+  mechanics: 'Game rule (eliminated, locked, burst or round break)',
   error: 'Invalid event or incident',
 };

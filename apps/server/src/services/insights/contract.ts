@@ -21,6 +21,7 @@ export const BLOCKED_REASONS = [
   'participant-cap',
   'duplicate',
   'capacity',
+  'mechanics',
   'error',
 ] as const;
 export type BlockedReason = (typeof BLOCKED_REASONS)[number];
@@ -40,6 +41,13 @@ export const REASON_OF: Record<Exclude<DecisionCode, 'ACCEPTED' | 'UNRELATED'>, 
   PARTICIPANT_LIMIT: 'participant-cap',
   DUPLICATE: 'duplicate',
   CAPACITY: 'capacity',
+  ELIMINATED: 'mechanics',
+  LOCKED: 'mechanics',
+  HEALTH_FULL: 'mechanics',
+  BURST_COUNTED: 'mechanics',
+  BURST_ACTIVE: 'mechanics',
+  BURST_LIMIT: 'mechanics',
+  ROUND_INTERMISSION: 'mechanics',
   INVALID_EVENT: 'error',
   INCIDENT: 'error',
 };
@@ -54,6 +62,7 @@ export const REASON_LABEL: Record<BlockedReason, string> = {
   'participant-cap': 'Round full',
   duplicate: 'Duplicate delivery',
   capacity: 'Gameplay queue full',
+  mechanics: 'Game rule (eliminated, locked, burst or round break)',
   error: 'Invalid event or incident',
 };
 

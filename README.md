@@ -85,6 +85,36 @@ Compatible rule edits use a reviewed migration; incompatible changes and startin
 new round require explicit full-reset consent. Prior event identities and cosmetic
 rate budgets remain protected.
 
+### Broader mechanics (definition version 2)
+
+Version 2 definitions add one declarative `mechanics` block; version 1 rules, hashes
+and snapshots are unchanged. All four primitives run in the host, are driven by the
+recorded event clock (so live play, rehearsal and journal replay agree) and have
+explicit rejection codes:
+
+- **Distinct-viewer burst** — _“Shield Wall: when 5 different viewers type `!shield`
+  within 10 seconds, the shield goes up.”_ A sliding per-side window counts each viewer
+  once (`BURST_COUNTED`); triggers can award points, raise a damage shield
+  (`BURST_ACTIVE`), win a `burst` objective, and are capped per round (`BURST_LIMIT`).
+- **Health and elimination** — teams share a pool; each contribution damages every
+  other standing team, a heal command restores it (`HEALTH_FULL` at max), and a team at
+  0 is eliminated (`ELIMINATED` for its players and late joiners). The last team
+  standing wins.
+- **Best-of-N matches** — each round resets resources, scores, pools and bursts while
+  keeping teams; the break rejects actions with `ROUND_INTERMISSION`; a majority of
+  round wins ends the match.
+- **Milestones** — score thresholds unlock an effect tier and an optional command that
+  is `LOCKED` until then.
+
+The independent host suite derives its expectations from the canonical definition by
+hand, rehearsal adds `burst`, `elimination`, `match` and `unlock` presets for matching
+rules, and the overlay scoreboard and console HUD show health meters, a burst meter
+with its window countdown, the round and break countdown, and unlocked tiers as
+accessible text. Any mechanics change other than labels or a longer break requires
+explicit reset. The offline compiler supports the four example intents in
+`packages/compiler/fixtures/stateful-mechanics.json`; inventories, trades, lives,
+cooldowns, tournaments and random scoring remain unsupported.
+
 ## Named timers — F18
 
 Describe a delay or a cadence and Riff schedules it on the host:
@@ -359,6 +389,7 @@ change an approved live layout.
    Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
    Channel Points and Predictions ask separately, from their console panels, for
    `channel:manage:redemptions` and `channel:manage:predictions` (Affiliate/Partner only).
+
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The

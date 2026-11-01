@@ -1,5 +1,5 @@
 import { ApiError } from '../../lib/api.js';
-import type { DecisionCode } from '../../lib/types.js';
+import type { DecisionCode, ExperienceDefinition } from '../../lib/types.js';
 import { CODE_LABEL } from '../format.js';
 import type {
   Expectation,
@@ -23,7 +23,40 @@ export const PRESET_TEXT: Record<Preset, { title: string; detail: string }> = {
   'late-arrival': { title: 'Late arrival', detail: 'Someone shows up halfway through.' },
   exhaustion: { title: 'Run out', detail: 'One viewer keeps going past their allowance.' },
   deadline: { title: 'Deadline', detail: 'A viewer acts after time is up.' },
+  burst: {
+    title: 'Distinct burst',
+    detail: 'Different viewers fill the burst window; a repeat viewer counts once.',
+  },
+  elimination: {
+    title: 'Elimination',
+    detail: 'One team attacks until another reaches 0 health.',
+  },
+  match: { title: 'Best of N', detail: 'Rounds reset at the deadline until the match ends.' },
+  unlock: {
+    title: 'Unlock',
+    detail: 'A locked command opens once the milestone score is reached.',
+  },
 };
+
+/** Mechanic presets appear only when the exact definition has that rule. */
+export function presetApplies(
+  preset: Preset,
+  definition: ExperienceDefinition | null | undefined,
+): boolean {
+  const m = definition?.mechanics;
+  switch (preset) {
+    case 'burst':
+      return Boolean(m?.burst);
+    case 'elimination':
+      return Boolean(m?.health);
+    case 'match':
+      return Boolean(m?.match);
+    case 'unlock':
+      return Boolean(m?.milestones.some((x) => x.unlock));
+    default:
+      return true;
+  }
+}
 
 export const timeOf = (step: RehearsalStep) => (step.kind === 'chat' ? step.event.at : step.at);
 

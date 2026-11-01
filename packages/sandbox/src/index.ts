@@ -37,12 +37,20 @@ export {
 export {
   createSessionSnapshot,
   advanceSession,
+  applySessionCommand,
   pauseSession,
   resumeSession,
   sessionDefinitionSchema,
   sessionSnapshotSchema,
   validateSessionSnapshot,
 } from './session.js';
+export {
+  mechanicsSchema,
+  mechanicsStateSchema,
+  definitionCommands,
+  inIntermission,
+  roundWinner,
+} from './mechanics.js';
 export {
   AUDIT_MAX_ENTRIES,
   classifyTransition,
@@ -101,6 +109,7 @@ export {
 } from './rehearsal-minimizer.js';
 export {
   createRehearsalPreset,
+  mechanicPresetsFor,
   REHEARSAL_PRESETS,
   type RehearsalPreset,
 } from './rehearsal-presets.js';

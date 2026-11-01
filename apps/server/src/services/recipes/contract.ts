@@ -9,7 +9,7 @@ import {
   type RecipePackage,
   type RecipeProfile,
 } from '@riff/sdk';
-import { manifestSchema, scenariosSchema } from '@riff/sandbox';
+import { definitionCommands, manifestSchema, scenariosSchema } from '@riff/sandbox';
 import { findPrivateText } from './secrets.js';
 
 /** Retention and size bounds for one channel's recipe library. */
@@ -282,7 +282,9 @@ export function blockersFor(pack: RecipePackage, capabilities: string[]) {
 /** Commands a manifest listens for: its trigger plus any team join commands. */
 export const commandsOf = (manifest: RecipePackage['manifest']) => [
   manifest.trigger.command,
-  ...(manifest.experience?.teams.map((team) => team.joinCommand) ?? []),
+  ...(manifest.experience
+    ? definitionCommands(manifest.experience).filter((c) => c !== manifest.trigger.command)
+    : []),
 ];
 
 /** Export only synthetic test identities and command-shaped inputs; live/private text is never copied. */

@@ -16,7 +16,7 @@ import {
   type Regression,
   type ScenarioRecord,
 } from './contracts.js';
-import { PRESET_TEXT, friendlyError } from './labels.js';
+import { PRESET_TEXT, friendlyError, presetApplies } from './labels.js';
 
 export interface StudioProps {
   instructions?: string[] | undefined;
@@ -494,11 +494,13 @@ export function InteractiveStudio({
         <label>
           Preset
           <select value={preset} onChange={(e) => setPreset(e.target.value as typeof preset)}>
-            {presets.map((p) => (
-              <option key={p} value={p}>
-                {PRESET_TEXT[p].title}
-              </option>
-            ))}
+            {presets
+              .filter((p) => presetApplies(p, version.manifest.experience))
+              .map((p) => (
+                <option key={p} value={p}>
+                  {PRESET_TEXT[p].title}
+                </option>
+              ))}
           </select>
         </label>
         <p className="note preset-detail">{PRESET_TEXT[preset].detail}</p>

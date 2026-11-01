@@ -4,16 +4,20 @@ import { compileTimerOffline } from './timer-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/8';
+export const PROMPT_VERSION = 'riff-compiler/9';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
   'Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.',
+  'Shield Wall: when 5 different viewers type !shield within 10 seconds, the shield goes up.',
+  'Castle Siege: viewers join Red with !red or Blue with !blue. Each !attack deals 10 damage to the other castle; castles have 100 health and !heal restores 5 health. A castle at 0 health is eliminated.',
 ];
+const EXPERIENCE_NAMES = ['tomato-battle', 'community-goal', 'shield-wall', 'castle-siege'];
 const EXPERIENCE_EXAMPLES = EXPERIENCE_INTENTS.map((intent, index) => {
   const output = compileExperienceOffline({ intent, base: null });
-  if (!output) throw new Error('A curated session example must produce a compiler output');
-  return { name: index === 0 ? 'tomato-battle' : 'community-goal', intent, ...output };
+  if (!output || output.kind !== 'candidate')
+    throw new Error('A curated session example must produce a compiler candidate');
+  return { name: EXPERIENCE_NAMES[index] ?? `experience-${index}`, intent, ...output };
 });
 const TIMER_INTENTS = [
   'Every 10 minutes show a hydration reminder on the overlay.',
@@ -74,8 +78,10 @@ Rules for candidates:
   Host-owned session changes
   are declarative: guest code cannot mutate scores, resources or participant membership.
 - manifest.experience is null for ordinary projectile interactions. For rounds/sessions,
-  supply the full canonical ExperienceDefinition (version 1, title, durationMs,
-  maxParticipants, teams, resource, contribution, objective). sdkVersion is 0.4.0.
+  supply the full canonical ExperienceDefinition (version, title, durationMs,
+  maxParticipants, teams, resource, contribution, objective, mechanics). sdkVersion is
+  0.4.0. Use version 1 with mechanics:null for plain score rounds; use version 2 with a
+  mechanics object only when the request states a burst, health, match or milestone rule.
   trigger.command MUST equal experience.contribution.command. Teams have unique ids
   and join commands distinct from contribution.command. No teams for collective-goal;
   target must be a positive integer. Highest-score uses target:null.
@@ -89,8 +95,29 @@ Rules for candidates:
   in the host before the handler reads its frozen snapshot, including the final goal.
 - Generate sessions through these same manifest/source/tests fields and verification
   pipeline. Do not implement session state in globals or invent bridge methods.
-  Arbitrary health, elimination, inventories, unlocks, rounds or random scoring are
-  outside these session primitives: mark unsupported instead of reducing their rules.
+- Version 2 mechanics = { match, health, burst, milestones } (null/[] when unused), all
+  host-owned and declarative:
+  burst {command|null, label, participants 2..50, windowMs 1000..60000, points 0..100,
+  limit 1..20, shieldMs 0..60000}: \`participants\` DIFFERENT viewers of one side act within
+  a sliding windowMs on the host clock. command:null counts accepted contributions (a
+  repeat viewer is still accepted but counts once); a command makes a resource-free burst
+  action rejected with BURST_COUNTED (already counted), BURST_ACTIVE (shield running) or
+  BURST_LIMIT. Triggering clears the window, adds points and raises a shield for shieldMs.
+  objective {kind:'burst', target:N} wins the round on the Nth trigger (target <= limit).
+  health {label, max 1..1000, damage 1..1000, heal {command, amount}|null} needs 2+ teams and
+  highest-score: each contribution damages every other standing team (not a shielded one);
+  0 health eliminates a team and its players get ELIMINATED; the last team standing wins
+  (outcome elimination). Heal spends one resource; HEALTH_FULL at max. At the deadline the
+  standing team with most health wins.
+  match {rounds 2..9, intermissionMs 0..60000}: best of N; each round resets resources,
+  scores, pools and bursts, keeps teams; actions in the break get ROUND_INTERMISSION; a
+  majority of round wins finishes the match.
+  milestones [{id, label, score, unlock {command, points}|null}] up to 4, ascending scores:
+  reaching a round score unlocks the tier (snapshot.mechanics.standings[side].unlocked);
+  an unlock command is LOCKED before that and spends one resource after.
+  Every command (joins, contribution, heal, burst, unlocks) must be unique. Inventories,
+  trades, bets, lives/respawns, cooldowns, brackets/tournaments or random scoring remain
+  outside these primitives: mark unsupported instead of reducing their rules.
 - Every scenario step includes session:null or a strict phase assertion {phase}, or
   {phase,remainingMs}. Include RESOURCE_LIMIT and deadline/goal scenarios for sessions.
   The independent host suite checks scores/resources from the canonical definition.
