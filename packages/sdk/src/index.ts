@@ -255,3 +255,21 @@ export {
   type SceneRegion,
   type SceneRect,
 } from './scene.js';
+
+export { DEFAULT_DIRECTOR_ENVELOPE } from './director.js';
+export type {
+  DirectorEnvelope,
+  DirectorSettings,
+  DirectorMode,
+  DirectorFrame,
+  DirectorDecision,
+  DirectorSnapshot,
+} from './director.js';
+export type {
+  DirectorEvidence,
+  DirectorRevision,
+  DirectorApproval,
+  DirectorState,
+} from './director.js';
+
+export type * from './recipes.js';

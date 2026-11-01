@@ -4,3 +4,10 @@ Dependency-free SDK types, capability identifiers and shared policy ceilings. SD
 adds canonical experience definitions and session snapshots; existing 0.3.0 projectile
 artifacts keep their rolling allowance behavior. See [SDK.md](SDK.md), generated from
 `SDK_GUIDE`, for the compiler-facing rules, bridge types and scenario assertions.
+
+Host consumers also share `director.ts` presentation envelopes, settings and evidence
+types. These are host-only contracts; generated automations gain no capability or
+new bridge API, and the guest SDK version remains unchanged.
+
+`recipes.ts` adds host-only portable package, profile, synthetic proof and exact review
+contracts for F38. These types do not grant guest capabilities or publication authority.
