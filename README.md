@@ -139,23 +139,27 @@ to the existing generation, private rehearsal and exact-version approval flow.
 
 1. In connected Twitch chat, submit `!riff suggest Change the command to !splat and
 give everyone two additional throws`.
-2. In the audience inbox, review the pending proposal and shortlist it. Matching
-   suggestions form one proposal with a contributor count. Hide unwanted suggestions;
-   restoring one sends it back to pending review.
-3. Choose up to five shortlisted proposals and open a 15–600 second ballot. The
-   overlay shows the ballot ID and `!riff vote <ballot-id> <option>` instructions.
-   Each account gets one valid vote per ballot. Results and ties are advisory.
-   The overlay cycles bounded excerpts and voting instructions; the creator inbox
-   retains full proposal text.
-4. Select an eligible proposal, review or edit its brief, and choose a base version
-   if it should change an existing interaction. Save the selection, then explicitly
-   generate. Repeated generation requests return the same run, including after restart.
-5. Review the candidate through Test and Preview. For the Tomato Battle edit, use
-   **Keep everyone's progress** to inspect preserved scores and two additional throws,
-   then approve the exact evidence through the normal F32 flow.
+2. In **Audience ideas**, the idea appears under **To review** with a short number
+   (`#1`). Shortlist it. Matching suggestions form one idea with a "Suggested by N
+   viewers" count. Hide unwanted ideas; restoring one sends it back to review.
+3. Tick **Add to vote** on up to five shortlisted ideas, pick a voting time
+   (30 s–10 min) and **Start vote**. The stream shows a vote card with live bars and one
+   short command, `!riff vote 1 <number>`, where `1` is the ballot number. Each account
+   gets one vote per ballot; results and ties are advisory and stay on stream for two
+   minutes after the vote closes.
+4. Choose **Review brief** on any shortlisted idea (or **Use** next to a result). The
+   brief opens at the top of the inbox with three steps: review the brief, generate,
+   then test, rehearse and approve. When exactly one interaction is live, the brief
+   defaults to editing it. Save the selection, then explicitly generate. Repeated
+   generation requests return the same run, including after restart.
+5. **Review & approve candidate** jumps to Test and Preview. For the Tomato Battle edit,
+   use **Keep everyone's progress** to inspect preserved scores and two additional
+   throws, then approve the exact evidence through the normal F32 flow. The stream then
+   announces "Chat idea #1 · Now live" for 20 minutes.
 
 Twitch moderators need a creator-managed **Riff moderation grant** to use
-`!riff shortlist <proposal-id>` or `!riff hide <proposal-id>`. A badge alone is not a
+`!riff shortlist <#>` or `!riff hide <#>` with the idea number from the inbox (`12`
+and `#12` both work; full IDs remain accepted). A badge alone is not a
 grant. The broadcaster may moderate through chat; selection, generation and approval
 remain creator-console actions. Voting, moderation and chat never generate code.
 
@@ -168,7 +172,8 @@ private briefs, grants, account IDs and pending/hidden suggestions stay private.
 Suggestions are 8–500 characters, with three attempts per account and twenty per
 channel in any rolling 60 seconds. Duplicate/rejected admitted attempts count toward
 those limits; redelivered transport events do not. The host caps nonhidden proposals
-at 100, contributors per proposal at 1,000, votes per ballot at 10,000 and grants at 100. Command receipts are retained for seven days, capped at 10,000 per channel;
+at 100, contributors per proposal at 1,000, votes per ballot at 10,000 and grants at 100.
+Vote bursts refresh open consoles at most four times a second. Command receipts are retained for seven days, capped at 10,000 per channel;
 admission fails closed at capacity. Ballot deadlines and vote identities survive restart.
 
 Hiding a proposal or replacing its selection cancels unused generation and pending activation.
@@ -177,6 +182,9 @@ activating it. Removing an idea does not silently stop an already running intera
 After emergency stop, explicit channel resume leaves removed interactions paused and
 recovers healthy ones; a clean approved predecessor remains available for rollback.
 The overlay clears on emergency stop and cannot repopulate until explicit resume.
+On stream the audience panel sits bottom-right, clear of the round scoreboard
+(top-left) and interaction instructions (bottom-left). When nothing is happening it
+shrinks to a one-line invitation.
 
 This uses chat ballots and the existing read-only overlay, with no additional Twitch
 scopes or outbound chat messages. The creator console retains the existing local
