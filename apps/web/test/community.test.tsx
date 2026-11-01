@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { overlayMessageSchema } from '../src/overlay/messages.js';
-import overlayStyles from '../src/overlay/overlay.css?raw';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { renderCommunity } from '../src/overlay/community.js';
+// Read from disk: a `?raw` CSS import is empty under the test transform.
+const overlayStyles = readFileSync(resolve(__dirname, '../src/overlay/overlay.css'), 'utf8');
 const publicProposal = {
   proposalId: 'p',
   text: '<img src=x onerror=alert(1)>',
@@ -132,17 +135,18 @@ it.each([
   ).toBe(false);
 });
 
-it('bounds worst-case public ballot rows and keeps every choice and vote command visible', () => {
+it('bounds worst-case public ballot rows and keeps every choice and the vote command visible', () => {
   const id = '11111111-1111-4111-8111-111111111111';
   const longText = 'W'.repeat(499);
   const projection = {
     ...community,
-    commands: ['!riff suggest <text>', '!riff vote <ballot-id> <option>', '!riff credit on|off'],
+    commands: ['!riff suggest <idea>', '!riff vote <ballot> <option>', '!riff credit on|off'],
     creditNotice: 'N'.repeat(500),
     ballot: {
       ...community.ballot,
       id,
-      deadlineAt: 15000,
+      number: 7,
+      deadlineAt: 60000,
       options: Array.from({ length: 5 }, (_, index) => ({
         proposalId: `p${index}`,
         text: `${longText}${index}`,
@@ -161,28 +165,59 @@ it('bounds worst-case public ballot rows and keeps every choice and vote command
   const root = document.createElement('div');
   renderCommunity(root, projection, 0);
   const rows = root.querySelectorAll('.community-option');
-  expect(rows).toHaveLength(3);
-  for (const [index, row] of [...rows].entries()) {
-    expect(row.textContent).toContain(`!riff vote ${id} ${index + 1}`);
+  expect(rows).toHaveLength(5);
+  for (const row of rows) {
     expect(row.querySelector('.community-excerpt')?.textContent?.length).toBeLessThanOrEqual(73);
-    expect(row.textContent?.length).toBeLessThanOrEqual(185);
+    expect(row.textContent?.length).toBeLessThanOrEqual(140);
   }
-  expect(root.textContent).toContain('Excerpts · full proposals in creator inbox');
-  expect(root.textContent?.length).toBeLessThanOrEqual(1800);
+  // One short typed command: viewers never copy a 36-character identifier off the stream.
+  expect(root.querySelector('.community-vote')?.textContent).toBe(
+    'Vote in chat !riff vote 7 <number>',
+  );
+  expect(root.textContent).not.toContain(id);
+  expect(root.textContent?.length).toBeLessThanOrEqual(1200);
   const panelRules = overlayStyles.match(/\.overlay-community \{([^}]+)\}/)?.[1] ?? '';
   expect(panelRules).not.toMatch(/overflow:\s*hidden|max-height:/);
+  expect(panelRules).toMatch(/right:\s*32px/);
+  expect(panelRules).toMatch(/bottom:\s*32px/);
   expect(root.textContent).not.toContain(longText);
-  expect(root.textContent).toContain('Options page 1/2');
-  renderCommunity(root, projection, 3000);
-  expect(root.querySelectorAll('.community-option')).toHaveLength(2);
-  for (const option of [4, 5]) expect(root.textContent).toContain(`!riff vote ${id} ${option}`);
-  expect(root.textContent).toContain('Options page 2/2');
-  // Small read-only sources show one complete option/command per page.
+  // Small read-only sources rotate one complete option per page.
   vi.stubGlobal('innerHeight', 480);
   for (let index = 0; index < 5; index++) {
-    renderCommunity(root, projection, index * 3000);
+    renderCommunity(root, projection, index * 4000);
     expect(root.querySelectorAll('.community-option')).toHaveLength(1);
-    expect(root.textContent).toContain(`!riff vote ${id} ${index + 1}`);
+    expect(root.textContent).toContain(`${index + 1}W`);
+    expect(root.textContent).toContain(`Options ${index + 1}/5`);
     expect(root.querySelector('.community-selection')).toBeNull();
   }
+});
+
+it('stays a one-line invitation when idle and shows results only briefly', () => {
+  const root = document.createElement('div');
+  const idle = { ...community, ballot: null, selections: [] };
+  renderCommunity(root, idle, 0);
+  expect(root.dataset.mode).toBe('invite');
+  expect(root.querySelectorAll('.community-option')).toHaveLength(0);
+  expect(root.textContent).toContain('!riff suggest <text>');
+  expect(root.textContent).toContain(community.creditNotice);
+  const closed = { ...community.ballot, number: 2, closedAt: 50_000, deadlineAt: 50_000 };
+  renderCommunity(root, { ...idle, outcomes: [{ ...closed, tied: true }] }, 60_000);
+  expect(root.dataset.mode).toBe('results');
+  expect(root.textContent).toContain('It is a tie. The streamer decides.');
+  expect(root.textContent).not.toContain('!riff vote');
+  renderCommunity(root, { ...idle, outcomes: [closed] }, 50_000 + 120_000);
+  expect(root.dataset.mode).toBe('invite');
+  // A creator pick is announced in plain language, then retires after its window.
+  const picked = {
+    ...community.selections[0]!,
+    number: 4,
+    selectedAt: 0,
+    status: 'applied' as const,
+  };
+  renderCommunity(root, { ...idle, selections: [picked] }, 1000);
+  expect(root.querySelector('.community-selection')?.textContent).toContain(
+    'Chat idea #4 · Now live',
+  );
+  renderCommunity(root, { ...idle, selections: [picked] }, 21 * 60_000);
+  expect(root.querySelector('.community-selection')).toBeNull();
 });

@@ -3,11 +3,13 @@ const count = z.number().int().nonnegative();
 const publicText = z.string().max(500);
 const proposal = z.object({
   proposalId: z.string().max(128),
+  number: count.optional(),
   text: publicText,
   authors: z.array(publicText).max(5),
 });
 export const communityBallotSchema = z.object({
   id: z.string().max(128),
+  number: count.optional(),
   revision: count,
   deadlineAt: count,
   closedAt: count.nullable(),
@@ -26,6 +28,7 @@ export const communitySchema = z.object({
     .array(
       proposal.extend({
         id: z.string().max(128),
+        selectedAt: count.optional(),
         status: z.enum(['selected', 'queued', 'generating', 'candidate', 'applied', 'failed']),
       }),
     )
