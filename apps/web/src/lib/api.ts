@@ -220,7 +220,8 @@ export async function request<T>(
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError(
-      'Riff’s local server is not reachable. Start it with pnpm dev.',
+      // Works for both a local dev server and a hosted instance.
+      'Riff’s server is not reachable. Check that it is running and you are online, then refresh.',
       0,
       'OFFLINE',
     );
