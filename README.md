@@ -221,7 +221,8 @@ Future descendants of their origin version check a pinned set; a failing check
 blocks candidate approval. Existing approved versions retain their previous evidence.
 A passing run proves only the inputs and checks shown.
 
-Current-round recording imports anonymize identities, preserve roles and duplicate
+**Import and save current round** pins a capture before editing and uses a saved
+scenario slot. Recording imports anonymize identities, preserve roles and duplicate
 relationships, and retain only recognized interaction commands. Other chat becomes a
 fixed marker. Imports require a complete single-version journal of at most 120 steps;
 oversized or migration-spanning recordings are rejected. Sanitized cosmetic randomness

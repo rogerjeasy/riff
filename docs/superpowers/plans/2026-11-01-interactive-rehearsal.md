@@ -92,8 +92,38 @@ run/evidence/review flow. **Produces:** complete usable F34 journey.
 
 **Files:** README, AGENTS, rehearsal ownership docs, spec/plan completion evidence.
 
-- [ ] Full tests one worker, lint/types/build/bundles/tooling/smoke and secret scans.
-- [ ] Final independent feature review; one complete fix wave and scoped re-review.
-- [ ] Attempt browser checks where permitted; distinguish environment failures from passes.
-- [ ] Document demo, supported controls/recordings, host checks, bounds and verification;
+- [x] Full tests one worker, lint/types/build/bundles/tooling/smoke and secret scans.
+- [x] Final independent feature review; one complete fix wave and scoped re-review.
+- [x] Attempt browser checks where permitted; distinguish environment failures from passes.
+- [x] Document demo, supported controls/recordings, host checks, bounds and verification;
       commit docs, inspect actual messages, leave clean main without pushing.
+
+## Final verification — 2026-11-01
+
+Implemented on main, with focused commits and independent task/final reviews. Final
+source verification at `3a62c75`:
+
+- Available host/UI suite: **453 tests in 37 files passed**, with one worker and only
+  the two socket-dependent files below excluded. No errors or warnings in that run.
+- Workspace lint/architecture boundaries, all six workspace type checks, production
+  builds, browser bundle separation and Fastify/SQLite smoke checks passed.
+- Tooling suite: **15 tests passed**. Changed documentation formatting passed.
+- Focused secret checks and Gitleaks working-tree/history scans found no leaks.
+- Final review findings are fixed: imports pin a durable capture before edits;
+  adopted run inputs keep host-assigned provenance; local chat validation mirrors
+  the host. The scoped final rereview found no remaining blocker.
+
+The complete-suite attempt before the final provenance fix passed 449 tests and
+failed only `apps/server/test/twitch-live.test.ts` and
+`packages/twitch/test/eventsub-ws.test.ts`: this environment denies localhost
+`listen` with `EPERM`. The former also timed out after the denied bind and reported
+its associated unhandled exception. The clean available-suite runs exclude exactly
+those two files; they are not counted as passed. Playwright could not start its
+server at `127.0.0.1:8788` for the same reason. Browser layout, focus, axe, live model
+and real Twitch participation were not verified in this increment.
+
+Implementation choices: fresh prefix replay trades extra seek work for complete
+private state reconstruction; imports support bounded single-version journals;
+regressions gate future descendants without revoking existing approvals; no-progress
+reduction retains original provenance; importing immediately saves and consumes a
+scenario slot. These bounds and costs are documented in the design and README.

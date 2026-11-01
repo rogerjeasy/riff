@@ -96,6 +96,10 @@ names, original chat or tokens to the client, compiler or logs. Mark imported da
 as a sanitized recording with a pinned origin; sanitized cosmetic randomness may
 differ from the live run, so it is not represented as a byte-identical live audit.
 Edits/injections into a recording become a synthetic derivative with provenance.
+The UI's **Import and save current round** action durably pins the sanitized capture
+before editing, consuming a scenario slot immediately. Saving adopted run inputs
+supplies an owned immutable run reference; the server preserves unchanged provenance
+or grants a derivative of that source's exact hash. Clients cannot grant provenance.
 
 ## Counterexample and repair
 

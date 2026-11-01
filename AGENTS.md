@@ -617,6 +617,9 @@ marker. Raw names, account IDs, unrelated chat and credentials never enter impor
 scenario/compiler content. Migration-spanning and oversized journals are unsupported.
 Only the host grants recorded provenance; edits become synthetic derivatives.
 Sanitized cosmetics are not claimed to reproduce the live recording byte for byte.
+The UI imports directly into a saved capture before editing. New saves of adopted
+run inputs carry an owned `sourceRunId`; the host preserves unchanged provenance or
+derives it from that run's exact scenario hash. Name-only changes preserve provenance.
 
 Comparisons use identical inputs and seed; initial snapshots must validate against
 both versions or the creator explicitly chooses fresh start. This is not F32 migration
