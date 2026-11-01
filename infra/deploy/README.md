@@ -18,14 +18,15 @@ its own state files. It cannot change IAM.
 
 One small server runs one isolated Riff container per streamer, up to 5. Each streamer
 gets their own database, secret, overlay key and subdomain. Caddy in front provides
-automatic HTTPS (Let's Encrypt) and a private login for each console.
+automatic HTTPS (Let's Encrypt). Each app shows its own Riff sign-in page and keeps the
+browser signed in with a 30-day HttpOnly session cookie.
 
 ```
 https://<streamer>.<base-domain>
   ├─ /overlay, /assets, /ws/overlay   public (the overlay socket needs its key)
   ├─ /peer/*                          public (shared-channel bearer tokens)
   ├─ /api/health                      public
-  └─ everything else                  console, dock, API: password or sign-in link
+  └─ console, dock, API, /auth         need the streamer's sign-in (page or dock link)
 ```
 
 | Path                                    | Role                                                                 |
@@ -77,7 +78,8 @@ AWS_PROFILE=wick-dev aws secretsmanager get-secret-value --secret-id riff/prod/s
   --query SecretString --output text | jq '.rogerjeasy | {CONSOLE_PASSWORD, ACCESS_TOKEN}'
 ```
 
-- **Console:** `https://<name>.<base-domain>`, user `<name>` with that password.
+- **Console:** open `https://<name>.<base-domain>` and enter that password on the Riff sign-in
+  page. **Sign out** is in the header.
 - **OBS dock:** a Custom Browser Dock at `https://<name>.<base-domain>/dock/?access=<ACCESS_TOKEN>`.
   OBS can't answer a password prompt, so the link sets a 30-day sign-in cookie and removes
   the token from the address.
