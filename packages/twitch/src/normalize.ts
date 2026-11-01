@@ -10,6 +10,9 @@ export interface NormalizedChatMessage {
   readonly channelId: string;
   /** `chatter_user_id`. */
   readonly viewerId: string;
+  /** Original chat identity; Shared Chat echoes never become local authority. */
+  readonly sourceChannelId: string;
+  readonly sourceMessageId: string;
   readonly viewerLogin: string;
   readonly viewerName: string;
   /** Derived only from the badge set; every chatter is at least a viewer. */
@@ -29,6 +32,9 @@ const id = z.string().min(1);
 // Only the fields Riff reads are required; unknown and unused fields pass through.
 const chatMessageEvent = z.looseObject({
   broadcaster_user_id: id,
+  message_id: id.optional(),
+  source_broadcaster_user_id: id.nullish(),
+  source_message_id: id.nullish(),
   chatter_user_id: id,
   chatter_user_login: z.string(),
   chatter_user_name: z.string(),
@@ -72,6 +78,7 @@ export function normalizeChatMessage(
   const parsed = chatMessageEvent.safeParse(event);
   if (!parsed.success) return null;
   const data = parsed.data;
+  if (Boolean(data.source_broadcaster_user_id) !== Boolean(data.source_message_id)) return null;
   const granted = new Set<ChatRole>(['viewer']);
   for (const badge of data.badges) {
     const role = Object.hasOwn(BADGE_ROLES, badge.set_id) ? BADGE_ROLES[badge.set_id] : undefined;
@@ -80,6 +87,8 @@ export function normalizeChatMessage(
   return {
     id: meta.messageId,
     channelId: data.broadcaster_user_id,
+    sourceChannelId: data.source_broadcaster_user_id ?? data.broadcaster_user_id,
+    sourceMessageId: data.source_message_id ?? data.message_id ?? meta.messageId,
     viewerId: data.chatter_user_id,
     viewerLogin: data.chatter_user_login,
     viewerName: data.chatter_user_name,

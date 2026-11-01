@@ -31,6 +31,8 @@ describe('normalizeChatMessage', () => {
     expect(normalizeChatMessage(chatEvent(), meta)).toEqual({
       id: meta.messageId,
       channelId: '1971641',
+      sourceChannelId: '1971641',
+      sourceMessageId: 'cc106a89-1814-919d-454c-f4f2f970aae7',
       viewerId: '4145994',
       viewerLogin: 'viewer32',
       viewerName: 'viewer32',
@@ -39,6 +41,34 @@ describe('normalizeChatMessage', () => {
       text: 'Hi chat',
       at: meta.receivedAt,
     });
+  });
+
+  it('preserves Shared Chat source identity without importing source-channel badges', () => {
+    const result = normalizeChatMessage(
+      chatEvent((event) => {
+        event['source_broadcaster_user_id'] = 'other-channel';
+        event['source_message_id'] = 'original-message';
+        event['source_badges'] = [{ set_id: 'broadcaster', id: '1', info: '' }];
+        event['badges'] = [];
+      }),
+      meta,
+    );
+    expect(result).toMatchObject({
+      sourceChannelId: 'other-channel',
+      sourceMessageId: 'original-message',
+      roles: ['viewer'],
+    });
+  });
+
+  it('rejects incomplete source identity instead of treating an echo as a local message', () => {
+    expect(
+      normalizeChatMessage(
+        chatEvent((event) => {
+          event['source_broadcaster_user_id'] = 'other-channel';
+        }),
+        meta,
+      ),
+    ).toBeNull();
   });
 
   it('derives roles only from badges, never from text or display name', () => {
