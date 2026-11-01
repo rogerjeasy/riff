@@ -2,10 +2,11 @@ import { SDK_VERSION, type AudienceRole, type ProjectileAsset, type Scenario } f
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
 import { compileExperienceOffline } from './experience-output.js';
+import { compilePointsOffline } from './offline-points.js';
 import type { CompilerTransport } from './transport.js';
 
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|timer|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|timer|ban|timeout|shoutout|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -135,6 +136,8 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;
+  const points = compilePointsOffline(request);
+  if (points) return points;
   const command = hints.command ? `!${hints.command}` : base?.trigger?.command;
   if (!command)
     return {

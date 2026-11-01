@@ -204,11 +204,7 @@ function rewardBody(input: CustomRewardUpdate, endpoint: string): Record<string,
     if (value !== null) body[field] = value;
   };
   limit(input.maxPerStream, 'is_max_per_stream_enabled', 'max_per_stream');
-  limit(
-    input.maxPerUserPerStream,
-    'is_max_per_user_per_stream_enabled',
-    'max_per_user_per_stream',
-  );
+  limit(input.maxPerUserPerStream, 'is_max_per_user_per_stream_enabled', 'max_per_user_per_stream');
   limit(
     input.globalCooldownSeconds,
     'is_global_cooldown_enabled',
@@ -250,9 +246,13 @@ export function createChannelPointsApi(request: HelixRequest): ChannelPointsApi 
       );
       const [reward] = parseResponse(rewardsResponse, payload, endpoint).data;
       if (!reward)
-        throw new TwitchError('TWITCH_INVALID_RESPONSE', 'Twitch returned an unexpected response.', {
-          endpoint,
-        });
+        throw new TwitchError(
+          'TWITCH_INVALID_RESPONSE',
+          'Twitch returned an unexpected response.',
+          {
+            endpoint,
+          },
+        );
       return toReward(reward);
     },
     async getCustomRewards(broadcasterId, options = {}) {
@@ -279,9 +279,13 @@ export function createChannelPointsApi(request: HelixRequest): ChannelPointsApi 
       const payload = await explained(request('PATCH', path, endpoint, body));
       const [reward] = parseResponse(rewardsResponse, payload, endpoint).data;
       if (!reward)
-        throw new TwitchError('TWITCH_INVALID_RESPONSE', 'Twitch returned an unexpected response.', {
-          endpoint,
-        });
+        throw new TwitchError(
+          'TWITCH_INVALID_RESPONSE',
+          'Twitch returned an unexpected response.',
+          {
+            endpoint,
+          },
+        );
       return toReward(reward);
     },
     async deleteCustomReward(broadcasterId, rewardId) {

@@ -3,6 +3,8 @@ import { Worker } from 'node:worker_threads';
 import {
   EFFECT_LIMITS,
   HOST_LIMITS,
+  PREDICTION_LIMITS,
+  type PredictionProposal,
   type AllowanceSnapshot,
   type DecisionCode,
   type ExecutionDecision,
@@ -13,7 +15,7 @@ import {
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
-import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { artifactSchema, eventSchema, effectSchema, predictionProposalSchema } from './contract.js';
 
 export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   ACCEPTED: 'Accepted. The effect was staged.',
@@ -40,6 +42,7 @@ const workerReply = z
     id: z.number().int(),
     ok: z.boolean(),
     effects: z.array(effectSchema).max(EFFECT_LIMITS.perEvent),
+    proposals: z.array(predictionProposalSchema).max(PREDICTION_LIMITS.proposalsPerEvent),
     cpuMicros: z.number().nonnegative(),
     fault: z.string().max(200).nullable(),
   })
@@ -93,6 +96,15 @@ export function matchesCommand(text: string, command: string) {
   return text.trim().toLowerCase() === command.toLowerCase();
 }
 
+/** Chat triggers match commands in chat; `points.redeem` triggers match only redemptions. */
+export function matchesTrigger(
+  event: { text: string; kind?: 'points.redeem' | undefined },
+  trigger: { command: string; kind?: 'chat.command' | 'points.redeem' | undefined },
+) {
+  if (trigger.kind === 'points.redeem') return event.kind === 'points.redeem';
+  return event.kind === undefined && matchesCommand(event.text, trigger.command);
+}
+
 /** Create isolated host state. Example: const engine = createEngine(artifact, { seed: 42 }). */
 export function createEngine(candidate: unknown, options: EngineOptions) {
   const artifact = artifactSchema.parse(candidate);
@@ -128,6 +140,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code: DecisionCode,
     extra: {
       effects?: ProjectileEffect[];
+      proposals?: PredictionProposal[];
       viewerId?: string;
       at?: number;
       allowance?: AllowanceSnapshot;
@@ -139,6 +152,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code,
     reason: extra.reason ?? DECISION_MESSAGES[code],
     effects: extra.effects ?? [],
+    ...(extra.proposals?.length ? { proposals: extra.proposals } : {}),
     mode,
     viewerId: extra.viewerId ?? null,
     at: extra.at ?? null,
@@ -250,7 +264,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     state.lastAt = event.at;
     state.seen.set(event.id, event.at);
     if (experience) return runSession(event);
-    if (!matchesCommand(event.text, trigger.command)) return decision(event.id, 'UNRELATED', base);
+    if (!matchesTrigger(event, trigger)) return decision(event.id, 'UNRELATED', base);
     if (!event.roles.some((role) => trigger.audience.includes(role)))
       return decision(event.id, 'AUDIENCE', base);
     const history = (state.viewers.get(event.viewerId) ?? []).filter(
@@ -297,7 +311,8 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
         ...base,
         allowance: allowance(history, event.at),
       });
-    if (reply.effects.length) {
+    // A prediction proposal is an action like an effect: it spends the viewer allowance.
+    if (reply.effects.length || reply.proposals.length) {
       history.push(event.at);
       state.effects.push(...reply.effects.map(() => event.at));
       shared?.effects.push(...reply.effects.map(() => event.at));
@@ -305,6 +320,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     return decision(event.id, 'ACCEPTED', {
       ...base,
       effects: reply.effects,
+      proposals: reply.proposals,
       allowance: allowance(history, event.at),
     });
   }
@@ -315,8 +331,11 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     // Clock transitions do not depend on guest execution; gameplay mutations do.
     const before = session;
     const staged = advanceSession(session, event.at, experience);
-    const team = experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
-    const contributes = matchesCommand(event.text, experience.contribution.command);
+    // Sessions are chat-only; a redemption never joins or contributes.
+    const team = event.kind
+      ? undefined
+      : experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
+    const contributes = !event.kind && matchesCommand(event.text, experience.contribution.command);
     if (!team && !contributes) {
       session = staged;
       return decision(event.id, 'UNRELATED', base);

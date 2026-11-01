@@ -257,7 +257,9 @@ describe('Predictions Helix endpoints', () => {
     ]);
     const [current] = await client.getPredictions('55696719', { first: 1 });
     expect(current?.status).toBe('ACTIVE');
-    expect(calls[0]?.url).toBe('https://api.twitch.tv/helix/predictions?broadcaster_id=55696719&first=1');
+    expect(calls[0]?.url).toBe(
+      'https://api.twitch.tv/helix/predictions?broadcaster_id=55696719&first=1',
+    );
     const ended = await client.endPrediction('141981764', {
       id: 'bc637af0-7766-4525-9308-4112f4cbf178',
       status: 'RESOLVED',
@@ -277,9 +279,9 @@ describe('Predictions Helix endpoints', () => {
 
   it('requires a winner to resolve and never sends one for lock or cancel', async () => {
     const { client, calls } = setup([json(fixture('helix.end-prediction.json'))]);
-    await expect(
-      client.endPrediction('1', { id: 'p', status: 'RESOLVED' }),
-    ).rejects.toBeInstanceOf(TwitchError);
+    await expect(client.endPrediction('1', { id: 'p', status: 'RESOLVED' })).rejects.toBeInstanceOf(
+      TwitchError,
+    );
     await client.endPrediction('1', { id: 'p', status: 'LOCKED', winningOutcomeId: 'x' });
     expect(calls[0]?.body).toEqual({ broadcaster_id: '1', id: 'p', status: 'LOCKED' });
   });

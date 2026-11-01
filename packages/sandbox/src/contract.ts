@@ -10,6 +10,9 @@ import {
   SESSION_LIMITS,
   SDK_VERSION,
   TRIGGER_LIMITS,
+  TRIGGER_KINDS,
+  CHANNEL_POINTS_LIMITS,
+  PREDICTION_LIMITS,
   type DecisionCode,
 } from '@riff/sdk';
 
@@ -45,6 +48,19 @@ export const manifestSchema = z
           .int()
           .min(TRIGGER_LIMITS.windowMs.min)
           .max(TRIGGER_LIMITS.windowMs.max),
+        kind: z.enum(TRIGGER_KINDS).optional(),
+        reward: z
+          .string()
+          .min(1)
+          .refine(
+            (title) =>
+              title.trim() === title &&
+              Array.from(title).length <= CHANNEL_POINTS_LIMITS.rewardTitleLength &&
+              hasNoControlCharacters(title),
+            'Reward titles are 1 to 45 trimmed characters',
+          )
+          .nullable()
+          .optional(),
       })
       .strict(),
     limits: z
@@ -69,6 +85,27 @@ export const manifestSchema = z
       });
     if (!manifest.experience && manifest.capabilities.includes('session'))
       ctx.addIssue({ code: 'custom', message: 'Session capability requires an experience' });
+    const redeems = manifest.trigger.kind === 'points.redeem';
+    if (redeems && !manifest.trigger.reward)
+      ctx.addIssue({ code: 'custom', message: 'points.redeem triggers name the reward title' });
+    if (!redeems && manifest.trigger.reward)
+      ctx.addIssue({ code: 'custom', message: 'Only points.redeem triggers carry a reward' });
+    // Redemptions carry no chat badges, so no narrower audience can be verified.
+    if (
+      redeems &&
+      (manifest.trigger.audience.length !== 1 || manifest.trigger.audience[0] !== 'viewer')
+    )
+      ctx.addIssue({ code: 'custom', message: "points.redeem audience must be ['viewer']" });
+    if (redeems && manifest.experience)
+      ctx.addIssue({ code: 'custom', message: 'Sessions are chat-only; remove the experience' });
+    if (
+      (redeems || manifest.capabilities.includes('predictions')) &&
+      manifest.sdkVersion !== '0.4.0'
+    )
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Channel Points triggers and predictions require SDK 0.4.0',
+      });
   });
 export const artifactSchema = z
   .object({
@@ -88,8 +125,43 @@ export const eventSchema = z
       .int()
       .nonnegative()
       .max(Number.MAX_SAFE_INTEGER - 2 * SESSION_LIMITS.durationMs.max),
+    kind: z.literal('points.redeem').optional(),
   })
   .strict();
+const boundedText = (max: number) =>
+  z
+    .string()
+    .refine(
+      (text) =>
+        text.trim().length > 0 &&
+        Array.from(text.trim()).length <= max &&
+        hasNoControlCharacters(text),
+      `Use 1 to ${max} characters without control characters`,
+    );
+/** Guest prediction proposals: documented Twitch bounds, distinct outcomes, no extra fields. */
+export const predictionProposalSchema = z
+  .object({
+    title: boundedText(PREDICTION_LIMITS.titleLength),
+    outcomes: z
+      .array(boundedText(PREDICTION_LIMITS.outcomeLength))
+      .min(PREDICTION_LIMITS.outcomes.min)
+      .max(PREDICTION_LIMITS.outcomes.max)
+      .refine(
+        (list) => new Set(list.map((o) => o.trim().toLowerCase())).size === list.length,
+        'Outcomes must be distinct',
+      ),
+    windowSeconds: z
+      .number()
+      .int()
+      .min(PREDICTION_LIMITS.windowSeconds.min)
+      .max(PREDICTION_LIMITS.windowSeconds.max),
+  })
+  .strict()
+  .transform((p) => ({
+    title: p.title.trim(),
+    outcomes: p.outcomes.map((o) => o.trim()),
+    windowSeconds: p.windowSeconds,
+  }));
 export const effectSchema = z
   .object({
     kind: z.literal('projectile'),
@@ -107,6 +179,7 @@ export const scenarioStepSchema = z
     id: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),
     expect: decisionCodeSchema,
     effects: z.number().int().min(0).max(EFFECT_LIMITS.perEvent),
+    kind: z.literal('points.redeem').nullable().optional(),
     session: z
       .object({
         phase: z.enum(['running', 'paused', 'finished']).optional(),

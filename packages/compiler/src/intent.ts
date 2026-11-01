@@ -1,5 +1,6 @@
 import {
   PROJECTILE_ASSETS,
+  CHANNEL_POINTS_LIMITS,
   type AudienceRole,
   type ProjectileAsset,
   type ExperienceDefinition,
@@ -24,7 +25,8 @@ export type IntentAspect =
   | 'duration'
   | 'teams'
   | 'resource'
-  | 'objective';
+  | 'objective'
+  | 'reward';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -128,7 +130,29 @@ export function extractIntentHints(intent: string): IntentHints {
 
 export interface ManifestView {
   experience?: ExperienceDefinition | null;
-  trigger: { command: string; audience: AudienceRole[]; maxPerViewer: number; windowMs: number };
+  capabilities?: readonly string[] | undefined;
+  trigger: {
+    command: string;
+    audience: AudienceRole[];
+    maxPerViewer: number;
+    windowMs: number;
+    kind?: 'chat.command' | 'points.redeem' | undefined;
+    reward?: string | null | undefined;
+  };
+}
+
+/** The quoted Channel Points reward title after "redeem", if the creator named one. */
+export function rewardTitleOf(intent: string): string | null {
+  const named =
+    intent.match(
+      /\bredeem(?:s|ed|ing)?\s+(?:the\s+|a\s+|my\s+)?["“‘']([^"”’']{1,60})["”’']/i,
+    )?.[1] ??
+    intent.match(/["“‘']([^"”’']{1,60})["”’']\s+(?:reward|redemption)/i)?.[1] ??
+    null;
+  const title = named?.trim() ?? null;
+  return title && Array.from(title).length <= CHANNEL_POINTS_LIMITS.rewardTitleLength
+    ? title
+    : null;
 }
 export const describeWindow = (ms: number) =>
   ms % 3_600_000 === 0
@@ -165,6 +189,9 @@ export function checkIntent(
     hints.maxPerViewer = sessionHints.perParticipant;
     hints.windowMs = null;
   }
+  // A duration stated for a prediction is its voting window, not the rolling allowance.
+  if (/\bpredictions?\b/i.test(intent) && candidate.manifest.capabilities?.includes('predictions'))
+    hints.windowMs = null;
   const t = candidate.manifest.trigger;
   const p = previous?.manifest.trigger;
   const assetOf = (source: string) =>
@@ -215,6 +242,18 @@ export function checkIntent(
       hints.asset ? hints.asset === actualAsset : true,
     ],
   ];
+  const statedReward = rewardTitleOf(intent);
+  if (statedReward || t.kind === 'points.redeem' || p?.kind === 'points.redeem')
+    rows.push([
+      'reward',
+      'Channel Points reward',
+      statedReward,
+      t.kind === 'points.redeem' ? (t.reward ?? '') : 'chat command',
+      p ? (p.kind === 'points.redeem' ? (p.reward ?? '') : 'chat command') : null,
+      statedReward
+        ? t.kind === 'points.redeem' && statedReward.toLowerCase() === t.reward?.toLowerCase()
+        : true,
+    ]);
   if (sessionRequest) {
     // Rolling windows are not gameplay resources; compare canonical session facts instead.
     rows.splice(

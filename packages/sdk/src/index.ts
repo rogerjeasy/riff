@@ -22,7 +22,7 @@ export const HOST_LIMITS = Object.freeze({
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
-export const CAPABILITIES = ['overlay', 'session'] as const;
+export const CAPABILITIES = ['overlay', 'session', 'predictions'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
 export const AUDIENCE_ROLES = ['viewer', 'subscriber', 'moderator', 'broadcaster'] as const;
@@ -44,6 +44,8 @@ export interface ChatEvent {
   text: string;
   /** Ordered host observation time in milliseconds; replay supplies the original value. */
   at: number;
+  /** Absent for chat. `points.redeem`: a linked Channel Points redemption; text is the viewer input. */
+  kind?: RedemptionKind | undefined;
 }
 export interface PermissionManifest {
   sdkVersion: typeof SDK_VERSION | '0.3.0';
@@ -56,6 +58,10 @@ export interface PermissionManifest {
     audience: AudienceRole[];
     maxPerViewer: number;
     windowMs: number;
+    /** Absent or `chat.command` for chat. `points.redeem` never matches chat text. */
+    kind?: TriggerKind | undefined;
+    /** Reward title the creator links for `points.redeem`; null/absent for chat. */
+    reward?: string | null | undefined;
   };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
@@ -128,6 +134,10 @@ export interface AutomationContext {
     /** Queue a bounded projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
     emit(effect: ProjectileEffect): Promise<void>;
   };
+  predictions: {
+    /** Propose a prediction for the creator to open; never opens or settles one. Example: await riff.predictions.propose({title:'Win?',outcomes:['Yes','No'],windowSeconds:120}). */
+    propose(proposal: PredictionProposal): Promise<void>;
+  };
   util: {
     /** Recorded event time. Example: const at = riff.util.now(). */
     now(): number;
@@ -192,6 +202,8 @@ export interface ExecutionDecision {
   code: DecisionCode;
   reason: string;
   effects: ProjectileEffect[];
+  /** Host-validated prediction proposals; present only when the handler proposed one. */
+  proposals?: PredictionProposal[];
   mode: ExecutionMode;
   viewerId: string | null;
   at: number | null;
@@ -213,6 +225,8 @@ export interface ScenarioStep {
   expect: DecisionCode;
   /** Exact number of effects expected for this step. */
   effects: number;
+  /** `points.redeem` models a linked Channel Points redemption; text is its viewer input. */
+  kind?: RedemptionKind | null | undefined;
 }
 export type ScenarioKind = 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window';
 /** Generated tests are data, never code: they run in the same engine as live events. */
@@ -275,3 +289,28 @@ export type {
 export type * from './recipes.js';
 export type * from './participation.js';
 export type * from './production.js';
+
+/** Trigger sources. `chat.command` is the default when a manifest omits `trigger.kind`. */
+export const TRIGGER_KINDS = ['chat.command', 'points.redeem'] as const;
+export type TriggerKind = (typeof TRIGGER_KINDS)[number];
+export type RedemptionKind = Exclude<TriggerKind, 'chat.command'>;
+/**
+ * Twitch-documented Channel Points and Predictions bounds
+ * (https://dev.twitch.tv/docs/api/reference/#create-custom-rewards,
+ * https://dev.twitch.tv/docs/api/reference/#create-prediction).
+ */
+export const CHANNEL_POINTS_LIMITS = Object.freeze({ rewardTitleLength: 45 });
+export const PREDICTION_LIMITS = Object.freeze({
+  titleLength: 45,
+  outcomeLength: 25,
+  outcomes: { min: 2, max: 10 },
+  windowSeconds: { min: 30, max: 1800 },
+  /** Host policy: one proposal per handler call. */
+  proposalsPerEvent: 1,
+});
+/** A guest-proposed prediction. The creator opens it; only the creator settles it. */
+export interface PredictionProposal {
+  title: string;
+  outcomes: string[];
+  windowSeconds: number;
+}

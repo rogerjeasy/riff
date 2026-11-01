@@ -3,7 +3,7 @@ import { compileExperienceOffline } from './experience-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/6';
+export const PROMPT_VERSION = 'riff-compiler/7';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -27,13 +27,24 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, general timers, channel points, bans, external sites). A bounded
+  sounds, polls, general timers, bans, external sites, opening/settling predictions
+  directly, or Channel Points rewards for anything but triggering). A bounded
   experience round deadline/countdown is supported and is not a general timer. Give the reason and
   the closest supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit, riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.predictions.propose, riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
+- Channel Points: "when someone redeems 'Hydrate'" uses trigger.kind "points.redeem",
+  trigger.reward "Hydrate" (the reward title), audience ["viewer"], experience null and a
+  lowercase console handle command such as "!hydrate". Chat triggers use kind
+  "chat.command" and reward null. Redemption scenario steps set kind "points.redeem"
+  and text "" (chat steps use kind null); include a chat step typing the handle that is
+  UNRELATED. The host fulfils or refunds redemptions; never claim the handler does.
+- Predictions: the handler may only PROPOSE with riff.predictions.propose({title,
+  outcomes, windowSeconds}) and capability "predictions". The creator opens it and alone
+  picks the winner, locks or cancels; requests to auto-resolve, pick winners, or settle
+  from chat are unsupported. A proposing step expects effects 0.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.

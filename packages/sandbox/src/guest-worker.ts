@@ -6,10 +6,10 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from 'quickjs-emscripten';
-import { HOST_LIMITS } from '@riff/sdk';
+import { HOST_LIMITS, PREDICTION_LIMITS, type PredictionProposal } from '@riff/sdk';
 import { z } from 'zod';
 import { sessionSnapshotSchema } from './session.js';
-import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { artifactSchema, eventSchema, effectSchema, predictionProposalSchema } from './contract.js';
 
 // One worker serves one engine (one artifact, one mode). The WASM module is loaded
 // once, but every job gets a brand-new QuickJS runtime and context that is disposed
@@ -43,6 +43,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
   runtime.setInterruptHandler(exhausted);
   const context = runtime.newContext({ intrinsics: { ...DefaultIntrinsics, Date: false } });
   const effects: Effect[] = [];
+  const proposals: PredictionProposal[] = [];
   const observations: QuickJSHandle[] = [];
   let fault: string | null = null;
   let calls = 0;
@@ -92,6 +93,36 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
     });
     context.setProp(context.global, '__emit', emit);
     emit.dispose();
+    // Proposals are data for the creator's console; nothing here opens or settles anything.
+    const propose = context.newFunction('propose', (value) => {
+      calls++;
+      if (calls > HOST_LIMITS.bridgeCallsPerEvent) {
+        fault ??= 'Bridge call budget exceeded';
+        throw new Error('Capability or resource limit rejected');
+      }
+      if (!init.artifact.manifest.capabilities.includes('predictions')) {
+        fault ??= 'Used undeclared capability predictions';
+        throw new Error('Capability or resource limit rejected');
+      }
+      if (proposals.length >= PREDICTION_LIMITS.proposalsPerEvent) {
+        fault ??= 'Exceeded one prediction proposal per event';
+        throw new Error('Capability or resource limit rejected');
+      }
+      const serialized = context.getString(value);
+      if (serialized.length > 2048) {
+        fault ??= 'Prediction proposal too large';
+        throw new Error('Payload too large');
+      }
+      try {
+        proposals.push(predictionProposalSchema.parse(JSON.parse(serialized)));
+      } catch {
+        fault ??= 'Prediction proposal failed validation';
+        throw new Error('Invalid prediction proposal');
+      }
+      return context.undefined;
+    });
+    context.setProp(context.global, '__propose', propose);
+    propose.dispose();
     const snapshot = context.newFunction('snapshot', () => {
       calls++;
       if (
@@ -111,6 +142,8 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
     const setup = context.evalCode(`
       const riff = (() => {
         const emit = __emit;
+        const propose = __propose;
+        delete globalThis.__propose;
         const snapshot = __sessionSnapshot;
         delete globalThis.__sessionSnapshot;
         const freeze = value => {
@@ -124,7 +157,8 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
           seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
           return (seed >>> 0) / 4294967296;
         }});
-        return Object.freeze({util, session, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
+        const predictions = Object.freeze({propose: async value => propose(JSON.stringify(value))});
+        return Object.freeze({util, session, predictions, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
       })();
       const event = Object.freeze(${JSON.stringify(input.event)});
       for (const fn of [function(){}, async function(){}, function*(){}, async function*(){}]) {
@@ -177,11 +211,12 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
       result.dispose();
     }
     const usage = threadCpuUsage(started);
-    return { ok: true, effects, cpuMicros: usage.user + usage.system, fault: null };
+    return { ok: true, effects, proposals, cpuMicros: usage.user + usage.system, fault: null };
   } catch (error) {
     return {
       ok: false,
       effects: [],
+      proposals: [],
       cpuMicros: started ? (({ user, system }) => user + system)(threadCpuUsage(started)) : 0,
       fault: fault ?? (error instanceof Error ? error.message.slice(0, 160) : 'Execution failed'),
     };
@@ -201,6 +236,7 @@ parentPort?.on('message', (raw: unknown) => {
       id: -1,
       ok: false,
       effects: [],
+      proposals: [],
       cpuMicros: 0,
       fault: 'Invalid job',
     });

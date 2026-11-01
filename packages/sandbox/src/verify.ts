@@ -30,6 +30,7 @@ export interface StepResult {
   roles: AudienceRole[];
   text: string;
   at: number;
+  kind?: 'points.redeem';
   expect: DecisionCode;
   expectEffects: number | null;
   actual: DecisionCode;
@@ -167,6 +168,7 @@ export async function runScenarios(
           roles: step.roles,
           text: step.text,
           at: step.at,
+          ...(step.kind ? { kind: step.kind } : {}),
         });
         const expectEffects = step.effects;
         const passed =
@@ -182,6 +184,7 @@ export async function runScenarios(
           roles: step.roles,
           text: step.text,
           at: step.at,
+          ...(step.kind ? { kind: step.kind } : {}),
           expect: step.expect,
           expectEffects: expectEffects < 0 ? null : expectEffects,
           ...(decision.session ? { session: decision.session } : {}),
@@ -213,7 +216,10 @@ export async function runScenarios(
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   if (manifest.experience) return sessionHostScenarios(manifest);
+  if (manifest.trigger.kind === 'points.redeem') return redemptionHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
+  // Proposal-only handlers emit no overlay effect: assert admission, not effect count.
+  const produced = manifest.capabilities.includes('overlay') ? -1 : -2;
   const eligible: AudienceRole[] = audience.includes('viewer')
     ? ['viewer']
     : [audience[0] ?? 'broadcaster', 'viewer'];
@@ -235,13 +241,13 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
     {
       name: `${command} from an eligible viewer produces an effect`,
       kind: 'happy',
-      steps: [step('h1', 'ada', command, 0, 'ACCEPTED', -1)],
+      steps: [step('h1', 'ada', command, 0, 'ACCEPTED', produced)],
     },
     {
       name: 'Surrounding spaces and capitals still match; suffixes do not',
       kind: 'negative',
       steps: [
-        step('h1', 'ada', `  ${command.toUpperCase()} `, 0, 'ACCEPTED', -1),
+        step('h1', 'ada', `  ${command.toUpperCase()} `, 0, 'ACCEPTED', produced),
         step('h2', 'ben', `${command}s`, 1, 'UNRELATED', 0),
         step('h3', 'ben', `hello ${command}`, 2, 'UNRELATED', 0),
         step('h4', 'ben', 'hello chat', 3, 'UNRELATED', 0),
@@ -251,17 +257,18 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
       name: 'A redelivered event never produces a second effect',
       kind: 'duplicate',
       steps: [
-        step('h1', 'ada', command, 0, 'ACCEPTED', -1),
+        step('h1', 'ada', command, 0, 'ACCEPTED', produced),
         step('h1', 'ada', command, 5, 'DUPLICATE', 0),
       ],
     },
   ];
   if (fitsBudget) {
     const steps = Array.from({ length: maxPerViewer }, (_, i) =>
-      step(`a${i}`, 'ada', command, i, 'ACCEPTED', -1),
+      step(`a${i}`, 'ada', command, i, 'ACCEPTED', produced),
     );
     steps.push(step('over', 'ada', command, maxPerViewer, 'VIEWER_LIMIT', 0));
-    if (otherFits) steps.push(step('other', 'ben', command, maxPerViewer + 1, 'ACCEPTED', -1));
+    if (otherFits)
+      steps.push(step('other', 'ben', command, maxPerViewer + 1, 'ACCEPTED', produced));
     scenarios.push({
       name: `Viewer allowance: ${maxPerViewer} accepted, next blocked${otherFits ? ', another viewer unaffected' : ''}`,
       kind: 'limit',
@@ -273,10 +280,10 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
         kind: 'window',
         steps: [
           ...Array.from({ length: maxPerViewer }, (_, i) =>
-            step(`w${i}`, 'ada', command, i, 'ACCEPTED', -1),
+            step(`w${i}`, 'ada', command, i, 'ACCEPTED', produced),
           ),
           step('wover', 'ada', command, windowMs - 1, 'VIEWER_LIMIT', 0),
-          step('wback', 'ada', command, Math.max(windowMs, 60_000), 'ACCEPTED', -1),
+          step('wback', 'ada', command, Math.max(windowMs, 60_000), 'ACCEPTED', produced),
         ],
       });
   }
@@ -286,9 +293,80 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
       kind: 'role',
       steps: [
         step('r1', 'cy', command, 0, 'AUDIENCE', 0, ['viewer']),
-        step('r2', 'ada', command, 1, 'ACCEPTED', -1),
+        step('r2', 'ada', command, 1, 'ACCEPTED', produced),
       ],
     });
+  return scenarios;
+}
+
+/** Host suite for Channel Points triggers: redemptions only, dedupe, allowance, chat ignored. */
+function redemptionHostScenarios(manifest: PermissionManifest): Scenario[] {
+  const { command, maxPerViewer, windowMs } = manifest.trigger;
+  const produced = manifest.capabilities.includes('overlay') ? -1 : -2;
+  const redeem = (
+    id: string,
+    viewer: string,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+  ) => ({
+    id,
+    viewer,
+    roles: ['viewer'] as AudienceRole[],
+    text: '',
+    at,
+    expect,
+    effects,
+    kind: 'points.redeem' as const,
+  });
+  const scenarios: Scenario[] = [
+    {
+      name: 'A linked redemption produces the effect',
+      kind: 'happy',
+      steps: [redeem('h1', 'ada', 0, 'ACCEPTED', produced)],
+    },
+    {
+      name: 'Chat never triggers a Channel Points interaction, even its handle',
+      kind: 'negative',
+      steps: [
+        {
+          id: 'c1',
+          viewer: 'ada',
+          roles: ['viewer'],
+          text: command,
+          at: 0,
+          expect: 'UNRELATED',
+          effects: 0,
+        },
+        {
+          id: 'c2',
+          viewer: 'ada',
+          roles: ['broadcaster'],
+          text: command,
+          at: 1,
+          expect: 'UNRELATED',
+          effects: 0,
+        },
+      ],
+    },
+    {
+      name: 'A redelivered redemption never produces a second effect',
+      kind: 'duplicate',
+      steps: [redeem('d1', 'ada', 0, 'ACCEPTED', produced), redeem('d1', 'ada', 5, 'DUPLICATE', 0)],
+    },
+  ];
+  const perEvent = manifest.limits.effectsPerEvent;
+  if (maxPerViewer * perEvent <= manifest.limits.effectsPerMinute && maxPerViewer <= 20) {
+    const steps = Array.from({ length: maxPerViewer }, (_, i) =>
+      redeem(`a${i}`, 'ada', i, 'ACCEPTED', produced),
+    );
+    steps.push(redeem('over', 'ada', maxPerViewer, 'VIEWER_LIMIT', 0));
+    scenarios.push({
+      name: `Viewer allowance: ${maxPerViewer} redemptions per ${windowMs} ms, the next is refused (and refunded by the host)`,
+      kind: 'limit',
+      steps,
+    });
+  }
   return scenarios;
 }
 

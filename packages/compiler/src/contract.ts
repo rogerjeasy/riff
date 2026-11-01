@@ -7,6 +7,7 @@ import {
   SDK_VERSION,
   SESSION_LIMITS,
   TRIGGER_LIMITS,
+  TRIGGER_KINDS,
 } from '@riff/sdk';
 
 /** Bounded quoted host evidence; never merged into creator-intent extraction. */
@@ -235,12 +236,14 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             trigger: {
               type: 'object',
               additionalProperties: false,
-              required: ['command', 'audience', 'maxPerViewer', 'windowMs'],
+              required: ['command', 'audience', 'maxPerViewer', 'windowMs', 'kind', 'reward'],
               properties: {
                 command: { type: 'string' },
                 audience: { type: 'array', items: { type: 'string', enum: [...AUDIENCE_ROLES] } },
                 maxPerViewer: { type: 'integer' },
                 windowMs: { type: 'integer' },
+                kind: { type: 'string', enum: [...TRIGGER_KINDS] },
+                reward: { type: ['string', 'null'], maxLength: 45 },
               },
             },
             limits: {
@@ -275,7 +278,17 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects', 'session'],
+              required: [
+                'id',
+                'viewer',
+                'roles',
+                'text',
+                'at',
+                'expect',
+                'effects',
+                'session',
+                'kind',
+              ],
               properties: {
                 id: { type: 'string' },
                 viewer: { type: 'string' },
@@ -284,6 +297,7 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 at: { type: 'integer' },
                 expect: { type: 'string', enum: [...DECISION_CODES] },
                 effects: { type: 'integer' },
+                kind: { type: ['string', 'null'], enum: ['points.redeem', null] },
                 session: {
                   anyOf: [
                     { type: 'null' },
