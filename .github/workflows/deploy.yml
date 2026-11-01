@@ -1,0 +1,66 @@
+name: Deploy
+# Every push to main that passes "Verify workspace" applies infrastructure and deploys.
+# AWS access uses GitHub OIDC (no stored AWS keys); secrets come from AWS Secrets Manager.
+on:
+  workflow_run:
+    workflows: [Verify workspace]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+env:
+  AWS_REGION: us-east-1
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # No `environment:` here: it would change the OIDC subject the AWS role trusts.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::707938860881:role/riff-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+      - name: Apply infrastructure
+        working-directory: infra/terraform/prod
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve
+      - name: Image tag
+        id: tag
+        run: echo "tag=$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: infra/containers/Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: riff:${{ steps.tag.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Ship to the host
+        run: infra/deploy/ship.sh "${{ steps.tag.outputs.tag }}"
+      - name: Summary
+        working-directory: infra/terraform/prod
+        run: |
+          {
+            echo "### Deployed ${{ steps.tag.outputs.tag }}"
+            terraform output -json console_urls | jq -r 'to_entries[] | "- \(.key): \(.value)"'
+          } >> "$GITHUB_STEP_SUMMARY"

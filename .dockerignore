@@ -14,3 +14,7 @@
 data
 coverage
 *.log
+
+# Terraform providers and infra tooling never belong in the app image
+**/.terraform
+infra/terraform
