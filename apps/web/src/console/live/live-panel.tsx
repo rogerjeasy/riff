@@ -3,6 +3,7 @@ import { api, ApiError } from '../../lib/api.js';
 import type { Activity, Automation, Studio, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import { RoundAudit } from '../sessions/round-audit.js';
+import { TimerList } from '../timers/timer-list.js';
 import { ago, audienceLabel, formatWindow, tone } from '../format.js';
 
 const STATUS_LABEL: Record<Automation['status'], string> = {
@@ -90,6 +91,17 @@ export function LivePanel(props: {
                     Type <b>{t.command}</b> · {audienceLabel(t.audience)} · {t.maxPerViewer} per{' '}
                     {formatWindow(t.windowMs)}
                   </p>
+                )}
+                {active?.manifest.capabilities.includes('timer') && t && (
+                  <TimerList
+                    automationId={automation.id}
+                    title={automation.title}
+                    timers={automation.timers ?? []}
+                    command={t.command}
+                    live={automation.status === 'live' && !quarantined}
+                    stopped={studio.panic}
+                    notify={props.notify}
+                  />
                 )}
                 {automation.session && active?.manifest.experience && (
                   <>

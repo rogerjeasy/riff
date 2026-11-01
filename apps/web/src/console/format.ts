@@ -61,7 +61,11 @@ export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
     ? 'good'
     : code === 'INCIDENT' || code === 'DISABLED' || code === 'PANIC'
       ? 'bad'
-      : code === 'UNRELATED' || code === 'DUPLICATE' || code === 'STOPPED' || code === 'PAUSED'
+      : code === 'UNRELATED' ||
+          code === 'DUPLICATE' ||
+          code === 'STOPPED' ||
+          code === 'PAUSED' ||
+          code === 'TIMER_CANCELLED'
         ? 'muted'
         : 'warn';
 

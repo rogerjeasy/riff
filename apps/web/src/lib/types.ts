@@ -194,6 +194,19 @@ export interface Automation {
   canRollback: boolean;
   session: SessionSnapshot | null;
   transitions?: TransitionSummary[];
+  /** Pending host-owned named timers of the live version (F18). */
+  timers?: TimerView[];
+}
+export interface TimerView {
+  id: string;
+  automationId: string;
+  versionId: string;
+  name: string;
+  intervalMs: number;
+  repeat: boolean;
+  scheduledAt: number;
+  createdAt: number;
+  fires: number;
 }
 export interface Activity {
   id: number;

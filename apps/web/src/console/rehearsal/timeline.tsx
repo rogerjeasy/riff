@@ -4,6 +4,7 @@ import { sceneApi } from '../canvas/api.js';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { Decision, SessionSnapshot, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
+import '../timers/timers.css';
 import { explain, formatClock, shortHash, tone } from '../format.js';
 import type { RehearsalResult, RehearsalRun, RehearsalScenario } from './contracts.js';
 import type { ExpectationDraft } from './input-editor.js';
@@ -342,6 +343,15 @@ export function Player(props: Props) {
                           {c.status === 'passed' ? '✓' : c.status === 'failed' ? '✗' : '○'}
                         </span>
                       ))}
+                      {f?.timers?.length ? (
+                        <span
+                          className="badge live"
+                          title={`Timer fires before this step: ${f.timers.map((fire) => fire.name).join(', ')}`}
+                        >
+                          <span aria-hidden="true">⏱ </span>
+                          {f.timers.length} timer fire{f.timers.length === 1 ? '' : 's'}
+                        </span>
+                      ) : null}
                       {broke && <span className="badge bad">Unsafe</span>}
                       {differs && (
                         <span
@@ -377,6 +387,18 @@ export function Player(props: Props) {
                   : 'Fresh round at the logical origin, before any step.'}
               </p>
             )}
+            {frame?.timers?.length ? (
+              <ul className="rehearsal-timer-fires" aria-label="Timer fires before this step">
+                {frame.timers.map((fire, index) => (
+                  <li key={`${fire.name}-${fire.at}-${index}`}>
+                    <span aria-hidden="true">⏱</span> Timer <b className="mono">{fire.name}</b>{' '}
+                    fired at {logicalClock(fire.at - scenario.initialAt)} ·{' '}
+                    {codeLabel(fire.code, false)} · {fire.effects} effect
+                    {fire.effects === 1 ? '' : 's'}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <Outcome
               decision={exact?.result.cursor.decision ?? decisionAt(frame)}
               text={step?.kind === 'chat' ? step.event.text : ''}
