@@ -192,29 +192,37 @@ operator trust model. See the [F33 design](docs/superpowers/specs/2026-11-01-aud
 
 ## Interactive rehearsal — F34
 
-Choose **Open interactive studio** in the private preview card. The studio keeps a
-scenario's seed, logical origin and inputs fixed while you play, step or seek its
-timeline. Each seek replays the prefix
-in a fresh private engine, including duplicate protection and allowance windows.
-Inspect decisions, effects, scores, remaining resources and explicit expectations.
-The original quick proof remains available.
+Choose the **Scenario studio** tab in the private preview card (**Quick proof** stays
+one click away). A scenario fixes its seed, logical origin and inputs. **Play** saves
+your inputs, asks the host for one complete private replay, then plays it back step by
+step with outcomes on the step list and team scores on the stage. Pause, step, drag
+the cursor or click any step: the host replays exactly that prefix in a fresh engine,
+including duplicate protection and allowance windows, and the inspector explains the
+decision, effects, allowance, scores and every viewer's resources. A verdict sums up
+expectations and host safety checks in plain language.
 
-Start with a proof, crowd burst, duplicate delivery, late arrival, exhaustion or
-deadline preset. Add synthetic chat with a chosen viewer and roles, or explicit
-clock and session controls. Save the scenario, then compare two versions with the
-same inputs and seed. A fresh-start comparison is rehearsal evidence; preserving a
-live round still uses the separate F32 transition review.
+Start from a preset (**Proof**, **Crowd burst**, **Duplicate delivery**, **Late
+arrival**, **Run out**, **Deadline**) or the live round, then refine in **Edit
+inputs**: synthetic chat with a chosen viewer and roles, duplicate deliveries, and
+clock or round controls. **Compare with another version** replays the same inputs and
+seed on both, flagging the steps that differ. A fresh-start comparison is rehearsal
+evidence; preserving a live round still uses the separate F32 transition review.
 
 To exercise the repair loop with Tomato Toss:
 
-1. Choose the **exhaustion** preset and **Load preset**. In **Explicit expectations**,
-   expect the fourth throw's decision to be **ACCEPTED**, then **Save scenario**.
-2. Choose **Run to end**. The host reports the expected/actual mismatch.
-3. **Reduce selected failure**, inspect the retained inputs, then **Save regression**.
-4. Review a repair intent, such as allowing four throws, and **Generate repair candidate**.
-   The existing compiler and independent checks run again, including the saved
-   regression. Rehearse and approve the exact resulting candidate through the normal
-   workflow. Saving or reducing a failure never starts generation or activation.
+1. Load the **Run out** preset and press **Play**. Click step 4 (Limit reached), choose
+   **+ Expect an outcome here**, set the outcome to **Thrown (ACCEPTED)** and **Add
+   expectation**.
+2. Choose **Run to end**. The verdict reports “Step 4 should give Thrown — it gave
+   Limit reached.”
+3. **Fix this failure** → **Reduce selected failure**, inspect the retained inputs, then
+   **Save regression**.
+4. In **Saved regressions**, describe the repair (for example, allowing four throws),
+   confirm you reviewed it and **Generate repair candidate**. The existing compiler and
+   independent checks run again, including the saved regression; the candidate's
+   evidence lists it as passed or failed. Rehearse and approve the exact candidate
+   through the normal workflow. Saving or reducing a failure never starts generation
+   or activation.
 
 Saved regressions are immutable and survive deletion of their source scenario.
 Future descendants of their origin version check a pinned set; a failing check

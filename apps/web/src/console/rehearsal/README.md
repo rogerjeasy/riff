@@ -1,8 +1,15 @@
 # Private rehearsal studio
 
 `stage.tsx` keeps the immediate synthetic viewer controls and quick proof sequence.
-**Open interactive studio** enters the bounded scenario workflow in the same card;
-**Return to quick proof** cancels and unmounts private interactive work.
+Two mode tabs, **Quick proof** and **Scenario studio**, switch the same card; leaving
+the studio cancels and unmounts private interactive work.
+
+The studio reads top to bottom: scenario bar (pick, name, saved state, save), **Start
+from** (plain-language presets or the live round), the **player** (stage with scores,
+transport, outcome-coloured track, step list, inspector and verdict), then progressive
+sections for **Edit inputs**, **Fix a failure**, **Saved regressions** and **Advanced**
+(seed, origin, provenance and hashes). `labels.ts` holds every plain-language label:
+preset names, step titles, outcome badges, check sentences and actionable errors.
 
 - `studio.tsx` owns saved inputs, revision/dirty state and the single request/abort/
   epoch lifecycle. Server responses supply authoritative cursor state. Version and
@@ -17,12 +24,23 @@
   delays and stateful host controls. Separate explicit expectations cover decisions,
   effect counts, phase, scores and participant resources. Native details keep these
   tools behind progressive sections; no JSON editor or executable source is needed.
-- `timeline.tsx` presents Play/Pause, Previous/Next step, Reset timeline, Run to end
-  and a keyboard range cursor. Comparison shares each requested prefix and seed.
-  Every seek clears old animations, and only current cursor effects animate locally.
-  Scores/resources/checks come from the response, never reconstructed in React.
-- `regressions.tsx` separates failed-check selection/reduction, immutable regression
-  saving, library rerun/delete and a reviewed explicit repair request. The studio's
+- `timeline.tsx` (the player) presents Play/Pause, Previous/Next step, Reset timeline,
+  Run to end, a keyboard range cursor and a clickable step list. **Play asks the host
+  for one complete replay**, then animates its frames locally (≤600 ms a step, about
+  15 s in total) and requests exact state only when paused mid-way; it previously
+  issued one fresh replay per step (quadratic work and one stored run each). The
+  cached complete replay is keyed by scenario revision, version, artifact, comparison
+  and fresh-start choice, so **Run to end** from it is instant. Dragging the cursor
+  shows frames immediately and asks for exact state once it settles. Frames carry the
+  host's compact score/phase projection; full participant resources, checks and the
+  session HUD come only from an exact response, never reconstructed in React.
+  **+ Expect an outcome here** pre-fills an expectation from the selected step's
+  actual outcome. The verdict summarises expectations and host safety checks in plain
+  language, and **Fix this failure** opens the reduction flow on that check.
+- `regressions.tsx` presents a three-step **Fix a failure** flow (shrink, keep as a
+  regression, ask for a repair) and the **Saved regressions** library: failed-check
+  selection/reduction, immutable regression saving, library rerun/delete and a
+  reviewed explicit repair request. The studio's
   operation owner fences mutations and replay; library reads have independent freshness. Repair immediately hands the returned
   durable run to the existing app run store and normal candidate review workflow.
 - `contracts.ts` mirrors strict bounded host wire shapes without importing server or
@@ -30,8 +48,8 @@
   errors and abort signals. Candidate evidence renders the exact pinned regression
   set, including deleted records, independently of the current library.
 
-Save scenario inputs before playback. Edits clear local evidence and require a new
-revision save. Stale saves retain typed work; **Reload library** refreshes the saved
+Replay always binds a stored revision: Play, Run to end and step controls save unsaved
+inputs first (one explicit save request, then the replay). Edits clear local evidence. Stale saves retain typed work; **Reload library** refreshes the saved
 records; **Reload saved inputs** explicitly replaces the editor with the current
 stored revision. **Import and save current round** durably saves the sanitized
 capture before exposing it to edits, using the host recording selector. Later
