@@ -507,6 +507,12 @@ export const api = {
     request('POST', `/api/automations/${id}/${action}`, resetSession ? { resetSession: true } : {}),
   resetSession: (id: string) =>
     request('POST', `/api/automations/${id}/session/reset`, { confirm: true }),
+  cancelTimer: (automationId: string, name: string) =>
+    request<{ cancelled: number }>(
+      'POST',
+      `/api/automations/${automationId}/timers/${encodeURIComponent(name)}/cancel`,
+      {},
+    ),
   auditSession: async (id: string): Promise<SessionAudit> =>
     auditSchema.parse(await request('POST', `/api/automations/${id}/session/audit`, {}))
       .audit as SessionAudit,

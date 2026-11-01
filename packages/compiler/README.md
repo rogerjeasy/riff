@@ -23,3 +23,12 @@ subset assertions. Dynamic score/participant maps are omitted from the model sch
 because strict model objects require fixed properties; the independent host policy
 suite always verifies canonical resources and scores. Recorded offline fixtures are
 under `fixtures/`, with provenance that makes their source explicit.
+
+Prompt pack `riff-compiler/7` adds named host timers (capability `timer`, F18): the
+prompt no longer lists general timers as unsupported, curated examples add a repeating
+hydration reminder and a one-shot countdown celebration, and strict scenario steps
+carry a nullable `timers: {fired, effects}` assertion. The offline compiler handles
+explicit "every N minutes" (repeating) and "in/after N seconds" (one-shot) phrasing
+between 5 seconds and 1 hour; counted allowances such as "once every 30 seconds"
+stay rolling windows. A `timer` intent-check row compares the stated and scheduled
+interval. Timers inside stateful experiences remain unsupported.

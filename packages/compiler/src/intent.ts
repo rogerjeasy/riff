@@ -6,6 +6,7 @@ import {
 } from '@riff/sdk';
 
 import { extractExperienceHints } from './experience-hints.js';
+import { extractTimerHint, timerOfSource, type TimerHint } from './timer-hints.js';
 
 /** Facts stated explicitly in the creator's words. Absent facts stay null. */
 export interface IntentHints {
@@ -24,7 +25,8 @@ export type IntentAspect =
   | 'duration'
   | 'teams'
   | 'resource'
-  | 'objective';
+  | 'objective'
+  | 'timer';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -138,6 +140,8 @@ export const describeWindow = (ms: number) =>
       : `${ms / 1000} s`;
 export const describeAudience = (roles: AudienceRole[]) =>
   roles.includes('viewer') ? 'everyone' : roles.map((role) => `${role}s`).join(', ');
+export const describeTimer = (timer: TimerHint) =>
+  `${timer.repeat ? 'every' : 'once after'} ${describeWindow(timer.ms)}`;
 const sameAudience = (stated: AudienceRole[], actual: AudienceRole[]) =>
   stated.includes('viewer')
     ? actual.includes('viewer')
@@ -165,6 +169,12 @@ export function checkIntent(
     hints.maxPerViewer = sessionHints.perParticipant;
     hints.windowMs = null;
   }
+  // "Every 10 minutes" or "in 60 seconds" names a host timer, never a rolling allowance.
+  const statedTimer = extractTimerHint(intent);
+  const actualTimer = timerOfSource(candidate.source);
+  const previousTimer = previous ? timerOfSource(previous.source) : null;
+  const timerRequest = !sessionRequest && (!!statedTimer || !!actualTimer || !!previousTimer);
+  if (timerRequest && statedTimer && hints.windowMs === statedTimer.ms) hints.windowMs = null;
   const t = candidate.manifest.trigger;
   const p = previous?.manifest.trigger;
   const assetOf = (source: string) =>
@@ -215,6 +225,19 @@ export function checkIntent(
       hints.asset ? hints.asset === actualAsset : true,
     ],
   ];
+  if (timerRequest)
+    rows.push([
+      'timer',
+      'Named timer',
+      statedTimer ? describeTimer(statedTimer) : null,
+      actualTimer ? describeTimer(actualTimer) : 'no timer',
+      previous ? (previousTimer ? describeTimer(previousTimer) : 'no timer') : null,
+      statedTimer
+        ? !!actualTimer &&
+          actualTimer.ms === statedTimer.ms &&
+          actualTimer.repeat === statedTimer.repeat
+        : true,
+    ]);
   if (sessionRequest) {
     // Rolling windows are not gameplay resources; compare canonical session facts instead.
     rows.splice(

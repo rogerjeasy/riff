@@ -134,6 +134,7 @@ export const scenarioSchema = z
     if (new TextEncoder().encode(JSON.stringify(s)).length > 131072)
       c.addIssue({ code: 'custom', message: 'Scenario exceeds 128 KiB.' });
   });
+const timerName = z.string().regex(/^[a-z][a-z0-9_-]{0,31}$/);
 const decisionSchema = z
   .object({
     eventId: id,
@@ -158,6 +159,23 @@ const decisionSchema = z
       .object({ used: count, max: count, windowMs: count, nextAt: responseAt.nullable() })
       .strict()
       .nullable(),
+    // Timer operations an accepted handler queued (F18); absent for older runs.
+    timers: z
+      .array(
+        z.union([
+          z
+            .object({
+              op: z.literal('start'),
+              name: timerName,
+              ms: count.max(3_600_000),
+              repeat: z.boolean(),
+            })
+            .strict(),
+          z.object({ op: z.literal('cancel'), name: timerName }).strict(),
+        ]),
+      )
+      .max(25)
+      .optional(),
   })
   .strict();
 const failureShape = {
@@ -200,6 +218,20 @@ export const resultSchema = z
               })
               .strict()
               .nullable()
+              .optional(),
+            // Timer fires on the private virtual clock before this step (F18).
+            timers: z
+              .array(
+                z
+                  .object({
+                    name: timerName,
+                    at,
+                    code: z.enum(decisionCodes),
+                    effects: count.max(10),
+                  })
+                  .strict(),
+              )
+              .max(32)
               .optional(),
           })
           .strict(),

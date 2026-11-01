@@ -285,3 +285,17 @@ against fakes only; a real `user:write:chat` send to a live channel has not been
 exercised. Tests cover badge/name/text spoofing, budget, fake-clock expiry, single use,
 stale binding, lockout, panic invalidation, restart and the EventSub → Helix reply path.
 See the [service contract](../apps/server/src/services/chat-authoring/README.md).
+
+## Named timers (F18) — November 1, 2026
+
+SDK capability `timer` (additive to 0.4.0) stages named one-shot or repeating timers
+from generated handlers; the host persists them in the migration 0015 `timers` table,
+fires them through the same engine admission, budgets and sandbox as chat, resumes
+them on boot (≤30 s overdue fires once with `missed`, older fires are skipped and
+logged) and cancels them on pause, panic, activation/rollback and quarantine. Preview,
+generated scenarios and rehearsal run timers on private virtual clocks. The console
+live panel lists pending timers with countdowns and cancellation; there is no overlay
+countdown widget. Prompt pack `riff-compiler/7` and the offline compiler support
+"every N minutes" and "in N seconds" requests. Timers inside stateful sessions remain
+unsupported. Verified with Vitest service, route, sandbox, compiler and DOM tests; no
+live Twitch stream or OBS rendering of timer fires was exercised.

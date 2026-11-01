@@ -275,7 +275,17 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects', 'session'],
+              required: [
+                'id',
+                'viewer',
+                'roles',
+                'text',
+                'at',
+                'expect',
+                'effects',
+                'session',
+                'timers',
+              ],
               properties: {
                 id: { type: 'string' },
                 viewer: { type: 'string' },
@@ -284,6 +294,20 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 at: { type: 'integer' },
                 expect: { type: 'string', enum: [...DECISION_CODES] },
                 effects: { type: 'integer' },
+                timers: {
+                  anyOf: [
+                    { type: 'null' },
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['fired', 'effects'],
+                      properties: {
+                        fired: { type: 'integer', minimum: 0 },
+                        effects: { type: 'integer', minimum: 0 },
+                      },
+                    },
+                  ],
+                },
                 session: {
                   anyOf: [
                     { type: 'null' },

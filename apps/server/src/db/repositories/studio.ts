@@ -2,6 +2,7 @@ import { rehearsalRepository } from './rehearsals.js';
 import { proposalLineageRepository } from './proposal-lineage.js';
 import { transitionRepository } from './transitions.js';
 import { admissionRepository } from './admission.js';
+import { timerRepository } from './timers.js';
 import { sessionRepository } from './sessions.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, max } from 'drizzle-orm';
@@ -25,6 +26,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
     ...sessionRepository(connection, channelId),
     ...transitionRepository(connection, channelId),
     ...admissionRepository(connection, channelId),
+    ...timerRepository(connection, channelId),
     ...proposalLineageRepository(connection, channelId),
     ensure(displayName: string) {
       db.insert(channels)

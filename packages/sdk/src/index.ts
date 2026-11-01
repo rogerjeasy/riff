@@ -22,9 +22,25 @@ export const HOST_LIMITS = Object.freeze({
 });
 
 /** Executable bridge capability identifiers; unsupported capabilities are rejected. */
-export const CAPABILITIES = ['overlay', 'session'] as const;
+export const CAPABILITIES = ['overlay', 'session', 'timer'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const EFFECT_LIMITS = Object.freeze({ perEvent: 10, perMinute: 120 });
+/**
+ * Host-owned named timer policy (capability `timer`). Kept separate from HOST_LIMITS so
+ * existing artifact identities, which hash HOST_LIMITS, stay stable.
+ */
+export const TIMER_LIMITS = Object.freeze({
+  /** Distinct pending timer names per automation version. */
+  maxPerAutomation: 10,
+  durationMs: { min: 5_000, max: 3_600_000 },
+  namePattern: '^[a-z][a-z0-9_-]{0,31}$',
+  /** A fire delivered later than this after its due time is reported as `missed`. */
+  lateToleranceMs: 2_000,
+  /** A fire overdue by more than this (for example after downtime) is skipped and logged. */
+  missedGraceMs: 30_000,
+  /** Preview/rehearsal fires at most this many timers per clock advance. */
+  previewFiresPerAdvance: 32,
+});
 export const AUDIENCE_ROLES = ['viewer', 'subscriber', 'moderator', 'broadcaster'] as const;
 export type AudienceRole = (typeof AUDIENCE_ROLES)[number];
 export const PROJECTILE_ASSETS = ['tomato', 'star', 'heart'] as const;
@@ -45,6 +61,28 @@ export interface ChatEvent {
   /** Ordered host observation time in milliseconds; replay supplies the original value. */
   at: number;
 }
+/** Internal host trigger source `timer.fired`; never a Twitch transport event. */
+export interface TimerEvent {
+  source: 'timer.fired';
+  id: string;
+  channelId: string;
+  /** Timer name given to riff.timer.start. */
+  name: string;
+  /** Host time the timer was due. */
+  scheduledAt: number;
+  /** Host time the fire was delivered; equals `at`. */
+  firedAt: number;
+  /** True when delivered more than TIMER_LIMITS.lateToleranceMs late (e.g. after a restart). */
+  missed: boolean;
+  at: number;
+}
+export interface TimerOptions {
+  /** Re-arm with the same interval after every fire until cancelled. */
+  repeat?: boolean | undefined;
+}
+/** A queued timer side effect staged by one handler invocation; applied only on success. */
+export type TimerOp =
+  { op: 'start'; name: string; ms: number; repeat: boolean } | { op: 'cancel'; name: string };
 export interface PermissionManifest {
   sdkVersion: typeof SDK_VERSION | '0.3.0';
   experience?: ExperienceDefinition | null | undefined;
@@ -128,6 +166,12 @@ export interface AutomationContext {
     /** Queue a bounded projectile. Example: await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.5}). */
     emit(effect: ProjectileEffect): Promise<void>;
   };
+  timer: {
+    /** Queue a host-owned named timer; restarting a name replaces it. Example: await riff.timer.start('celebrate', 60000). */
+    start(name: string, ms: number, options?: TimerOptions): Promise<void>;
+    /** Queue cancellation of a named timer; unknown names are ignored. Example: await riff.timer.cancel('celebrate'). */
+    cancel(name: string): Promise<void>;
+  };
   util: {
     /** Recorded event time. Example: const at = riff.util.now(). */
     now(): number;
@@ -196,10 +240,22 @@ export interface ExecutionDecision {
   viewerId: string | null;
   at: number | null;
   allowance: AllowanceSnapshot | null;
+  /** Timer side effects staged by an accepted handler; present only when non-empty. */
+  timers?: TimerOp[];
 }
 
+/**
+ * Timer fires the virtual clock delivered after the previous step and up to this step's
+ * `at` (fires due exactly at `at` run first), with the total effects they emitted.
+ */
+export interface TimerAssertion {
+  fired: number;
+  effects: number;
+}
 /** One synthetic chat message inside a declarative scenario. */
 export interface ScenarioStep {
+  /** Optional assertion about timer fires reached before this event. */
+  timers?: TimerAssertion | null | undefined;
   /** Optional subset assertion against canonical state after this event. */
   session?: SessionAssertion | null | undefined;
   /** Stable synthetic viewer identity, e.g. "alice". */

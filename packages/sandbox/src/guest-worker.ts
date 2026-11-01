@@ -6,10 +6,11 @@ import {
   type QuickJSHandle,
   type QuickJSWASMModule,
 } from 'quickjs-emscripten';
-import { HOST_LIMITS } from '@riff/sdk';
+import { HOST_LIMITS, TIMER_LIMITS, type TimerOp } from '@riff/sdk';
 import { z } from 'zod';
 import { sessionSnapshotSchema } from './session.js';
 import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { timerEventSchema, timerOpSchema } from './timers.js';
 
 // One worker serves one engine (one artifact, one mode). The WASM module is loaded
 // once, but every job gets a brand-new QuickJS runtime and context that is disposed
@@ -21,9 +22,11 @@ const init = z
 const job = z
   .object({
     id: z.number().int(),
-    event: eventSchema,
+    event: z.union([eventSchema, timerEventSchema]),
     seed: z.number().int(),
     session: sessionSnapshotSchema.nullable(),
+    /** Names already pending for this automation, for the distinct-name bound. */
+    timers: z.array(z.string().max(32)).max(TIMER_LIMITS.maxPerAutomation),
   })
   .strict();
 type Effect = z.infer<typeof effectSchema>;
@@ -43,6 +46,8 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
   runtime.setInterruptHandler(exhausted);
   const context = runtime.newContext({ intrinsics: { ...DefaultIntrinsics, Date: false } });
   const effects: Effect[] = [];
+  const timerOps: TimerOp[] = [];
+  const pendingTimers = new Set(input.timers);
   const observations: QuickJSHandle[] = [];
   let fault: string | null = null;
   let calls = 0;
@@ -106,6 +111,38 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
     });
     context.setProp(context.global, '__sessionSnapshot', snapshot);
     snapshot.dispose();
+    // Timer calls only stage operations; the host applies them after the handler succeeds.
+    const timer = context.newFunction('timer', (value) => {
+      calls++;
+      if (calls > HOST_LIMITS.bridgeCallsPerEvent) {
+        fault ??= 'Bridge call budget exceeded';
+        throw new Error('Capability or resource limit rejected');
+      }
+      if (!init.artifact.manifest.capabilities.includes('timer')) {
+        fault ??= 'Used undeclared capability timer';
+        throw new Error('Capability or resource limit rejected');
+      }
+      const serialized = context.getString(value);
+      let op: TimerOp;
+      try {
+        if (serialized.length > 256) throw new Error('too large');
+        op = timerOpSchema.parse(JSON.parse(serialized));
+      } catch {
+        fault ??= 'Timer call failed validation';
+        throw new Error('Invalid timer call');
+      }
+      if (op.op === 'start') {
+        if (!pendingTimers.has(op.name) && pendingTimers.size >= TIMER_LIMITS.maxPerAutomation) {
+          fault ??= 'Timer limit exceeded';
+          throw new Error('Capability or resource limit rejected');
+        }
+        pendingTimers.add(op.name);
+      } else pendingTimers.delete(op.name);
+      timerOps.push(op);
+      return context.undefined;
+    });
+    context.setProp(context.global, '__timer', timer);
+    timer.dispose();
     // The host installs the only bridge, then removes its global alias. Guest source
     // is an expression, compiled by QuickJS itself; it is never evaluated by Node.
     const setup = context.evalCode(`
@@ -119,12 +156,18 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
         };
         const session = Object.freeze({snapshot: () => freeze(JSON.parse(snapshot()))});
         delete globalThis.__emit;
+        const timerCall = __timer;
+        delete globalThis.__timer;
+        const timer = Object.freeze({
+          start: async (name, ms, options) => timerCall(JSON.stringify({op:'start', name, ms, repeat: options !== undefined && options !== null && options.repeat === true})),
+          cancel: async name => timerCall(JSON.stringify({op:'cancel', name})),
+        });
         let seed = ${input.seed} >>> 0;
         const util = Object.freeze({ now: () => ${input.event.at}, random: () => {
           seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
           return (seed >>> 0) / 4294967296;
         }});
-        return Object.freeze({util, session, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
+        return Object.freeze({util, session, timer, overlay: Object.freeze({emit: async value => emit(JSON.stringify(value))})});
       })();
       const event = Object.freeze(${JSON.stringify(input.event)});
       for (const fn of [function(){}, async function(){}, function*(){}, async function*(){}]) {
@@ -177,11 +220,18 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
       result.dispose();
     }
     const usage = threadCpuUsage(started);
-    return { ok: true, effects, cpuMicros: usage.user + usage.system, fault: null };
+    return {
+      ok: true,
+      effects,
+      timers: timerOps,
+      cpuMicros: usage.user + usage.system,
+      fault: null,
+    };
   } catch (error) {
     return {
       ok: false,
       effects: [],
+      timers: [],
       cpuMicros: started ? (({ user, system }) => user + system)(threadCpuUsage(started)) : 0,
       fault: fault ?? (error instanceof Error ? error.message.slice(0, 160) : 'Execution failed'),
     };
@@ -201,6 +251,7 @@ parentPort?.on('message', (raw: unknown) => {
       id: -1,
       ok: false,
       effects: [],
+      timers: [],
       cpuMicros: 0,
       fault: 'Invalid job',
     });

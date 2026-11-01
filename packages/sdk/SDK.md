@@ -7,11 +7,12 @@ artifacts must be regenerated.
 ## Handler
 
 Source is ONE JavaScript function expression `(event, riff) => void | Promise<void>`.
-No imports, require, eval, Function, Date, Math.random, timers, network, filesystem or
-globalThis. Loops need explicit bounds. Every invocation starts from fresh globals and
-closures; nothing survives to the next event. The host has already checked the
-command, the audience and every allowance before the handler runs, so a handler only
-decides which effects to show.
+No imports, require, eval, Function, Date, Math.random, setTimeout/setInterval, network,
+filesystem or globalThis; delays use host-owned named timers (capability `timer`).
+Loops need explicit bounds. Every invocation starts from fresh globals and closures;
+nothing survives to the next event. The host has already checked the command, the
+audience and every allowance before the handler runs, so a handler only decides which
+effects to show.
 
 `event`: { id, channelId, viewerId, roles, text, at }. roles ⊆ viewer, subscriber,
 moderator, broadcaster; every chatter has `viewer`. text ≤ 500 chars.
@@ -23,6 +24,30 @@ finite number in [0, 1] (horizontal launch position). Example:
 
 `riff.util.now()` returns event.at. `riff.util.random()` is a seeded deterministic
 number in [0, 1).
+
+## Named timers (capability `timer`)
+
+`riff.timer.start(name, ms, options?): Promise<void>` queues a host-owned timer;
+`riff.timer.cancel(name): Promise<void>` queues its cancellation (unknown names are
+ignored). name matches ^[a-z][a-z0-9_-]{0,31}$; ms is an integer 5000..3600000;
+options is { repeat?: boolean }. Starting an existing name REPLACES it: the countdown
+restarts from now with the new ms/repeat. At most 10 distinct names may be pending per
+automation; starting an 11th faults. Timer calls are bridge calls and apply only when
+the handler succeeds; they never block or return data. Timers belong to the approved
+version: pause, panic, rollback, a new version or an incident cancels every pending timer.
+Timers are not available inside stateful experiences (round deadlines are host-owned).
+
+When a timer is due the host runs the SAME handler with an internal event
+`{ source: 'timer.fired', id, channelId, name, scheduledAt, firedAt, missed, at }`
+(chat events have no source field). It skips command, audience and per-viewer checks
+but still enforces effectsPerEvent, effectsPerMinute and the channel budget. missed is
+true when the fire arrives over 2 s late (for example after a restart); fires overdue by
+more than 30 s are skipped and logged, never replayed. A repeating timer re-arms on its
+original cadence before the handler runs, so the handler may still cancel it. Example:
+`if (event.source === 'timer.fired') { await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: 0.5 }); return; }
+await riff.timer.start('celebrate', 60000);`
+A chat event counts against the viewer allowance when it emitted an effect OR queued a
+timer call.
 
 Any thrown error, invalid effect, undeclared capability, too many effects, more than
 25 bridge calls, 50 ms CPU, 2 s wall time or 64 MB memory quarantines the version and
@@ -116,6 +141,11 @@ remainingMs and participants (teamId, remaining, contributions), e.g.
 the event; scenario clock starts at 0.
 Required coverage: at least one happy path, one limit/role/window edge, and one
 negative (unrelated chat does nothing).
+Timer scenarios run on a virtual clock. Before each step, every timer due at or before
+step.at fires first. An optional `timers:{fired,effects}` assertion on a step checks how
+many fires ran since the previous step and the effects they emitted, e.g. a step
+`{ id:'later', viewer:'alice', roles:['viewer'], text:'hello chat', at:60000,
+expect:'UNRELATED', effects:0, timers:{fired:1,effects:3} }`. Use timers:null otherwise.
 
 ## Host transition contract
 

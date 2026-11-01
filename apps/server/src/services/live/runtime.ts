@@ -38,6 +38,7 @@ import { approvalBlockers } from '../automations/views.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { OverlayBroker } from '../overlay/broker.js';
+import { createTimerScheduler, type TimerFire } from '../timers/scheduler.js';
 
 /** Incoming chat, already normalized from an authenticated transport. */
 export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
@@ -136,9 +137,36 @@ export function createLiveRuntime(deps: {
     overlay.setInstructions(panic ? [] : lines);
     sessions.publish(panic);
   }
+  const timers = createTimerScheduler({ repo, record: publishActivity });
+  /** Fenced, best-effort timer cancellation: in-memory stop always happens first. */
+  function cancelTimers(automationId: string | null, reason: string) {
+    try {
+      timers.cancel(automationId, reason);
+    } catch {
+      /* Boot and resume reconcile timers again before anything can fire. */
+    }
+  }
+  /** Commit staged timer operations; a failed write is visible and never fires later. */
+  function applyTimers(automationId: string, versionId: string, decision: ExecutionDecision) {
+    try {
+      timers.apply(automationId, versionId, decision);
+    } catch {
+      publishActivity({
+        at: Date.now(),
+        kind: 'incident',
+        automationId,
+        versionId,
+        eventId: decision.eventId,
+        viewer: null,
+        code: 'TIMER_FAILED',
+        message: 'Riff could not save a timer this interaction asked for, so it will not fire.',
+      });
+    }
+  }
   function quarantine(automationId: string, version: VersionRow, fault: string) {
     engines.get(automationId)?.engine.stop();
     engines.delete(automationId);
+    cancelTimers(automationId, 'the version was stopped after an incident');
     try {
       repo.updateVersion(version.id, { status: 'quarantined', incident: fault });
       repo.updateAutomation(automationId, { status: 'paused' });
@@ -172,6 +200,7 @@ export function createLiveRuntime(deps: {
           ? { session: stored.snapshot, effectBudget: admissionFor(automationId) }
           : { admission: admissionFor(automationId) }),
         channelBudget,
+        timers: { active: () => timers.active(automationId) },
       },
     );
     void engine.warm();
@@ -287,6 +316,7 @@ export function createLiveRuntime(deps: {
         } catch {
           /* memory fence already applied */
         }
+        cancelTimers(automationId, 'the interaction was paused after a storage failure');
         refreshInstructions();
         hub.publish('studio', null);
         decision = {
@@ -315,6 +345,9 @@ export function createLiveRuntime(deps: {
             ? sessionDelivered
             : overlay.deliver(decision, message.viewerName, automationId, version.id)
           : 0;
+      // Timer operations commit only for accepted, unfenced work, after admission is durable.
+      if (fence === generation && !panic && decision.timers?.length)
+        applyTimers(automationId, version.id, decision);
       lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
       publishActivity({
         at: Date.now(),
@@ -332,6 +365,57 @@ export function createLiveRuntime(deps: {
     }
     await applyPending();
     return results;
+  }
+
+  /** Deliver due timers through the same engine, budgets and overlay fences as chat. */
+  async function fireTimers(fence: number) {
+    const valid = () => fence === generation && !panic && !closed;
+    if (!valid()) return;
+    lastAt = Math.max(lastAt, now());
+    await timers.fireDue(
+      lastAt,
+      (automationId) => {
+        const entry = engines.get(automationId);
+        return (
+          entry && {
+            ...entry,
+            channelId: admissions.get(automationId)?.channelId || repo.channelId,
+          }
+        );
+      },
+      onTimerFire,
+      valid,
+    );
+  }
+  function onTimerFire({ row, event, decision, target }: TimerFire) {
+    if (decision.code === 'INCIDENT') {
+      const entry = engines.get(row.automationId);
+      if (entry?.engine === target.engine)
+        quarantine(
+          row.automationId,
+          entry.version,
+          entry.engine.incident?.fault ?? 'execution incident',
+        );
+      return;
+    }
+    const current = engines.get(row.automationId);
+    const fenced = panic || closed || current?.engine !== target.engine;
+    const delivered = fenced ? 0 : overlay.deliver(decision, null, row.automationId, row.versionId);
+    if (!fenced && decision.timers?.length) applyTimers(row.automationId, row.versionId, decision);
+    publishActivity({
+      at: Date.now(),
+      kind: 'decision',
+      automationId: row.automationId,
+      versionId: row.versionId,
+      eventId: event.id,
+      viewer: null,
+      code: fenced ? 'STOPPED' : decision.code,
+      message:
+        decision.code === 'ACCEPTED'
+          ? `Timer “${row.name}” fired${event.missed ? ` ${Math.round((event.firedAt - event.scheduledAt) / 1000)} s late (missed while Riff was unavailable)` : ''} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+          : `Timer “${row.name}”: ${decision.reason}`,
+    });
+    hub.publish('studio', null);
   }
 
   async function applyTransition(id: string) {
@@ -474,6 +558,7 @@ export function createLiveRuntime(deps: {
       if (panic) {
         overlay.clear('panic');
         repo.invalidateTransitions();
+        cancelTimers(null, 'everything is stopped');
         return;
       }
       for (const automation of repo.automations()) {
@@ -481,15 +566,20 @@ export function createLiveRuntime(deps: {
         const version = repo.version(automation.activeVersionId);
         if (version?.status === 'active') start(automation.id, version);
       }
+      // Pending timers resume only for the version that is live now; overdue ones are
+      // delivered or expired by the first tick under the shared grace policy.
+      timers.reconcile((automationId) => engines.get(automationId)?.version.id ?? null);
     },
     /** Swap to an approved version with a generation fence; in-flight old work is discarded. */
     activate(automationId: string, version: VersionRow) {
       generation++;
+      cancelTimers(automationId, `v${version.number} replaced the previous version`);
       if (!panic) start(automationId, version);
     },
     pause(automationId: string) {
       generation++;
       stop(automationId);
+      cancelTimers(automationId, 'the interaction was paused');
       sessions.pause(automationId);
       overlay.clear('pause');
       refreshInstructions();
@@ -510,6 +600,7 @@ export function createLiveRuntime(deps: {
       overlay.clear('panic');
       overlay.setInstructions([]);
       const panicAt = now();
+      cancelTimers(null, 'everything was stopped');
       try {
         repo.updateState({
           panic: true,
@@ -577,6 +668,8 @@ export function createLiveRuntime(deps: {
         repo.updateState({ panic: false, panicAt: null });
       });
       panic = false;
+      // Resuming never silently recreates timers cancelled by panic.
+      cancelTimers(null, 'the channel resumed without restoring cancelled timers');
       overlay.resumeCommunity();
       publishActivity({
         at: Date.now(),
@@ -655,6 +748,7 @@ export function createLiveRuntime(deps: {
         for (const [automationId, { engine, version }] of engines) {
           if (experienceOf(version)) sessions.tick(automationId, engine);
         }
+        await fireTimers(fence);
         await applyPending();
       });
       queue = next.catch(() => undefined);
@@ -672,6 +766,18 @@ export function createLiveRuntime(deps: {
       return next.finally(() => {
         transitionJobs--;
       });
+    },
+    /** Pending named timers for the console. */
+    timers(automationId?: string) {
+      return timers.views(automationId);
+    },
+    /** Creator cancellation, serialized with chat and fires so it never races a delivery. */
+    cancelTimer(automationId: string, name: string): Promise<number> {
+      const next = queue.then(() =>
+        timers.cancel(automationId, 'cancelled from the console', name),
+      );
+      queue = next.catch(() => undefined);
+      return next;
     },
     /** Read-only: replays the round journal privately; never touches engines or the overlay. */
     auditSession(automationId: string) {

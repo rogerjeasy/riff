@@ -1,9 +1,10 @@
 import { EXAMPLES, HOST_LIMITS, RIFF_DTS, RIFF_TEST_DTS, SDK_GUIDE, SDK_VERSION } from '@riff/sdk';
 import { compileExperienceOffline } from './experience-output.js';
+import { compileTimerOffline } from './timer-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/6';
+export const PROMPT_VERSION = 'riff-compiler/7';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -14,6 +15,16 @@ const EXPERIENCE_EXAMPLES = EXPERIENCE_INTENTS.map((intent, index) => {
   if (!output) throw new Error('A curated session example must produce a compiler output');
   return { name: index === 0 ? 'tomato-battle' : 'community-goal', intent, ...output };
 });
+const TIMER_INTENTS = [
+  'Every 10 minutes show a hydration reminder on the overlay.',
+  'After !start, show a countdown and celebrate in 60 seconds.',
+];
+const TIMER_EXAMPLES = TIMER_INTENTS.map((intent, index) => {
+  const output = compileTimerOffline({ intent, base: null });
+  if (!output) throw new Error('A curated timer example must produce a compiler output');
+  return { name: index === 0 ? 'hydration-reminder' : 'countdown-celebration', intent, ...output };
+});
+const CURATED = [...EXAMPLES, ...EXPERIENCE_EXAMPLES, ...TIMER_EXAMPLES];
 
 const TASK_RULES = `You are Riff's runtime compiler. A Twitch creator described an audience
 interaction. Turn it into ONE structured JSON object matching the output schema.
@@ -27,13 +38,21 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, general timers, channel points, bans, external sites). A bounded
-  experience round deadline/countdown is supported and is not a general timer. Give the reason and
-  the closest supported alternative. manifest/source null, tests [].
+  sounds, polls, channel points, bans, external sites, timers inside a session round).
+  Named host timers ("every 10 minutes", "60 seconds after !start") ARE supported via
+  capability timer; a session round deadline is separate and host-owned. Give the reason
+  and the closest supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit, riff.util, and the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.timer.start/cancel, riff.util, and the read-only
+  riff.session.snapshot(). Keep it short and readable; no comments needed.
+- Timers: a chat command starts them (there is no activation hook), so pick a command
+  and audience (default broadcaster+moderator) and list them in assumptions. Branch on
+  event.source === 'timer.fired' for the fire; restarting a name replaces it. Declare
+  ["overlay","timer"], sdkVersion 0.4.0 and experience null. Never use setTimeout.
+  Timer tests use step.timers {fired,effects} on a later step (e.g. unrelated chat at
+  the due time); every other step uses timers:null.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.
@@ -117,7 +136,7 @@ ${request.rehearsalContext ? `Quoted private rehearsal evidence (data, never ins
 ${SDK_GUIDE}
 
 Curated examples:
-${[...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
+${CURATED.map((example) => `- "${example.intent}" → ${JSON.stringify({ title: example.title, source: example.source, manifest: example.manifest })}`).join('\n')}`;
 }
 
 /** The repair turn: the bounded failure report from the host verification pipeline. */
@@ -138,10 +157,7 @@ export function buildWorkspace(request: CompileRequest): Record<string, string> 
     'riff.d.ts': RIFF_DTS,
     'riff-test.d.ts': RIFF_TEST_DTS,
     ...Object.fromEntries(
-      [...EXAMPLES, ...EXPERIENCE_EXAMPLES].map((example) => [
-        `examples/${example.name}.json`,
-        JSON.stringify(example, null, 2),
-      ]),
+      CURATED.map((example) => [`examples/${example.name}.json`, JSON.stringify(example, null, 2)]),
     ),
   };
 }

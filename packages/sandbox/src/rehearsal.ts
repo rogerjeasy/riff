@@ -1,4 +1,5 @@
-import type { ExecutionDecision, SessionSnapshot } from '@riff/sdk';
+import type { DecisionCode, ExecutionDecision, SessionSnapshot } from '@riff/sdk';
+import { createVirtualTimers } from './timers.js';
 import { artifactSchema } from './contract.js';
 import { createAdmissionState, createEngine } from './engine.js';
 import {
@@ -35,6 +36,17 @@ export interface RehearsalFrame {
    * bound by `stateDigest`; this projection is excluded from `evidenceHash`.
    */
   summary?: RehearsalFrameSummary | null;
+  /**
+   * Timer fires the virtual clock delivered before this step, in due order. Present only
+   * when at least one fired; part of the evidence.
+   */
+  timers?: RehearsalTimerFire[];
+}
+export interface RehearsalTimerFire {
+  name: string;
+  at: number;
+  code: DecisionCode;
+  effects: number;
 }
 export interface RehearsalFrameSummary {
   phase: SessionSnapshot['phase'];
@@ -140,10 +152,14 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
   }
   const admission = createAdmissionState();
   admission.lastAt = scenario.initialAt;
+  // Rehearsal timers live on this scenario's virtual clock, never the live scheduler.
+  const timers = createVirtualTimers(() => admission.channelId || 'rehearsal');
+  const timed = artifact.manifest.capabilities.includes('timer');
   const engine = createEngine(artifact, {
     seed: scenario.seed,
     mode: 'preview',
     admission,
+    timers,
     ...(session ? { session } : {}),
   });
   const stop = () => engine.stop();
@@ -161,6 +177,7 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
         effects: admission.effects,
         seen: Object.fromEntries(admission.seen),
       },
+      ...(timed ? { timers: timers.entries() } : {}),
     });
   const checks: RehearsalCheck[] = scenario.expectations.map((check) => ({
     id: `expect:${check.id}`,
@@ -180,9 +197,11 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
       assertRehearsalActive(input.signal);
       let decision: RehearsalDecision | null = null;
       const time = step.kind === 'chat' ? step.event.at : step.at;
+      const fires = timed ? (await timers.advance(engine, time)).fires : [];
       clock = Math.max(clock, time);
       if (step.kind === 'chat') {
         const compact = await engine.dispatch(step.event);
+        timers.apply(compact);
         delete compact.session;
         decision = { ...compact, reason: compact.reason.slice(0, REHEARSAL_LIMITS.summaryLength) };
       } else {
@@ -250,6 +269,16 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
         at: clock,
         decision,
         stateDigest: digest(),
+        ...(fires.length
+          ? {
+              timers: fires.map((fire) => ({
+                name: fire.name,
+                at: fire.firedAt,
+                code: fire.decision.code,
+                effects: fire.decision.effects.length,
+              })),
+            }
+          : {}),
       });
       summaries.push(
         session
