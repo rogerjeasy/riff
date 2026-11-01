@@ -690,3 +690,57 @@ Small previews page instructions and scores at readable size; no text is execute
 Canvas supports pointer/keyboard/numeric editing, timing tracks, region properties,
 private stream/mobile views, reduced motion, diff/digest review and durable undo.
 F34 uses its real logical state and timeline; the editor sample is labeled illustrative.
+
+## Shared experiences — F36
+
+`services/collaboration` implements a single authoritative shared coordinator plus a
+receiving member service per independently operated instance. Migration 0011 adds
+owner-channel-scoped collaboration_sessions and collaboration_receipts, and a local
+collaboration_connections row containing AES-GCM sealed connection credentials.
+Only this dedicated repository/service exposes allowlisted public projections.
+The operator-local home-channel model remains: channels join over scoped bearer HTTP,
+not by a caller-controlled channel header or shared private repository access.
+
+Contracts pin verified teamless cooperative behavior, generated tests and 2–4 unique
+roles/channels/commands/field grants to SHA-256. Every creator independently verifies
+and explicitly approves the digest, then the owner starts with revision CAS. Shared
+role commands map explicitly to the pinned contribution command; audience roles stay
+local. One running coordinator session, 20 retained sessions, 10,000 receipts/session,
+128 pending coordinator inputs and 32 local inputs bound storage/work. State and receipt
+commit together before publication. Generated cosmetic effects stay in the separate
+shared isolate; only aggregates and approved instructions reach recipient brokers.
+No new SDK capability is granted.
+
+Private guarded API: GET `/api/collaboration`; POST suffixes `/create`, `/invite`,
+`/review-owner`, `/review`, `/recheck`, `/approve`, `/control`, `/leave`.
+Peer POST `/peer/collaboration/{review,approve,heartbeat,input,leave}` requires a scoped
+bearer and rejects browser-origin requests. It has no creator authority. Invitations
+expire in 15 minutes; tokens are hashed at the coordinator, sealed at the member,
+never included in status or overlay projections. HTTP transport accepts explicit
+HTTPS origins (HTTP loopback for development), refuses redirects and URL credentials,
+and enforces a 4-second request deadline plus 512-KiB streamed response cap (2 KiB
+for error bodies). Peer refusals carry the coordinator's fixed host message; members show
+it only when it is short and single-line. Shared-command chat is queued, never awaited,
+so the channel's serialized chat pipeline does not wait on the network.
+
+Two-second member polling renews 10-second leases. Required loss freezes at lease expiry;
+optional departure follows the approved continuation policy. Coordinator restart pauses;
+local restart requires verification/approval. Local panic/leave fences before DB/network,
+and uncertain remote approvals are revoked best effort. Stale in-flight responses and
+inputs cannot rehydrate output. A failed state write requires explicit resume. Host
+health/proposal lineage remain checked; execution incidents quarantine the shared round.
+Existing local command conflicts reject membership; later conflicts stop it.
+
+Twitch normalization preserves source_message_id/source_broadcaster_user_id with local
+fallback identity. Echoes cannot trigger local privileged commands or shared gameplay;
+source_badges never become local authority. Verified against the EventSub reference
+on November 1, 2026. The browser validates the collaboration projection, displays only
+granted aggregate fields and exact role guidance, and uses the canvas safe area ahead
+of the community card. Panic, disconnection, watchdog and invalid payloads clear it.
+Local frames add partner role labels from the approved contract only. The console panel
+is a compact card with a status pill, a readiness row, a host checklist (approve your
+role, invite with one-line `riff-invite:` codes, start with stated blockers), a plain
+invitation review and a live round card. The stream card leads with the command, a goal
+meter and a locally interpolated countdown.
+Tests use real isolated engines, separate databases and Fastify injection; this is not
+a claim of a live two-creator Twitch demonstration.

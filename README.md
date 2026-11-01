@@ -361,3 +361,58 @@ After `build`, `./scripts/pnpm start` serves the compiled UI and API on port 878
 
 Read [AGENTS.md](AGENTS.md) for the engineering contract, [the SDK guide](packages/sdk/SDK.md)
 for the exact contract Codex compiles against, and [setup](docs/setup.md) for installation.
+
+## Shared experiences across channels — F36
+
+**Shared channels** sits above the workspace as one compact card. Its header pill always
+shows where things stand: “Not sharing”, “Waiting for channels”, “Live · 3/5”, “Coordinator
+unreachable” and so on. It opens automatically while a round is being set up or played.
+
+Each creator uses their own Riff instance and Twitch connection. Configure `RIFF_SECRET`
+and an HTTPS `RIFF_PUBLIC_URL` that the other instances can reach. Keep creator-console
+access local and forward `/peer` for collaboration traffic. HTTP loopback origins support
+two-instance local development.
+
+1. **Set up.** The readiness row confirms secure storage and Twitch, and shows your channel
+   ID with **Copy ID**. Collect your partners' channel IDs the same way. Under **Host a
+   round**, pick a verified teamless cooperative version and give each channel a role name,
+   a command and the fields its overlay shows. Each role card says exactly what is missing,
+   for example “Add this channel’s numeric Twitch ID”.
+2. **Create shared agreement.** A three-step checklist follows:
+   - **Approve your own role:** **Review my role** re-tests the version and shows the same
+     review an invited creator sees.
+   - **Invite the other channels:** **Create invitation** gives a one-line `riff-invite:…`
+     code, a **Copy invitation** button and a live expiry countdown (15 minutes). A new
+     invitation revokes the previous one.
+   - **Start the round:** stays disabled with the reason shown, for example “Waiting for
+     Steer ship to approve and connect”.
+3. **Join.** The invited creator pastes the code under **Join a round** and presses **Review
+   invitation privately**. Riff re-tests the exact version on their machine, then shows:
+   - their role and command, what each command counts for, the goal and round length
+   - who can join, the allowance per viewer, and what their overlay shows
+   - what happens if they leave, and every channel in the agreement
+   - a private replay, such as “Counted · Counted · Counted · Resources spent”
+
+   Nothing joins until they tick consent and press **Approve my role and view**; **Decline**
+   leaves. Coordinator refusals arrive as readable reasons, for example “Coordinator: The
+   shared round has finished.”
+
+4. **Play.** Each console shows a live card with the role, partner roles, a goal progress
+   bar, time left and the channel's contributions. The stream overlay leads with “Type
+   !steer”, a goal meter and a countdown that ticks every second between updates. It ends
+   with “Goal reached together” or “Time ran out before the goal”.
+5. **Pause, resume or leave.** Pause and resume from the host checklist, or leave from
+   either console. A local emergency stop clears output immediately. Losing a required
+   member pauses the round; rejoining and resuming are explicit and keep progress. An
+   optional member's departure follows the policy shown in the agreement. Losing the
+   coordinator never starts an independent round.
+
+Shared-command chat is handed to the coordinator without holding the channel's chat
+pipeline, so other interactions keep responding during a slow or unreachable coordinator.
+
+The bounded first shared contract maps role commands to the same verified cooperative
+action. It supports one running collaboration per instance, four members, 20 retained
+coordinator sessions and 10,000 event receipts per session. Behavior changes require a
+new agreement and new consent. Roles from another channel, raw participant snapshots,
+private prompts and Twitch credentials never become shared authority or public output.
+See [the collaboration contract](apps/server/src/services/collaboration/README.md).

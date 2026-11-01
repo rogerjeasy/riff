@@ -139,3 +139,60 @@ Fixes:
 - **Placement:** the editor sits under the rehearsal, collapsed until the version is live.
 
 The two-interaction case was checked visually in a separate local instance.
+
+## Shared experiences across channels — November 1, 2026
+
+F36 now connects independently operated Riff instances around one authoritative,
+verified teamless cooperative round. The creator console includes role and public-field
+agreements, expiring invitations, private receiver verification and synthetic preview,
+exact digest approval, membership status, owner start/pause/resume, and local leave.
+Role commands map to the same pinned cooperative action; roles have separate local
+badge eligibility, channel-namespaced allowances and contribution totals. No claim is
+made that this increment supports arbitrary multi-role mechanics or distributed writers.
+
+Migration 0011 persists shared sessions, atomic source receipts and sealed local
+connections. A30/A31 tests cover all-channel consent, original-source deduplication,
+independent stores, field grants, local emergency stop, required-member departure,
+lease expiry during execution, coordinator restart and explicit recovery. An integration
+test uses two Fastify instances, separate SQLite databases and different encryption keys;
+HTTP peer traffic is injected in-process. It is not a live two-creator Twitch demonstration.
+
+The single final review identified three material issues, each reproduced and fixed:
+public guidance changing under an unchanged digest, failed incident persistence allowing
+execution to restart, and polling read errors escaping the local safety boundary.
+Receivers now check approved public guidance exactly; quarantine precedes persistence;
+local read failures synchronously withdraw output. Additional regressions cover uncertain
+approval responses, local command conflicts and unchanged-overlay rehydration.
+
+Browser validation includes eight DOM/boundary tests and a mocked protocol Playwright/axe
+journey. Actual Chromium execution remains blocked: the Playwright web server cannot bind
+127.0.0.1:8788 (`listen EPERM`). The two existing localhost socket tests retain the same
+environment limitation. Deployment needs independently authorized Twitch connections,
+RIFF_SECRET and a reachable HTTPS coordinator origin. Only `/peer` requires remote peer
+access; creator endpoints retain the existing local-operator trust model.
+
+Final verification on the reviewed source: 547 tests passed across 50 suites; only
+`apps/server/test/twitch-live.test.ts` and `packages/twitch/test/eventsub-ws.test.ts`
+failed because localhost listeners are prohibited (`EPERM`, with the former also
+reaching its 30-second deadline). Lint, architecture boundaries, strict source/test
+TypeScript, formatting, production build, overlay bundle isolation, Fastify/SQLite
+smoke checks, 15 tooling tests and focused/redacted broad secret scans passed.
+All changes remain uncommitted on main for owner review.
+
+### Shared channels review — November 1, 2026
+
+Two local instances were driven through create, owner approval, invitation, independent
+review, approval, start, contributions from both channels, goal reached and restart.
+The review found:
+
+- **Chat blocking:** the channel chat pipeline waited for every coordinator round trip.
+- **Status and errors:** waiting status never updated, and coordinator refusals reached the
+  invited creator only as generic text.
+- **Panel:** an unguided panel about 2,400 px tall with raw codes, JSON invitations and
+  unexplained disabled buttons.
+- **Overlay:** a plain card without a call to action, a goal meter or a smooth countdown.
+
+All were fixed with regression tests, covering non-blocking input, live waiting reasons,
+bounded message pass-through, partners, invitation codes, the host checklist and the stream
+card. The one-line `riff-invite:` code was added; the raw JSON form is still accepted.
+`RiffServices` now exposes `twitch` alongside the other services.
