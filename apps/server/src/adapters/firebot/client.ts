@@ -35,9 +35,14 @@ const frameSchema = z
 
 const keyDigest = (key: string) => createHash('sha256').update(key, 'utf8').digest();
 
-/** Firebot replace variables commonly produce epoch seconds; Riff uses milliseconds. */
-const epochMs = (value: unknown) =>
-  typeof value === 'number' && value > 0 && value < 1e12 ? Math.round(value * 1000) : value;
+/** Replace variables may arrive as numeric text (for example a quoted `$unixTimestamp`). */
+const numeric = (value: unknown) =>
+  typeof value === 'string' && /^\d{1,16}$/.test(value) ? Number(value) : value;
+/** Firebot's `$unixTimestamp` is epoch seconds (moment `unix()`); Riff uses milliseconds. */
+const epochMs = (raw: unknown) => {
+  const value = numeric(raw);
+  return typeof value === 'number' && value > 0 && value < 1e12 ? Math.round(value * 1000) : value;
+};
 
 export interface FirebotOptions {
   /** Injected for tests; defaults to the global fetch. */
@@ -131,7 +136,11 @@ export function createFirebotTransport(
       return;
     }
     // The key authenticates the origin and never leaves the adapter.
-    const meta: Record<string, unknown> = { ...riff, at: epochMs(riff.at) };
+    const meta: Record<string, unknown> = {
+      ...riff,
+      hops: numeric(riff.hops),
+      at: epochMs(riff.at),
+    };
     delete meta.key;
     event({ eventName, args: { riff: meta } });
   }

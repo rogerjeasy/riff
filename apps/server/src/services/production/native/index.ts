@@ -23,11 +23,9 @@ function gunzip(bytes: Buffer) {
   }
 }
 
-/**
- * Turn pasted text into JSON. Streamer.bot shares actions as an import string.
- * UNVERIFIED: that string is assumed to be base64 of a 4-byte "SBAE" header followed
- * by gzip-compressed JSON; plain base64 gzip and plain JSON are also accepted.
- */
+/** Turn pasted text into JSON. Streamer.bot shares actions as an import string. */
+// UNVERIFIED: that string is assumed to be base64 of a 4-byte "SBAE" header followed by
+// gzip-compressed JSON; plain base64 gzip and plain JSON are also accepted.
 function decode(tool: ProductionImportTool, text: string): unknown {
   const trimmed = text.trim();
   let json = trimmed;

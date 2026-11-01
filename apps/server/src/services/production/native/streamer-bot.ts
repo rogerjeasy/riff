@@ -3,16 +3,12 @@ import type { ProductionImportTrigger } from '@riff/sdk';
 import { ProductionError } from '../contract.js';
 import { LIMITS, asArray, asRecord, basename, clean, type Found } from './common.js';
 
-/**
- * Streamer.bot action exports.
- *
- * UNVERIFIED: Streamer.bot does not publish its export schema. The shape read here
- * (`{ data: { actions: [{ id, name, enabled, group, triggers, subActions }],
- * commands: [{ id, command }] } }`, with a `$type`/`type` discriminator on triggers
- * and sub-actions) is inferred, not documented. Recognition therefore relies on
- * descriptive type names and target fields only; anything not recognised is listed
- * for manual review rather than guessed, and nothing is ever executed.
- */
+// UNVERIFIED: Streamer.bot does not publish its action export schema. The shape read
+// here (`{ data: { actions: [{ id, name, enabled, group, triggers, subActions }],
+// commands: [{ id, command }] } }`, with a `$type`/`type` discriminator on triggers and
+// sub-actions) is inferred, not documented. Recognition therefore relies on descriptive
+// type names and target fields only; anything not recognised is listed for manual
+// review rather than guessed, and nothing is ever executed.
 const actionSchema = z
   .object({
     id: z.string().optional(),

@@ -139,8 +139,9 @@ it('subscribes to events and forwards only key-authenticated custom events', asy
       eventId: 'one',
       causalId: 'cause',
       origin: 'firebot',
-      hops: 0,
-      at: 1793550000,
+      hops: '0',
+      // `$unixTimestamp` in Firebot is epoch seconds; quoted text is also accepted.
+      at: '1793550000',
       key: KEY,
     },
   });

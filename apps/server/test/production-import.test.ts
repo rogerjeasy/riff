@@ -130,7 +130,7 @@ const firebotSetup = {
   },
 };
 
-/** Synthetic Streamer.bot export payload (UNVERIFIED shape; see native/streamer-bot.ts). */
+/** Synthetic Streamer.bot export payload (best-effort shape; see native/streamer-bot.ts). */
 const streamerbotExport = {
   meta: { name: 'Tomato', author: 'tester', version: '1.0.0', minimumVersion: '0.2.5' },
   data: {
