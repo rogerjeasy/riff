@@ -9,10 +9,38 @@ import {
   TRIGGER_LIMITS,
 } from '@riff/sdk';
 
+/** Bounded quoted host evidence; never merged into creator-intent extraction. */
+const rehearsalContextSchema = z
+  .object({
+    version: z.literal(1),
+    regressions: z
+      .array(
+        z
+          .object({
+            id: z.string().min(1).max(100),
+            originVersionId: z.string().min(1).max(100),
+            scenarioHash: z.string().regex(/^[a-f0-9]{64}$/),
+            checkId: z.string().min(1).max(100),
+            expected: z.union([z.string().max(240), z.number(), z.null()]),
+            actual: z.union([z.string().max(240), z.number(), z.null()]),
+            summary: z.string().max(240),
+            scenario: z.string().max(8192),
+          })
+          .strict(),
+      )
+      .max(10),
+  })
+  .strict()
+  .refine(
+    (value) => new TextEncoder().encode(JSON.stringify(value)).length <= 96 * 1024,
+    'Rehearsal evidence exceeds its byte limit',
+  );
+
 /** What the creator asked for. `base` is the version being edited, if any. */
 export const compileRequestSchema = z
   .object({
     intent: z.string().trim().min(8).max(1200),
+    rehearsalContext: rehearsalContextSchema.optional(),
     base: z
       .object({
         title: z.string().max(80),

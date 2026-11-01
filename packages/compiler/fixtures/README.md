@@ -11,3 +11,8 @@ checks without credentials or a model call.
 `live-evolution.json` records the offline F32 edit and its separate migration source
 for prompt pack 5. It preserves the old team/scoring rules and adds two throws to
 the existing allowance; it is an offline recording, not a model execution.
+
+`rehearsal-repair.json` is a host-authored deterministic recorded-test response for
+prompt pack 6, with bounded private rehearsal evidence and a two-effect repair.
+It records no live model call. Compiler contract tests validate the request/output;
+server tests verify the response against immutable independent regression inputs.

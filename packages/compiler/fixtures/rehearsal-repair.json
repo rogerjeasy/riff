@@ -1,0 +1,395 @@
+{
+  "provenance": {
+    "transport": "recorded-test",
+    "model": null,
+    "promptVersion": "riff-compiler/6",
+    "note": "Host-authored deterministic response. No live model request."
+  },
+  "request": {
+    "intent": "Keep the interaction exactly as requested.",
+    "base": {
+      "title": "Tomato Toss",
+      "intent": "Everyone can throw a tomato with !tomato, 3 times per minute.",
+      "source": "async (event, riff) => {\n  await riff.overlay.emit({ kind: 'projectile', asset: 'tomato', x: riff.util.random() });\n}",
+      "manifest": {
+        "sdkVersion": "0.4.0",
+        "experience": null,
+        "capabilities": ["overlay"],
+        "trigger": {
+          "command": "!tomato",
+          "audience": ["viewer"],
+          "maxPerViewer": 3,
+          "windowMs": 60000
+        },
+        "limits": {
+          "effectsPerEvent": 1,
+          "effectsPerMinute": 60
+        }
+      },
+      "tests": [
+        {
+          "name": "!tomato shows a tomato",
+          "kind": "happy",
+          "steps": [
+            {
+              "id": "m1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 1
+            }
+          ]
+        },
+        {
+          "name": "Throw 4 is blocked; another viewer still can",
+          "kind": "limit",
+          "steps": [
+            {
+              "id": "a0",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "a1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 10,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "a2",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 20,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "over",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 30,
+              "expect": "VIEWER_LIMIT",
+              "effects": 0
+            },
+            {
+              "id": "bob",
+              "viewer": "bob",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 31,
+              "expect": "ACCEPTED",
+              "effects": 1
+            }
+          ]
+        },
+        {
+          "name": "Ordinary chat does nothing",
+          "kind": "negative",
+          "steps": [
+            {
+              "id": "c1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "hello chat",
+              "at": 0,
+              "expect": "UNRELATED",
+              "effects": 0
+            },
+            {
+              "id": "c2",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomatos",
+              "at": 1,
+              "expect": "UNRELATED",
+              "effects": 0
+            }
+          ]
+        },
+        {
+          "name": "A redelivered message is ignored",
+          "kind": "duplicate",
+          "steps": [
+            {
+              "id": "d1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "d1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 5,
+              "expect": "DUPLICATE",
+              "effects": 0
+            }
+          ]
+        },
+        {
+          "name": "The allowance returns after the window",
+          "kind": "window",
+          "steps": [
+            {
+              "id": "w0",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 0,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "w1",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 1,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "w2",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 2,
+              "expect": "ACCEPTED",
+              "effects": 1
+            },
+            {
+              "id": "back",
+              "viewer": "alice",
+              "roles": ["viewer"],
+              "text": "!tomato",
+              "at": 60000,
+              "expect": "ACCEPTED",
+              "effects": 1
+            }
+          ]
+        }
+      ]
+    },
+    "rehearsalContext": {
+      "version": 1,
+      "regressions": [
+        {
+          "id": "regression-fixture",
+          "originVersionId": "origin-fixture",
+          "scenarioHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "checkId": "expect:two",
+          "expected": 2,
+          "actual": 1,
+          "summary": "Expected two effects; observed one.",
+          "scenario": "{\"partial\":true,\"steps\":[{\"kind\":\"chat\",\"key\":\"throw\",\"event\":{\"id\":\"event-1\",\"viewerId\":\"viewer-1\",\"channelId\":\"rehearsal\",\"roles\":[\"viewer\"],\"text\":\"!tomato\",\"at\":1000}}]}"
+        }
+      ]
+    }
+  },
+  "output": {
+    "question": null,
+    "choices": [],
+    "unsupportedReason": null,
+    "alternative": null,
+    "source": "async (event, riff) => { await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.2}); await riff.overlay.emit({kind:'projectile',asset:'tomato',x:0.8}); }",
+    "migrationSource": null,
+    "manifest": {
+      "sdkVersion": "0.4.0",
+      "experience": null,
+      "capabilities": ["overlay"],
+      "trigger": {
+        "command": "!tomato",
+        "audience": ["viewer"],
+        "maxPerViewer": 3,
+        "windowMs": 60000
+      },
+      "limits": {
+        "effectsPerEvent": 2,
+        "effectsPerMinute": 120
+      }
+    },
+    "tests": [
+      {
+        "name": "!tomato shows a tomato",
+        "kind": "happy",
+        "steps": [
+          {
+            "id": "m1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 2
+          }
+        ]
+      },
+      {
+        "name": "Throw 4 is blocked; another viewer still can",
+        "kind": "limit",
+        "steps": [
+          {
+            "id": "a0",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "a1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 10,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "a2",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 20,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "over",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 30,
+            "expect": "VIEWER_LIMIT",
+            "effects": 0
+          },
+          {
+            "id": "bob",
+            "viewer": "bob",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 31,
+            "expect": "ACCEPTED",
+            "effects": 2
+          }
+        ]
+      },
+      {
+        "name": "Ordinary chat does nothing",
+        "kind": "negative",
+        "steps": [
+          {
+            "id": "c1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "hello chat",
+            "at": 0,
+            "expect": "UNRELATED",
+            "effects": 0
+          },
+          {
+            "id": "c2",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomatos",
+            "at": 1,
+            "expect": "UNRELATED",
+            "effects": 0
+          }
+        ]
+      },
+      {
+        "name": "A redelivered message is ignored",
+        "kind": "duplicate",
+        "steps": [
+          {
+            "id": "d1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "d1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 5,
+            "expect": "DUPLICATE",
+            "effects": 0
+          }
+        ]
+      },
+      {
+        "name": "The allowance returns after the window",
+        "kind": "window",
+        "steps": [
+          {
+            "id": "w0",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 0,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "w1",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 1,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "w2",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 2,
+            "expect": "ACCEPTED",
+            "effects": 2
+          },
+          {
+            "id": "back",
+            "viewer": "alice",
+            "roles": ["viewer"],
+            "text": "!tomato",
+            "at": 60000,
+            "expect": "ACCEPTED",
+            "effects": 2
+          }
+        ]
+      }
+    ],
+    "behavior": {
+      "when": "Someone types !tomato in chat",
+      "what": "Two tomatoes fly across your overlay",
+      "who": "Everyone in chat",
+      "howMuch": "Up to 3 per viewer in any 1 min"
+    },
+    "assumptions": [],
+    "kind": "candidate",
+    "title": "Tomato Toss",
+    "summary": "Two effects for each admitted command."
+  }
+}
