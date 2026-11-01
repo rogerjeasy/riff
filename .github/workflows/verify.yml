@@ -8,7 +8,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -19,18 +19,11 @@ jobs:
           package-manager-cache: false
       - run: corepack enable && corepack prepare pnpm@12.6.0 --activate
       - run: pnpm install --frozen-lockfile
+      # Fast key checks only; the full suite, build, smoke, e2e and audits run locally
+      # through `pnpm check` and `pnpm setup:verify`.
       - run: pnpm format:check
-      - run: pnpm check
-      - run: pnpm build
-      - run: pnpm smoke
-      - run: pnpm check:bundles
-      - run: pnpm db:migrate
-        env:
-          RIFF_DB_PATH: ./.cache/ci/riff.db
-      - run: pnpm --filter @riff/web exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
-      - run: pnpm security:audit
-      - run: docker compose -f infra/compose.yaml config --quiet
-      - run: docker compose -f infra/monitoring/compose.yaml config --quiet
-        env:
-          RIFF_GRAFANA_PASSWORD: ci-validation-only
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test:ci
+      - run: pnpm test:tooling
+      - run: pnpm check:secrets

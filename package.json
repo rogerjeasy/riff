@@ -20,6 +20,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:ci": "vitest run --config vitest.ci.config.ts",
     "test:watch": "vitest",
     "test:tooling": "node --test scripts/test/*.test.mjs",
     "test:e2e": "pnpm --filter @riff/web test:e2e",
