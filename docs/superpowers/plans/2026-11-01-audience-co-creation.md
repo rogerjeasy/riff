@@ -80,8 +80,47 @@ Consumes Task2 exact API/projection. No new library or server trust decisions.
 
 Files: README, AGENTS, design/plan completion evidence; fixes only for concrete findings.
 
-- [ ] Run full tests with one worker, lint/types/build/bundles/smoke/tooling/secrets.
-- [ ] Review all acceptance criteria and race/privacy boundaries; fix regressions.
-- [ ] Attempt browser verification where available; report socket/environment blocks
+- [x] Run full tests with one worker, lint/types/build/bundles/smoke/tooling/secrets.
+- [x] Review all acceptance criteria and race/privacy boundaries; fix regressions.
+- [x] Attempt browser verification where available; report socket/environment blocks
       separately from passing checks and do not claim live Twitch/model testing.
-- [ ] Document commands, grants, limits and complete demo flow; commit focused docs.
+- [x] Document commands, grants, limits and complete demo flow; commit focused docs.
+
+## Verification record
+
+At `1ff955b`, whole-repository lint, strict typechecking, production build and
+bundle separation passed. The smoke test passed, as did all 15 tooling tests,
+the focused secret scan and Gitleaks scans of history and a tracked/unignored file
+snapshot. All implementation commits use focused conventional messages without
+co-author or generated attribution; work remains local on main.
+
+The full `./scripts/pnpm test --maxWorkers=1` run recorded 371 passing tests and two
+failures: `packages/twitch/test/eventsub-ws.test.ts` and
+`apps/server/test/twitch-live.test.ts`. Both hit the environment's forbidden
+`listen EPERM 127.0.0.1`; the latter also timed out and emitted an unhandled socket
+exception. This full run did **not** pass.
+
+After the UI review fixes, the same suite excluding only those two socket files
+passed all 374 tests in 31 files. The proposal integration tests exercise normalized
+recorded chat, real migrated SQLite, generation/restart races and the F32 `!splat`
+plus two throws transition with preserved score and a verified journal audit.
+
+`test:e2e` could not start its local server (`listen EPERM 127.0.0.1:8788`). A
+standalone Chromium attempt also failed with a MachPort permission denial. DOM
+tests establish semantics, state handling and bounded presentation; they do not
+establish browser pixel geometry. No new live Twitch or model run was performed.
+
+The whole-feature review found no critical or important issue. Its minor filtered
+Shortlisted save/generate handoff issue was fixed in `8fc261d`: eligible proposals
+absent from the current page are checked independently with at most two bounded
+reads. All 25 proposal DOM tests passed afterward, including eight added filter,
+page, removal, revocation and delayed-response regressions; web types and scoped
+lint passed. Existing server authorization remains authoritative.
+
+The final scoped re-review approved that fix with no remaining findings. On the
+final implementation, all 70 web tests passed, the web production build and bundle
+isolation checks passed, whole-repository lint passed, and focused/history secret
+scans remained clean. The final UI-only change did not alter server contracts; the
+374-test available-suite result above precedes it and is complemented by this full
+web rerun. The two socket tests and browser verification still require an environment
+that permits their processes and listeners.
