@@ -66,7 +66,13 @@ export function createSceneService(deps: {
   hub: Hub;
   transport: CompilerTransport;
   queue: ReturnType<typeof createCompileQueue>;
-  presentation?: (versionId: string) => { instructions: string[]; reducedMotion: boolean } | null;
+  presentation?: (versionId: string) => {
+    instructions: string[];
+    reducedMotion: boolean;
+    highContrast?: boolean;
+    effectLabels?: boolean;
+    help?: true;
+  } | null;
 }) {
   const { repo, runtime, overlay, hub } = deps;
   const records = sceneRepository(deps.database, repo.channelId);
@@ -239,7 +245,18 @@ export function createSceneService(deps: {
             const scene = sceneSchema.parse(applied?.scene ?? DEFAULT_SCENE);
             const presentation = deps.presentation?.(version.id);
             frames.push({
-              ...(presentation ? { reducedMotion: presentation.reducedMotion } : {}),
+              ...(presentation
+                ? {
+                    reducedMotion: presentation.reducedMotion,
+                    ...(presentation.highContrast !== undefined
+                      ? { highContrast: presentation.highContrast }
+                      : {}),
+                    ...(presentation.effectLabels !== undefined
+                      ? { effectLabels: presentation.effectLabels }
+                      : {}),
+                    ...(presentation.help ? { help: true as const } : {}),
+                  }
+                : {}),
               automationId: a.id,
               versionId: version.id,
               revision: applied?.revision ?? 0,

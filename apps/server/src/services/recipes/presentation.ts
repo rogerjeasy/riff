@@ -29,11 +29,17 @@ const TEAMS_PER_LINE = 4;
 const MAX_LINES = 4;
 const MAX_LINE_LENGTH = 200;
 
+/** Reviewed recipe presentation plus the recipient's channel name, carried structurally. */
+export type InstalledPresentation = RecipePresentation & { displayName: string };
+
 /** Translated on-stream guidance for an installed recipe, from the recipient's profile. */
 export function presentationFor(
-  profile: Pick<RecipeProfile, 'language' | 'reducedMotion' | 'displayName'>,
+  profile: Pick<
+    RecipeProfile,
+    'language' | 'reducedMotion' | 'displayName' | 'highContrast' | 'effectLabels'
+  >,
   manifest: RecipePackage['manifest'],
-): RecipePresentation {
+): InstalledPresentation {
   const { language, displayName } = profile;
   const { trigger, experience } = manifest;
   const who = trigger.audience.includes('viewer')
@@ -58,7 +64,10 @@ export function presentationFor(
   }
   return {
     language,
+    displayName,
     reducedMotion: profile.reducedMotion,
+    highContrast: profile.highContrast === true,
+    effectLabels: profile.effectLabels === true,
     instructions: lines.slice(0, MAX_LINES).map((line) => line.slice(0, MAX_LINE_LENGTH)),
   };
 }

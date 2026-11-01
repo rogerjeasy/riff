@@ -1,3 +1,10 @@
+import { createProductionService, type ProductionService } from './services/production/service.js';
+import { registerProductionRoutes } from './routes/production.js';
+import {
+  createParticipationService,
+  type ParticipationService,
+} from './services/participation/service.js';
+import { registerParticipationRoutes } from './routes/participation.js';
 import { createRecipeService, type RecipeService } from './services/recipes/service.js';
 import { registerRecipeRoutes } from './routes/recipes.js';
 import { createDirectorService, type DirectorService } from './services/director/service.js';
@@ -46,6 +53,7 @@ import type { FetchLike } from '@riff/twitch';
 export const HOME_CHANNEL = 'home';
 
 interface AppDependencies {
+  production?: Pick<Parameters<typeof createProductionService>[0], 'obsFactory' | 'botFactory'>;
   checkDatabase?: () => boolean;
   logger: NonNullable<FastifyServerOptions['logger']>;
   webRoot?: string;
@@ -69,6 +77,8 @@ export function migrateConnection(database: DatabaseConnection) {
 }
 
 export interface RiffServices {
+  production: ProductionService;
+  participation: ParticipationService;
   recipes: RecipeService;
   director: DirectorService;
   collaboration: {
@@ -143,9 +153,20 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       /* Memory fencing precedes persistence. */
     }
   };
+  const productionRef: { current?: ProductionService } = {};
+  const participationRef: { current?: ParticipationService } = {};
   const runtime = createLiveRuntime({
+    onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
-    onStop: stopCollaboration,
+    onStop: () => {
+      try {
+        productionRef.current?.stop();
+      } catch {
+        /* Memory fencing precedes best-effort disconnect. */
+      }
+      participationRef.current?.stop();
+      stopCollaboration();
+    },
     repo,
     hub,
     overlay,
@@ -168,6 +189,14 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   const rehearsal = createRehearsalService(repo);
   const transport = dependencies.transport ?? createOfflineTransport({ delayMs: 250 });
   const queue = createCompileQueue();
+  const participation = createParticipationService({
+    database,
+    repo,
+    blocked: () => runtime.panicked,
+    changed: () => hub.publish('studio', null),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  participationRef.current = participation;
   const recipeRef: { current?: RecipeService } = {};
   const scenes = createSceneService({
     database,
@@ -177,7 +206,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     hub,
     transport,
     queue,
-    presentation: (versionId) => recipeRef.current?.presentation(versionId) ?? null,
+    presentation: (versionId) =>
+      participation.presentation(versionId, recipeRef.current?.presentation(versionId) ?? null),
   });
   const recipes = createRecipeService({
     database,
@@ -186,6 +216,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     queue,
     saveScene: (versionId, scene) => scenes.save(versionId, 0, scene),
     rateSecret: dependencies.secret ?? null,
+    publicPresentation: participation.exportPresentation,
     reservedCommands: () => {
       const member = shared.current?.member.status();
       if (!member || !['connected', 'paused'].includes(member.state)) return [];
@@ -236,6 +267,39 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     },
   });
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
+  const production = createProductionService({
+    database,
+    repo,
+    secret: dependencies.secret ?? null,
+    overlayUrl: () => `${publicUrl}/overlay/?key=${repo.state().overlayKey}`,
+    blocked: () => runtime.panicked,
+    control: (versionId, action) => {
+      const version = repo.version(versionId);
+      const automation = version ? repo.automation(version.automationId) : null;
+      if (
+        runtime.panicked ||
+        !version ||
+        !automation ||
+        automation.activeVersionId !== versionId ||
+        version.status !== 'active' ||
+        !version.approvedAt ||
+        version.incident
+      )
+        throw new Error('The exact approved interaction is unavailable.');
+      repo.assertVersionLineage(versionId);
+      if (action === 'pause') return studio.pause(automation.id);
+      if (repo.session(automation.id)?.snapshot.phase === 'finished')
+        studio.resetSession(automation.id);
+      return studio.resumeAutomation(automation.id);
+    },
+    ...(dependencies.production ?? {}),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  productionRef.current = production;
+  const productionTimer = setInterval(() => {
+    void production.observe().catch(() => undefined);
+  }, 1000);
+  productionTimer.unref();
   const coordinator = createCoordinator({
     database,
     repo,
@@ -323,6 +387,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   registerRehearsalRoutes(app, { rehearsal, authoring });
   registerSceneRoutes(app, scenes);
   registerDirectorRoutes(app, directorService);
+  registerParticipationRoutes(app, participation);
+  registerProductionRoutes(app, production);
   registerRecipeRoutes(app, recipes, () => hub.publish('studio', null));
   registerCollaborationRoutes(app, {
     coordinator,
@@ -349,6 +415,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   app.addHook('onClose', async () => {
     clearInterval(directorTimer);
     directorService.close();
+    participation.close();
+    clearInterval(productionTimer);
+    production.close();
     recipes.close();
     clearInterval(communityTimer);
     clearInterval(collaborationTimer);
@@ -368,8 +437,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   if (dependencies.webRoot) {
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
     app.get('/recipes', (_request, reply) => reply.sendFile('index.html'));
+    app.get('/participate', (_request, reply) => reply.sendFile('index.html'));
+    app.get('/production-test', (_request, reply) => reply.sendFile('index.html'));
   }
   const services: RiffServices = {
+    production,
+    participation,
     recipes,
     director: directorService,
     collaboration,

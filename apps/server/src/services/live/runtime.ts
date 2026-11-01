@@ -58,6 +58,7 @@ export function createLiveRuntime(deps: {
   overlay: OverlayBroker;
   now?: () => number;
   proposals?: ProposalService;
+  onHelpChat?: (message: LiveChatMessage) => boolean;
   onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
@@ -189,6 +190,7 @@ export function createLiveRuntime(deps: {
         api.panic(`!riff panic by ${message.viewerName}`);
       return [];
     }
+    if (!panic && deps.onHelpChat?.(message)) return [];
     const command = deps.proposals?.handleCommand(
       {
         kind: 'chat',

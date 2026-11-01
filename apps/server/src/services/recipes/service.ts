@@ -16,7 +16,6 @@ import {
   type RecipeAdaptInput,
   type RecipeReview,
   type RecipeInstallInput,
-  type RecipePresentation,
   type RecipePublication,
   type RecipeRemoveInput,
   type SceneDocument,
@@ -38,7 +37,7 @@ import {
   publicTests,
 } from './contract.js';
 import { rehearseArtifact } from './proof.js';
-import { adaptationIntent, presentationFor } from './presentation.js';
+import { adaptationIntent, presentationFor, type InstalledPresentation } from './presentation.js';
 import {
   assertReviewRoom,
   makeReportRoom,
@@ -118,6 +117,7 @@ export function createRecipeService(deps: {
   queue: ReturnType<typeof createCompileQueue>;
   saveScene: (versionId: string, scene: SceneDocument) => unknown;
   reservedCommands?: () => string[];
+  publicPresentation?: (original: RecipePackage['presentation']) => RecipePackage['presentation'];
   now?: () => number;
   /** Server secret keying report rate identities; a per-process key is used when absent. */
   rateSecret?: string | null;
@@ -395,11 +395,18 @@ export function createRecipeService(deps: {
             manifest.experience?.teams.map((team) => team.joinCommand),
           ),
           scene,
-          presentation: {
+          presentation: (deps.publicPresentation ?? ((original) => original))({
             language: inherited?.installation.profile.language ?? record.profile.language,
             reducedMotion:
               inherited?.installation.profile.reducedMotion ?? record.profile.reducedMotion,
-          },
+            // Optional keys appear only when true so pre-F40 editions keep their digest.
+            ...((inherited?.installation.profile ?? record.profile).highContrast === true
+              ? { highContrast: true }
+              : {}),
+            ...((inherited?.installation.profile ?? record.profile).effectLabels === true
+              ? { effectLabels: true }
+              : {}),
+          }),
           assets: [
             ...new Set(
               scene.nodes
@@ -592,6 +599,8 @@ export function createRecipeService(deps: {
             after: JSON.stringify({
               language: profile.language,
               reducedMotion: profile.reducedMotion,
+              ...(profile.highContrast === true ? { highContrast: true } : {}),
+              ...(profile.effectLabels === true ? { effectLabels: true } : {}),
               displayName: profile.displayName,
             }),
           },
@@ -848,7 +857,7 @@ export function createRecipeService(deps: {
       });
       return state();
     },
-    presentation(versionId: string): RecipePresentation | null {
+    presentation(versionId: string): InstalledPresentation | null {
       const inherited = installationFor(versionId),
         version = repo.version(versionId);
       const manifest = version?.manifest as Manifest | undefined;

@@ -619,3 +619,18 @@ export const recipeState = sqliteTable('recipe_state', {
     >()
     .notNull(),
 });
+
+/** Private host production grants and sealed connector configuration. */
+export const productionState = sqliteTable('production_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});
+/** Durable broadcast accessibility choices and bounded help receipts. */
+export const participationState = sqliteTable('participation_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});

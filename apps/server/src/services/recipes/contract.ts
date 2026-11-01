@@ -127,6 +127,8 @@ export const profileSchema = z
     displayName: text(80),
     language: z.enum(['en', 'fr', 'es', 'de']),
     reducedMotion: z.boolean(),
+    highContrast: z.boolean().optional(),
+    effectLabels: z.boolean().optional(),
     scene: sceneSchema,
     capabilities: z
       .array(z.enum(['overlay', 'session']))
@@ -178,7 +180,12 @@ const packageSchema = z
     tests: scenariosSchema,
     scene: sceneSchema,
     presentation: z
-      .object({ language: z.enum(['en', 'fr', 'es', 'de']), reducedMotion: z.boolean() })
+      .object({
+        language: z.enum(['en', 'fr', 'es', 'de']),
+        reducedMotion: z.boolean(),
+        highContrast: z.boolean().optional(),
+        effectLabels: z.boolean().optional(),
+      })
       .strict(),
     assets: z
       .array(

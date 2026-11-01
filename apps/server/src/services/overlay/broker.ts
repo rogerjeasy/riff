@@ -35,7 +35,11 @@ export type OverlayMessage =
   | { v: 1; type: 'test'; payload: { at: number } };
 
 export interface SceneProjection {
+  highContrast?: boolean;
+  effectLabels?: boolean;
   reducedMotion?: boolean;
+  /** Present only while an accepted `!riff help` asks the renderer to emphasize guidance. */
+  help?: true;
   automationId: string;
   versionId: string;
   revision: number;
