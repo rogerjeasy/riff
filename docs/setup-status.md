@@ -196,3 +196,31 @@ All were fixed with regression tests, covering non-blocking input, live waiting 
 bounded message pass-through, partners, invitation codes, the host checklist and the stream
 card. The one-line `riff-invite:` code was added; the raw JSON form is still accepted.
 `RiffServices` now exposes `twitch` alongside the other services.
+
+## Adaptive director (F37)
+
+The console now supports draft → private synthetic burst → exact envelope approval
+for host presentation pacing, visual intensity, interruption caps and visual
+participation priority. Approved controls include gameplay focus, lock, manual
+overrides and immediate presentation stop. Existing visual canvas regions remain
+the protected-area authority. Behavior/eligibility edits still use version review.
+
+The stress evidence records real sandbox scores and contributions alongside
+cosmetic accounting; accepted gameplay survives coalescing. Restart preserves
+approval and requires explicit resume. Delayed output rechecks live authority.
+The gameplay queue rejects overflow visibly before counting it. See
+[director implementation](../apps/server/src/services/director/README.md) for routes,
+limits and ownership. Verification results for this increment are recorded in its
+[implementation plan](superpowers/plans/2026-11-01-adaptive-director.md).
+
+## Contextual remix and distribution (F38)
+
+Creators can export licensed immutable editions, publish a playable synthetic demo,
+import on another channel, adapt identity/language/layout/rules, inspect the diff and
+install a verified candidate for normal local approval. The self-hosted `/recipes`
+directory supports search, pinned downloads and reports; withholding and explicit
+restoration remain operator actions. No central directory, external asset download,
+identity certification or automatic update/activation is implied.
+
+See the [recipe implementation](../apps/server/src/services/recipes/README.md) and
+[verification record](superpowers/plans/2026-11-01-contextual-remix.md).

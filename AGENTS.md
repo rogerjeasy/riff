@@ -751,3 +751,69 @@ invitation review and a live round card. The stream card leads with the command,
 meter and a locally interpolated countdown.
 Tests use real isolated engines, separate databases and Fastify injection; this is not
 a claim of a live two-creator Twitch demonstration.
+
+## Adaptive director — F37
+
+`services/director` owns deterministic presentation adaptation after durable gameplay
+admission. The channel-scoped `director_state` table persists exact draft/approval
+identities, synthetic rehearsal evidence, creator controls and the 50 most recent
+envelope revisions (the approved revision is never pruned). No queued cosmetics persist or replay after restart. Approval survives,
+but presentation stays stopped until an explicit control action resumes it.
+
+Private routes: GET `/api/director`; POST `/api/director/draft`, `/rehearse`,
+`/approve`, `/control`, `/stop`. The existing mutation guard and optional console
+authentication apply. Draft save does not change live authority. Approval binds the
+exact normalized envelope digest and passing rehearsal evidence. Controls select
+balanced/gameplay mode, lock or in-envelope manual settings; stop fences memory
+before persistence. History restores as a new draft requiring fresh review.
+
+Approved bounds: 250–2000 ms batch interval, 1–6 effects/batch, 25–100% intensity,
+1–60 interruptions per rolling minute, FIFO or first-participation visual priority.
+The host selects calm settings at >=8 queued cosmetics or >=12 accepted actions
+in 10 seconds, or in creator-selected gameplay mode. Pending cosmetics cap at 120,
+expire after 5 seconds, and are counted as presented, coalesced, expired or cleared.
+Identity memory caps at 2000 with oldest-first eviction; decision history caps at 50
+and merges repeated batch/expiry entries so mode changes stay visible. Late emissions recheck
+current version, round, live status and panic. Activation and round reset invalidate
+pending presentation before selecting another batch. Durable batch claims enforce
+the rolling interruption cap across reapproval and restart. Scene protection/reduced motion still
+apply. No game-rule cooldowns, resource changes or eligibility edits are accepted;
+those require behavior review/F32. The separate gameplay queue caps at 128 pending
+chat messages; overflow is visibly rejected before admission or scoring.
+
+Rehearsal runs the chosen immutable artifact twice with an identical synthetic
+crowd burst and compares full evidence/state. The director sees those decisions at a
+150 ms synthetic chat cadence so the replay shows calm/regular transitions. The same director policy processes
+private results; it has no live sink. The console card is collapsed
+by default with a status pill and an always-visible stop while adapting; it guides
+ranges (quiet chat vs burst) → private stress test → exact approval, then live controls.
+Evidence shows final scores, contributions, accepted/blocked counts, coalescing, a
+batch-by-batch replay and bounded decision reasons.
+This adds no dependencies, Twitch scopes, outbound chat or generated capabilities.
+
+
+## Contextual remix and distribution — F38
+
+`services/recipes` owns immutable licensed JSON editions and the channel-scoped
+`recipe_state` table (migration 0013). Public `/recipes` and `/directory/recipes`
+expose only published snapshots and precomputed synthetic demo evidence. Private
+`/api/recipes` export/import/remove/profile/adapt/install/publish/moderate/restore operations
+remain behind the existing mutation and hosted-console guards. There is no arbitrary
+URL import, external artwork execution or anonymous compilation.
+
+Export allowlists public fields, sanitizes tests and preserves declared license and
+parent credits. Imported editions pin canonical digests. Revisioned recipient profiles
+adapt channel identity, safe layout, en/fr/es/de instructions, reduced motion,
+capabilities, command and audience. The shared compiler/verifier/rehearsal pipeline
+produces exact diff and evidence; installation rechecks profile and command conflicts,
+including host/shared commands, and creates a candidate plus scene draft. Existing
+local behavior approval and canvas apply retain activation authority. Source updates
+are opt-in. Generated adaptations must match the saved profile's command, audience and
+limits or the review fails. Full libraries return 409 with a removal hint (`/remove`
+frees imports/exports; installed sources are kept for lineage); report rate keys are
+HMAC'd with `RIFF_SECRET` and IPv6 grouped by /64. Publisher identity/rights remain declarations; built-in artwork retains
+its project license. Reports can withhold an edition; only a separate explicit rights
+review can restore it after all reports are resolved. See the
+[recipe service contract](apps/server/src/services/recipes/README.md) for bounds,
+routes, trust limits and verification details. No generated capability or SDK version
+change is introduced.
