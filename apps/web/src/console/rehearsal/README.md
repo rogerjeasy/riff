@@ -9,6 +9,10 @@
   artifact identity key the component; cancelled or superseded responses cannot
   supply evidence. Only complete, nonempty, passing exact primary replay receives
   preview credit; comparison and reduction do not.
+- `library.ts` owns independent scenario/regression list reads, publication freshness
+  and complete authoritative refresh after every committed library mutation. An
+  acknowledged change stays usable if refresh fails; a scoped error and Reload
+  library / Reload regression library retry recover the complete retained list.
 - `input-editor.tsx` edits normalized chat, roles, delivery duplication, logical
   delays and stateful host controls. Separate explicit expectations cover decisions,
   effect counts, phase, scores and participant resources. Native details keep these
@@ -19,7 +23,7 @@
   Scores/resources/checks come from the response, never reconstructed in React.
 - `regressions.tsx` separates failed-check selection/reduction, immutable regression
   saving, library rerun/delete and a reviewed explicit repair request. The studio's
-  one operation owner fences all async work. Repair immediately hands the returned
+  operation owner fences mutations and replay; library reads have independent freshness. Repair immediately hands the returned
   durable run to the existing app run store and normal candidate review workflow.
 - `contracts.ts` mirrors strict bounded host wire shapes without importing server or
   sandbox packages. `lib/api.ts` applies existing guarded mutations, typed safe

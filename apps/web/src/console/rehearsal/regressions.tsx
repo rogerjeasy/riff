@@ -15,7 +15,10 @@ interface Props {
   busy: boolean;
   operation: Operation;
   adoptRun: (value: RehearsalRun, canPreview: boolean) => void;
-  publishRegressions: Dispatch<SetStateAction<Regression[]>>;
+  commitRegressions: Dispatch<SetStateAction<Regression[]>>;
+  refreshRegressions: () => Promise<void>;
+  refreshError: string | null;
+  refreshing: boolean;
   setNotice: (text: string) => void;
   setPlaying: (value: boolean) => void;
   onRun?: ((run: Run) => void) | undefined;
@@ -28,7 +31,10 @@ export function RegressionPanel({
   busy,
   operation,
   adoptRun,
-  publishRegressions,
+  commitRegressions,
+  refreshRegressions,
+  refreshError,
+  refreshing,
   setNotice,
   setPlaying,
   onRun,
@@ -122,7 +128,7 @@ export function RegressionPanel({
                     s,
                   ),
                 (value) => {
-                  publishRegressions((items) => [value, ...items]);
+                  commitRegressions((items) => [value, ...items]);
                   setRegressionId(value.id);
                   setReviewed(false);
                   setNotice('Regression saved. Generation remains a separate action.');
@@ -187,7 +193,7 @@ export function RegressionPanel({
               void operation(
                 (s) => api.rehearsalDeleteRegression(regression.id, s),
                 () => {
-                  publishRegressions((items) => items.filter((g) => g.id !== regression.id));
+                  commitRegressions((items) => items.filter((g) => g.id !== regression.id));
                   setRegressionId('');
                   setReviewed(false);
                 },
@@ -197,6 +203,15 @@ export function RegressionPanel({
             Delete regression
           </button>
         </fieldset>
+        <button className="button small" disabled={busy} onClick={() => void refreshRegressions()}>
+          Reload regression library
+        </button>
+        {refreshing && <p role="status">Refreshing regression library…</p>}
+        {refreshError && (
+          <p role="alert" className="answer bad">
+            {refreshError}
+          </p>
+        )}
         {!regressions.length && <p>No saved regressions.</p>}
         {regression && (
           <>

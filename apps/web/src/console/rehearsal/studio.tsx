@@ -1,7 +1,8 @@
+import { usePrivateLibrary } from './library.js';
 import { InputEditor } from './input-editor.js';
 import { Timeline } from './timeline.js';
 import { RegressionPanel } from './regressions.js';
-import { useEffect, useRef, useState, type SetStateAction } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import type { Run, Version } from '../../lib/types.js';
 import { clearStage, launch } from '../../effects/projectile.js';
@@ -43,8 +44,20 @@ export function InteractiveStudio({
   const [saved, setSaved] = useState<ScenarioRecord | null>(null);
   const [dirty, setDirty] = useState(true);
   const [name, setName] = useState('My scenario');
-  const [library, setLibrary] = useState<ScenarioRecord[]>([]);
-  const [regressions, setRegressions] = useState<Regression[]>([]);
+  const {
+    items: library,
+    commit: commitScenarios,
+    refresh: refreshScenarios,
+    refreshError: scenarioRefreshError,
+    refreshing: scenariosRefreshing,
+  } = usePrivateLibrary<ScenarioRecord>(api.rehearsalScenarios, 'Scenario');
+  const {
+    items: regressions,
+    commit: commitRegressions,
+    refresh: refreshRegressions,
+    refreshError: regressionRefreshError,
+    refreshing: regressionsRefreshing,
+  } = usePrivateLibrary<Regression>(api.rehearsalRegressions, 'Regression');
   const [recordingSelector, setRecordingSelector] = useState<StudioProps['recording']>(null);
   const [run, setRun] = useState<RehearsalRun | null>(null);
   const [cursor, setCursor] = useState(0);
@@ -56,17 +69,6 @@ export function InteractiveStudio({
   const [freshStart, setFreshStart] = useState(true);
   const [preset, setPreset] = useState<(typeof presets)[number]>('proof');
   const epoch = useRef(0);
-  const scenarioGeneration = useRef(0);
-  const regressionGeneration = useRef(0);
-  // All library snapshots and mutations publish through their own freshness boundary.
-  function publishScenarios(update: SetStateAction<ScenarioRecord[]>) {
-    scenarioGeneration.current++;
-    setLibrary(update);
-  }
-  function publishRegressions(update: SetStateAction<Regression[]>) {
-    regressionGeneration.current++;
-    setRegressions(update);
-  }
   const request = useRef<AbortController | null>(null);
   const primaryStage = useRef<HTMLDivElement>(null);
   const compareStage = useRef<HTMLDivElement>(null);
@@ -81,53 +83,13 @@ export function InteractiveStudio({
     setPlaying(false);
     clearEffects();
   }
-  useEffect(() => {
-    const c = new AbortController();
-    const scenariosAtStart = scenarioGeneration.current;
-    const regressionsAtStart = regressionGeneration.current;
-    const errorEpoch = epoch.current;
-    void api
-      .rehearsalScenarios(c.signal)
-      .then((items) => {
-        if (!c.signal.aborted && scenarioGeneration.current === scenariosAtStart)
-          publishScenarios(items);
-      })
-      .catch((cause) => {
-        if (
-          !c.signal.aborted &&
-          scenarioGeneration.current === scenariosAtStart &&
-          epoch.current === errorEpoch
-        )
-          setError(
-            cause instanceof ApiError
-              ? cause.message
-              : 'The private scenario library could not load.',
-          );
-      });
-    void api
-      .rehearsalRegressions(c.signal)
-      .then((items) => {
-        if (!c.signal.aborted && regressionGeneration.current === regressionsAtStart)
-          publishRegressions(items);
-      })
-      .catch((cause) => {
-        if (
-          !c.signal.aborted &&
-          regressionGeneration.current === regressionsAtStart &&
-          epoch.current === errorEpoch
-        )
-          setError(
-            cause instanceof ApiError
-              ? cause.message
-              : 'The private regression library could not load.',
-          );
-      });
-    return () => {
-      c.abort();
+  useEffect(
+    () => () => {
       epoch.current++;
       request.current?.abort();
-    };
-  }, []);
+    },
+    [],
+  );
   async function operation<T>(
     work: (signal: AbortSignal) => Promise<T>,
     apply: (value: T) => void,
@@ -201,7 +163,7 @@ export function InteractiveStudio({
         ),
       (record) => {
         load(record);
-        publishScenarios((items) => [record, ...items.filter((x) => x.id !== record.id)]);
+        commitScenarios((items) => [record, ...items.filter((x) => x.id !== record.id)]);
         setNotice('Saved inputs returned by the host; previous evidence cleared.');
       },
     );
@@ -321,11 +283,7 @@ export function InteractiveStudio({
         <button className="button small" disabled={busy} onClick={() => unsaved(blank())}>
           New scenario
         </button>
-        <button
-          className="button small"
-          disabled={busy}
-          onClick={() => void operation((s) => api.rehearsalScenarios(s), publishScenarios)}
-        >
+        <button className="button small" disabled={busy} onClick={() => void refreshScenarios()}>
           Reload library
         </button>
         <button
@@ -338,6 +296,12 @@ export function InteractiveStudio({
           Reload saved inputs
         </button>
       </div>
+      {scenariosRefreshing && <p role="status">Refreshing scenario library…</p>}
+      {scenarioRefreshError && (
+        <p role="alert" className="answer bad">
+          {scenarioRefreshError}
+        </p>
+      )}
       <fieldset disabled={busy} className="rehearsal-grid">
         <legend>Scenario inputs</legend>
         <label>
@@ -420,7 +384,7 @@ export function InteractiveStudio({
             void operation(
               (s) => api.rehearsalDeleteScenario(saved.id, saved.revision, s),
               () => {
-                publishScenarios((items) => items.filter((x) => x.id !== saved.id));
+                commitScenarios((items) => items.filter((x) => x.id !== saved.id));
                 unsaved(scenario);
                 setNotice('Scenario deleted. Retained regressions remain in the library.');
               },
@@ -500,7 +464,10 @@ export function InteractiveStudio({
         busy={busy}
         operation={operation}
         adoptRun={adoptRun}
-        publishRegressions={publishRegressions}
+        commitRegressions={commitRegressions}
+        refreshRegressions={refreshRegressions}
+        refreshError={regressionRefreshError}
+        refreshing={regressionsRefreshing}
         setNotice={setNotice}
         setPlaying={setPlaying}
         onRun={onRun}

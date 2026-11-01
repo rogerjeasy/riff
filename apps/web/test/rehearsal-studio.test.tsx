@@ -288,6 +288,7 @@ it('reduces a selected failed check, saves independently, reruns and requires re
     createdAt: 0,
   };
   vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(regression);
+  vi.mocked(api.rehearsalRegressions).mockResolvedValue([regression]);
   vi.spyOn(api, 'rehearsalRerun').mockResolvedValue(replay());
   vi.spyOn(api, 'rehearsalDeleteRegression').mockResolvedValue({});
   const run = { id: 'compile1', stage: 'queued' } as Run;
@@ -686,6 +687,7 @@ it('preserves successfully saved scenario and regression when older bootstrap sn
   vi.mocked(api.rehearsalRun).mockResolvedValue(replay(2, true));
   vi.spyOn(api, 'rehearsalMinimize').mockResolvedValue(reduced);
   vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(regression);
+  vi.mocked(api.rehearsalRegressions).mockResolvedValue([regression]);
   fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
   await screen.findByText(/Expected 2 effects, observed 1/);
   fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: failed.id } });
@@ -796,4 +798,105 @@ it('loads scenarios still pending after the independent regression library has l
   await act(async () => bootstrap.scenarios.resolve([saved]));
   expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
   expect(screen.queryByRole('option', { name: 'Existing saved regression' })).toBeNull();
+});
+async function saveNewRegressionFromUi() {
+  const reduced = replay(2, true);
+  const failed = reduced.result.checks[0];
+  if (!failed) throw new Error('Expected failure');
+  reduced.minimization = {
+    scenario,
+    run: reduced.result,
+    checkId: failed.id,
+    failure: failed,
+    originalEvidenceHash: 'c'.repeat(64),
+    originalStepCount: 2,
+    removedSteps: 0,
+    attempts: 2,
+    dispatchedSteps: 4,
+    budgetStopped: false,
+  };
+  const added = { ...existingRegression(), id: 'gNew', name: 'New saved regression' };
+  vi.mocked(api.rehearsalRun).mockResolvedValue(replay(2, true));
+  vi.spyOn(api, 'rehearsalMinimize').mockResolvedValue(reduced);
+  vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(added);
+  fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
+  await screen.findByText(/Expected 2 effects, observed 1/);
+  fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: failed.id } });
+  fireEvent.click(screen.getByRole('button', { name: 'Reduce selected failure' }));
+  await screen.findByText(/Reduction finished/);
+  fireEvent.click(screen.getByRole('button', { name: 'Save regression' }));
+  await screen.findByRole('option', { name: added.name });
+  return added;
+}
+it('refreshes complete same-library regressions after saving gNew before the nonempty gOld bootstrap completes', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await createDuringBootstrap();
+  const old = { ...existingRegression(), id: 'gOld' };
+  const added = { ...existingRegression(), id: 'gNew', name: 'New saved regression' };
+  vi.mocked(api.rehearsalRegressions).mockResolvedValue([old, added]);
+  await saveNewRegressionFromUi();
+  await screen.findByRole('option', { name: old.name });
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([old]);
+  });
+  expect(screen.getByRole('option', { name: old.name })).toBeTruthy();
+  expect(screen.getByRole('option', { name: added.name })).toBeTruthy();
+});
+it('refreshes complete same-library scenarios after save before a nonempty older bootstrap completes', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  const old = { ...saved, id: 'sOld', name: 'Existing saved scenario' };
+  vi.mocked(api.rehearsalScenarios).mockResolvedValue([old, saved]);
+  await createDuringBootstrap();
+  await screen.findByRole('option', { name: 'Existing saved scenario · revision 2' });
+  await act(async () => {
+    bootstrap.scenarios.resolve([old]);
+    bootstrap.regressions.resolve([]);
+  });
+  expect(screen.getByRole('option', { name: 'Existing saved scenario · revision 2' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect((screen.getByLabelText('Scenario name') as HTMLInputElement).value).toBe('My scenario');
+});
+it('keeps a committed scenario and inputs on follow-up refresh failure and retries only its library', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  vi.mocked(api.rehearsalScenarios).mockRejectedValueOnce(
+    new ApiError('Read unavailable.', 409, 'UNAVAILABLE'),
+  );
+  await createDuringBootstrap();
+  await screen.findByText(/Scenario change committed, but library refresh failed/);
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect((screen.getByLabelText('Scenario name') as HTMLInputElement).value).toBe('My scenario');
+  vi.mocked(api.rehearsalScenarios).mockResolvedValue([
+    saved,
+    { ...saved, id: 'sOld', name: 'Existing saved scenario' },
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload library' }));
+  await screen.findByRole('option', { name: 'Existing saved scenario · revision 2' });
+  expect(screen.queryByText(/Scenario change committed, but library refresh failed/)).toBeNull();
+  expect(api.rehearsalSave).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+});
+it('keeps a committed regression on refresh failure and offers an explicit complete-library retry', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await createDuringBootstrap();
+  vi.mocked(api.rehearsalRegressions).mockRejectedValueOnce(
+    new ApiError('Read unavailable.', 409, 'UNAVAILABLE'),
+  );
+  const added = await saveNewRegressionFromUi();
+  await screen.findByText(/Regression change committed, but library refresh failed/);
+  expect(screen.getByRole('option', { name: added.name })).toBeTruthy();
+  vi.mocked(api.rehearsalRegressions).mockResolvedValue([existingRegression(), added]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload regression library' }));
+  await screen.findByRole('option', { name: 'Existing saved regression' });
+  expect(screen.queryByText(/Regression change committed, but library refresh failed/)).toBeNull();
+  expect(api.rehearsalSaveRegression).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([existingRegression()]);
+  });
+  expect(screen.getByRole('option', { name: added.name })).toBeTruthy();
 });
