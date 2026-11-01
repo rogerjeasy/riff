@@ -273,3 +273,5 @@ export type {
 } from './director.js';
 
 export type * from './recipes.js';
+export type * from './participation.js';
+export type * from './production.js';

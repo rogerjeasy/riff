@@ -23,7 +23,12 @@ export interface RecipePackage {
   manifest: PermissionManifest;
   tests: unknown;
   scene: SceneDocument;
-  presentation: { language: RecipeLanguage; reducedMotion: boolean };
+  presentation: {
+    language: RecipeLanguage;
+    reducedMotion: boolean;
+    highContrast?: boolean | undefined;
+    effectLabels?: boolean | undefined;
+  };
   assets: { id: 'tomato' | 'star' | 'heart'; credit: 'Riff'; license: 'project-license' }[];
   lineage: RecipeCredit[];
 }
@@ -32,6 +37,8 @@ export interface RecipeProfile {
   displayName: string;
   language: RecipeLanguage;
   reducedMotion: boolean;
+  highContrast?: boolean | undefined;
+  effectLabels?: boolean | undefined;
   scene: SceneDocument;
   capabilities: ('overlay' | 'session')[];
   command: string;
@@ -127,6 +134,8 @@ export interface RecipeInstallInput {
 export interface RecipePresentation {
   language: RecipeLanguage;
   reducedMotion: boolean;
+  highContrast?: boolean | undefined;
+  effectLabels?: boolean | undefined;
   instructions: string[];
 }
 /** An edition this channel exported; identity is null for exports recorded before F38 hardening. */
