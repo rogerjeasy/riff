@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, type RiffApp } from '../src/app.js';
 
@@ -7,8 +10,9 @@ const apps: RiffApp[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
-async function hosted(password = PASSWORD, now?: () => number) {
+async function hosted(password = PASSWORD, now?: () => number, webRoot?: string) {
   const app = await createApp({
+    ...(webRoot ? { webRoot } : {}),
     logger: false,
     secret: 's'.repeat(40),
     publicUrl: 'https://streamer.example',
@@ -18,11 +22,12 @@ async function hosted(password = PASSWORD, now?: () => number) {
   apps.push(app);
   return app;
 }
-const login = (app: RiffApp, password: string) =>
+const login = (app: RiffApp, password: string, client = '203.0.113.7') =>
   app.inject({
     method: 'POST',
     url: '/api/session/login',
     headers: {
+      'x-forwarded-for': client,
       'x-riff-request': '1',
       origin: 'https://streamer.example',
       host: 'streamer.example',
@@ -145,5 +150,45 @@ describe('console sign-in', () => {
       },
     });
     expect(String(response.headers['set-cookie'])).toMatch(/^riff_session=; Path=\/; Max-Age=0;/);
+  });
+
+  it('keys the gate on the matched route, so disguised API paths stay private', async () => {
+    const app = await hosted();
+    for (const url of [
+      '/%61pi/studio',
+      '/api/%73tudio',
+      '//api/studio',
+      '/api/../api/studio',
+      '/API/studio',
+      '/api/studio/',
+      '/api/studio?x=/api/health',
+    ]) {
+      const response = await app.inject(url);
+      expect(response.statusCode, url).not.toBe(200);
+      expect(response.body, url).not.toContain('automations');
+    }
+  });
+
+  it('keeps the console, overlay and dock pages public while their data stays gated', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'riff-web-'));
+    for (const dir of ['', 'overlay', 'dock']) {
+      mkdirSync(join(root, dir), { recursive: true });
+      writeFileSync(
+        join(root, dir, 'index.html'),
+        `<!doctype html><title>${dir || 'console'}</title>`,
+      );
+    }
+    const app = await hosted(PASSWORD, undefined, root);
+    for (const url of ['/', '/overlay/', '/dock/'])
+      expect((await app.inject(url)).statusCode, url).toBe(200);
+    expect((await app.inject('/api/studio')).statusCode).toBe(401);
+    expect((await app.inject('/%61pi/studio')).statusCode).not.toBe(200);
+  });
+
+  it('limits failed guesses per client so a guesser cannot lock the streamer out', async () => {
+    const app = await hosted();
+    for (let i = 0; i < 10; i++) await login(app, `guess-${i}`, '198.51.100.9');
+    expect((await login(app, PASSWORD, '198.51.100.9')).statusCode).toBe(429);
+    expect((await login(app, PASSWORD, '203.0.113.50')).statusCode).toBe(200);
   });
 });

@@ -17,12 +17,25 @@ export interface ConsoleAccess {
 const digest = (value: string) => createHash('sha256').update(value).digest();
 const same = (a: string, b: string) => timingSafeEqual(digest(a), digest(b));
 
-/** Paths a hosted streamer's visitors and peers may reach without the console session. */
-function isPublic(path: string) {
-  if (path === '/api/health' || path === '/ws/overlay' || path.startsWith('/peer/')) return true;
-  if (path === '/api/session' || path.startsWith('/api/session/')) return true;
-  // Static console/overlay/dock files hold no private data; their API calls are gated.
-  return !(path.startsWith('/api/') || path.startsWith('/ws/') || path.startsWith('/auth/'));
+/** Route patterns open without a console session. Everything else is private by default. */
+const PUBLIC_ROUTES = new Set([
+  '/api/health',
+  '/api/session',
+  '/api/session/login',
+  '/api/session/logout',
+  '/ws/overlay',
+]);
+/**
+ * Decide on the route Fastify actually matched, never on our own reading of the raw URL:
+ * an encoded or doubled path (`/%61pi/studio`, `//api/studio`) must not look public while
+ * routing to a private handler. Unmatched requests are private too.
+ */
+function isPublic(route: string | undefined) {
+  if (!route) return false;
+  if (PUBLIC_ROUTES.has(route) || route.startsWith('/peer/collaboration/')) return true;
+  // The static file handler (console, overlay and dock bundles) holds no private data;
+  // every API call those pages make is gated separately.
+  return route === '/*' || route === '/';
 }
 
 /**
@@ -80,7 +93,7 @@ export function registerConsoleSession(
       reply.header('Cache-Control', 'no-store');
       return reply.redirect(`${url.pathname}${url.search}`, 302);
     }
-    if (isPublic(url.pathname) || signedIn(request)) return;
+    if (isPublic(request.routeOptions.url) || signedIn(request)) return;
     return reply
       .code(401)
       .header('Cache-Control', 'no-store')
@@ -92,12 +105,25 @@ export function registerConsoleSession(
     return { required, authenticated: signedIn(request) };
   });
 
-  let failures: number[] = [];
+  // Failed attempts are limited per client, so someone guessing cannot lock the streamer
+  // out; a much higher overall cap is the backstop against many sources at once.
+  const failures = new Map<string, number[]>();
+  let everyone: number[] = [];
+  const client = (request: FastifyRequest) => {
+    // Behind Caddy the socket peer is the proxy; Caddy replaces X-Forwarded-For with the
+    // real client address (it does not trust a client-supplied value by default).
+    const forwarded = request.headers['x-forwarded-for'];
+    const last = (Array.isArray(forwarded) ? forwarded.at(-1) : forwarded)?.split(',').at(-1);
+    return (last ?? request.ip).trim().slice(0, 64);
+  };
   app.post('/api/session/login', { bodyLimit: 1024 }, async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
     if (!password) return { authenticated: true };
-    failures = failures.filter((at) => at > now() - WINDOW_MS);
-    if (failures.length >= ATTEMPTS)
+    const since = now() - WINDOW_MS;
+    const who = client(request);
+    const mine = (failures.get(who) ?? []).filter((at) => at > since);
+    everyone = everyone.filter((at) => at > since);
+    if (mine.length >= ATTEMPTS || everyone.length >= ATTEMPTS * 20)
       return reply.code(429).send({
         code: 'RATE_LIMITED',
         message: 'Too many attempts. Wait a minute, then try again.',
@@ -107,7 +133,12 @@ export function registerConsoleSession(
       .strict()
       .safeParse(request.body);
     if (!body.success || !same(body.data.password, password)) {
-      failures.push(now());
+      mine.push(now());
+      everyone.push(now());
+      failures.delete(who);
+      failures.set(who, mine);
+      // Bound memory: forget the least recently failing client beyond 1,000.
+      if (failures.size > 1000) failures.delete(failures.keys().next().value ?? '');
       return reply.code(401).send({
         code: 'INVALID_PASSWORD',
         message: 'That password isn’t right. Check it and try again.',
