@@ -131,6 +131,57 @@ See the [stateful design](docs/superpowers/specs/2026-10-31-stateful-experiences
 [live evolution design](docs/superpowers/specs/2026-10-31-live-evolution-design.md)
 and [SDK guide](packages/sdk/SDK.md) for contracts and supported primitives.
 
+## Audience co-creation — F33
+
+Viewers can propose the next mechanic; the creator decides what becomes code.
+The audience inbox connects moderation, chat ballots and an editable selected brief
+to the existing generation, private rehearsal and exact-version approval flow.
+
+1. In connected Twitch chat, submit `!riff suggest Change the command to !splat and
+give everyone two additional throws`.
+2. In the audience inbox, review the pending proposal and shortlist it. Matching
+   suggestions form one proposal with a contributor count. Hide unwanted suggestions;
+   restoring one sends it back to pending review.
+3. Choose up to five shortlisted proposals and open a 15–600 second ballot. The
+   overlay shows the ballot ID and `!riff vote <ballot-id> <option>` instructions.
+   Each account gets one valid vote per ballot. Results and ties are advisory.
+   The overlay cycles bounded excerpts and voting instructions; the creator inbox
+   retains full proposal text.
+4. Select an eligible proposal, review or edit its brief, and choose a base version
+   if it should change an existing interaction. Save the selection, then explicitly
+   generate. Repeated generation requests return the same run, including after restart.
+5. Review the candidate through Test and Preview. For the Tomato Battle edit, use
+   **Keep everyone's progress** to inspect preserved scores and two additional throws,
+   then approve the exact evidence through the normal F32 flow.
+
+Twitch moderators need a creator-managed **Riff moderation grant** to use
+`!riff shortlist <proposal-id>` or `!riff hide <proposal-id>`. A badge alone is not a
+grant. The broadcaster may moderate through chat; selection, generation and approval
+remain creator-console actions. Voting, moderation and chat never generate code.
+
+Credit defaults off. `!riff credit on` allows Riff to display the contributor's name;
+`!riff credit off` withdraws that attribution from current and historical public
+results. Twitch chat itself is already public, and this preference does not remove
+the original chat message. Only moderated, currently eligible text reaches the overlay;
+private briefs, grants, account IDs and pending/hidden suggestions stay private.
+
+Suggestions are 8–500 characters, with three attempts per account and twenty per
+channel in any rolling 60 seconds. Duplicate/rejected admitted attempts count toward
+those limits; redelivered transport events do not. The host caps nonhidden proposals
+at 100, contributors per proposal at 1,000, votes per ballot at 10,000 and grants at 100. Command receipts are retained for seven days, capped at 10,000 per channel;
+admission fails closed at capacity. Ballot deadlines and vote identities survive restart.
+
+Hiding a proposal or replacing its selection cancels unused generation and pending activation.
+Every derived version retains its selection ancestry, checked again when storing and
+activating it. Removing an idea does not silently stop an already running interaction.
+After emergency stop, explicit channel resume leaves removed interactions paused and
+recovers healthy ones; a clean approved predecessor remains available for rollback.
+The overlay clears on emergency stop and cannot repopulate until explicit resume.
+
+This uses chat ballots and the existing read-only overlay, with no additional Twitch
+scopes or outbound chat messages. The creator console retains the existing local
+operator trust model. See the [F33 design](docs/superpowers/specs/2026-11-01-audience-co-creation-design.md).
+
 ## How it is built
 
 ```text

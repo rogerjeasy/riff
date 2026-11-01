@@ -389,7 +389,10 @@ explicit remote consent, ≥32-char `RIFF_SECRET`, Twitch app credentials, optio
 EventSub/Helix overrides for the Twitch CLI mock). Migrations run at server boot.
 Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
 `experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
-`admission_events`, `session_transitions`.
+`admission_events`, `session_transitions`, `proposals`, `proposal_contributors`,
+`proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
+`proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
+`proposal_generation_runs`.
 
 ---
 
@@ -541,3 +544,48 @@ approval. Live controls expose pending round-end cancellation and review previou
 approved healthy rollback targets from current progress, with an explicit full-reset
 fallback when preservation cannot pass. Panic blocks approvals; stopped timing requires
 an already-paused session and remains paused.
+
+## Audience co-creation — F33
+
+Channel-scoped proposal records persist normalized duplicate groups, private
+contributor provenance, revision-checked moderation/history, explicit moderator
+grants, attribution preferences, admitted command receipts, ballots/votes and
+immutable reviewed selections. Trusted normalized EventSub chat handles reserved
+`!riff suggest`, `vote <ballot-id> <option>`, `shortlist <proposal-id>`,
+`hide <proposal-id>` and `credit on|off` commands before generated automations.
+Unknown reserved commands are consumed; emergency panic keeps independent priority.
+Moderator badges require a separate Riff grant; broadcaster moderation is allowed.
+No chat command compiles or activates code.
+
+Creator-console routes use the existing operator-local same-origin mutation guard:
+`GET /api/proposals`, `GET /api/proposals/:id/history`,
+`POST /api/proposals/:id/moderate`, `POST /api/proposals/grants`,
+`POST /api/proposals/ballots`, `POST /api/proposals/ballots/:id/close`,
+`POST /api/proposals/:id/select`, `POST /api/proposals/selections/:id/revoke`,
+and `POST /api/proposals/selections/:id/generate`. Selection saves a reviewed brief
+and optional base version; generation is a separate action. A durable selection/run
+claim prevents repeat model spending after duplicate requests or restart. Interrupted
+work becomes terminal failed rather than silently retrying.
+
+Selection lineage follows every version ancestor and is rechecked before compilation,
+inside candidate storage, ordinary activation and F32 transition CAS. Hide, revoke and
+reselection abort unused generation and invalidate pending reviews/transitions. Existing
+active play continues until explicitly controlled. Channel resume leaves removed-lineage
+automations paused while recovering healthy ones, allowing clean approved rollback.
+
+`GET /api/studio` includes private `proposals` and safe public `community` projections.
+The overlay protocol adds a nullable `community` frame containing command guidance,
+moderated ballots/results and selection application status. It contains no private
+brief, account identity, grants or pending/hidden text. Attribution defaults off and
+current preferences govern past public results too. Hide/credit changes withdraw cached
+content; failed projection reads clear it. Panic fences publication until explicit
+resume. The creator inbox hands candidates to the existing rehearsal/approval flow.
+Chat ballots require explicit ballot IDs, first valid votes are immutable, deadlines
+are enforced transactionally and outcomes never auto-select or auto-compile.
+
+Host limits: suggestion text 8–500; three admitted attempts/account and twenty/channel
+per rolling minute; 100 nonhidden proposals; 1,000 contributors/proposal; five options,
+one open ballot, 15–600 seconds and 10,000 votes/ballot; 100 grants. Receipts retain
+seven days with a 10,000/channel capacity and fail-closed admission. Private response
+pages cap at 50; public outcomes/selections at five and attributed names at five.
+No SDK changes, dependencies, new Twitch scopes or outbound chat API were added.
