@@ -1,6 +1,9 @@
 import { z } from 'zod';
 import { TwitchError, errorForStatus } from './errors.js';
 import { issuePaths, readJson, twitchMessageOf, type FetchLike } from './http.js';
+import { createChannelPointsApi, type ChannelPointsApi } from './helix/channel-points.js';
+import { createPredictionsApi, type PredictionsApi } from './helix/predictions.js';
+import type { HelixMethod, HelixRequestOptions } from './helix/request.js';
 
 /**
  * The only place in Riff that builds Helix requests (AGENTS §2.4).
@@ -83,7 +86,7 @@ export interface SendChatMessageResult {
 /** Docs: "The message is limited to a maximum of 500 characters." */
 export const MAX_CHAT_MESSAGE_LENGTH = 500;
 
-export interface HelixClient {
+export interface HelixClient extends ChannelPointsApi, PredictionsApi {
   /**
    * POST /chat/messages with a user access token carrying `user:write:chat`.
    * A mutation: it is attempted exactly once and never retried.
@@ -170,11 +173,11 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
   }
 
   async function request(
-    method: 'GET' | 'POST',
+    method: HelixMethod,
     path: string,
     endpointName: string,
     body?: unknown,
-    retries = maxRetries,
+    requestOptions: HelixRequestOptions = {},
   ): Promise<unknown> {
     const url = `${baseUrl}${path}`;
     for (let attempt = 0; ; attempt += 1) {
@@ -206,8 +209,10 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
       }
       const payload = await readJson(response);
       if (response.ok) return payload;
-      const retryable = response.status === 429 || response.status >= 500;
-      if (!retryable || attempt >= retries)
+      const retryable =
+        response.status === 429 ||
+        (response.status >= 500 && requestOptions.retryServerErrors !== false);
+      if (!retryable || attempt >= (requestOptions.retries ?? maxRetries))
         throw errorForStatus(response.status, endpointName, twitchMessageOf(payload), attempt + 1);
       const delay = delayFor(response, attempt);
       if (delay > maxDelayMs)
@@ -257,7 +262,7 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
             ? { reply_parent_message_id: input.replyParentMessageId }
             : {}),
         },
-        0,
+        { retries: 0 },
       );
       const parsed = sendChatMessageResponse.safeParse(payload);
       if (!parsed.success) throw invalid(endpoint, parsed.error);
@@ -279,6 +284,8 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
       };
     },
 
+    ...createChannelPointsApi(request),
+    ...createPredictionsApi(request),
     async createEventSubSubscription(input) {
       if (!input.sessionId)
         throw new TwitchError('TWITCH_INVALID_REQUEST', 'A WebSocket session id is required.');
@@ -349,3 +356,7 @@ export function createHelixClient(options: HelixClientOptions): HelixClient {
     },
   };
 }
+
+export * from './helix/channel-points.js';
+export * from './helix/predictions.js';
+export * from './helix/limits.js';

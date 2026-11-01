@@ -10,3 +10,7 @@ No persistent guest globals, arbitrary mutable store, filesystem or network are 
 host applies after the handler succeeds; the guest never holds a callback or native
 timer. Host fires re-enter the same handler as `timer.fired` events through
 `engine.dispatchTimer`; previews use `createVirtualTimers` (`../timers.ts`).
+
+`riff.predictions.propose()` requires declared `predictions` authority, accepts one
+strictly validated proposal per event and only returns it in the decision; opening and
+settlement are creator actions in the host console.

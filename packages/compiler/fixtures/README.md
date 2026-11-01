@@ -22,3 +22,9 @@ server tests verify the response against immutable independent regression inputs
 They use capability `timer`, branch on `event.source === 'timer.fired'` and assert
 fires with step-level `timers` data. Offline recordings, not model executions; the
 compiler contract test replays them and server tests run them through the verifier.
+
+`channel-points-predictions.json` records deterministic offline outputs for prompt pack
+`riff-compiler/7`: a `points.redeem` Hydrate redemption and a `predictions` proposal. They
+are template responses, not model executions; the test suite replays them exactly.
+
+`riff-compiler/8`: merges the timer and Channel Points/Predictions rules into one prompt pack; the two recorded fixtures above were re-labelled with no content change.

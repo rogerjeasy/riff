@@ -4,7 +4,7 @@ import { compileTimerOffline } from './timer-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/7';
+export const PROMPT_VERSION = 'riff-compiler/8';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -38,21 +38,32 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending chat messages,
-  sounds, polls, channel points, bans, external sites, timers inside a session round).
+  sounds, polls, bans, external sites, timers inside a session round, opening/settling
+  predictions directly, or Channel Points rewards for anything but triggering).
   Named host timers ("every 10 minutes", "60 seconds after !start") ARE supported via
   capability timer; a session round deadline is separate and host-owned. Give the reason
   and the closest supported alternative. manifest/source null, tests [].
 
 Rules for candidates:
 - source is a single function expression \`async (event, riff) => { ... }\`; only use
-  riff.overlay.emit, riff.timer.start/cancel, riff.util, and the read-only
-  riff.session.snapshot(). Keep it short and readable; no comments needed.
+  riff.overlay.emit, riff.timer.start/cancel, riff.predictions.propose, riff.util, and
+  the read-only riff.session.snapshot(). Keep it short and readable; no comments needed.
 - Timers: a chat command starts them (there is no activation hook), so pick a command
   and audience (default broadcaster+moderator) and list them in assumptions. Branch on
   event.source === 'timer.fired' for the fire; restarting a name replaces it. Declare
   ["overlay","timer"], sdkVersion 0.4.0 and experience null. Never use setTimeout.
   Timer tests use step.timers {fired,effects} on a later step (e.g. unrelated chat at
   the due time); every other step uses timers:null.
+- Channel Points: "when someone redeems 'Hydrate'" uses trigger.kind "points.redeem",
+  trigger.reward "Hydrate" (the reward title), audience ["viewer"], experience null and a
+  lowercase console handle command such as "!hydrate". Chat triggers use kind
+  "chat.command" and reward null. Redemption scenario steps set kind "points.redeem"
+  and text "" (chat steps use kind null); include a chat step typing the handle that is
+  UNRELATED. The host fulfils or refunds redemptions; never claim the handler does.
+- Predictions: the handler may only PROPOSE with riff.predictions.propose({title,
+  outcomes, windowSeconds}) and capability "predictions". The creator opens it and alone
+  picks the winner, locks or cancels; requests to auto-resolve, pick winners, or settle
+  from chat are unsupported. A proposing step expects effects 0.
 - The manifest must match the request exactly: command (lowercase), audience,
   maxPerViewer, windowMs. When something is unstated, pick a conventional value
   (everyone; 60000 ms window) and list it in assumptions.

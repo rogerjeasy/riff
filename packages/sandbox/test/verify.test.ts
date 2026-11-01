@@ -231,7 +231,7 @@ describe('curated SDK examples', () => {
     30_000,
   );
   it('the sandbox bridge enables exactly the SDK capability set', () => {
-    expect([...CAPABILITIES]).toEqual(['overlay', 'session', 'timer']);
+    expect([...CAPABILITIES]).toEqual(['overlay', 'session', 'timer', 'predictions']);
     expect(analyzeSource(EXAMPLES[0]!.source, EXAMPLES[0]!.manifest).capabilitiesUsed).toEqual([
       'overlay',
     ]);

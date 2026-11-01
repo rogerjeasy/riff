@@ -77,7 +77,15 @@ export interface Manifest {
   experience?: ExperienceDefinition | null;
   sdkVersion: string;
   capabilities: string[];
-  trigger: { command: string; audience: Role[]; maxPerViewer: number; windowMs: number };
+  trigger: {
+    command: string;
+    audience: Role[];
+    maxPerViewer: number;
+    windowMs: number;
+    /** F22: `points.redeem` triggers run on linked Channel Points redemptions only. */
+    kind?: 'chat.command' | 'points.redeem';
+    reward?: string | null;
+  };
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
 export interface Stage {

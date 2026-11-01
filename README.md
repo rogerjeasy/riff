@@ -355,6 +355,10 @@ change an approved live layout.
    Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest. If you
    turn on **Chat authoring**, the next sign-in also asks for `user:write:chat` so Riff can
    post short system replies (approval codes, results) as you.
+
+   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+   Channel Points and Predictions ask separately, from their console panels, for
+   `channel:manage:redemptions` and `channel:manage:predictions` (Affiliate/Partner only).
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
@@ -373,6 +377,23 @@ only from Twitch badges and your account id; viewers and moderators cannot spend
 compiler budget. Changes that widen authority or alter a live round must still be
 approved in the console. Stop everything invalidates every code. See the
 [service contract](apps/server/src/services/chat-authoring/README.md).
+
+## Channel Points and Predictions — F22
+
+Describe “When someone redeems 'Hydrate', show a water splash.” The candidate uses a
+`points.redeem` trigger. In the **Channel Points** panel, allow access, create a Riff reward
+(Twitch only lets the app that created a reward manage it, so Riff never touches rewards
+from your dashboard) and link it to the interaction. Redemptions pass the same durable
+admission, per-viewer allowance and channel budget as chat; Riff then fulfils accepted ones
+and refunds refused ones, or queues accepted ones for you (“I review”). Stopping Riff pauses
+its rewards and refunds anything waiting.
+
+An interaction with the `predictions` capability can only **propose** a prediction
+(`!predict` → “Will we beat the boss?”). The **Predictions** panel shows proposals; only you
+open them, and only you resolve (pick the winner, then confirm), lock or cancel. Stopping
+Riff locks an open prediction. Rehearsal and generated tests use simulated redemptions and
+proposals with no Twitch call. `apps/server/test/channel-points.test.ts` exercises the full
+EventSub → admission → Helix path against documented fixtures.
 
 ## Deployment
 

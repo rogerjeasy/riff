@@ -58,3 +58,22 @@ export {
   type TokenValidation,
   type TwitchTokenSet,
 } from './auth.js';
+export {
+  CHANNEL_POINTS_LIMITS,
+  PREDICTION_LIMITS,
+  predictionInputProblem,
+  type ChannelPointsApi,
+  type CustomReward,
+  type CustomRewardInput,
+  type CustomRewardRedemption,
+  type CustomRewardUpdate,
+  type EndPredictionInput,
+  type Prediction,
+  type PredictionInput,
+  type PredictionOutcome,
+  type PredictionStatus,
+  type PredictionsApi,
+  type RedemptionStatus,
+} from './helix.js';
+export { normalizeRedemption, type NormalizedRedemption } from './normalize.js';
+export { CHANNEL_POINTS_SCOPES, PREDICTION_SCOPES } from './auth.js';

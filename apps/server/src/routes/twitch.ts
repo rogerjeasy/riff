@@ -12,7 +12,7 @@ export function registerTwitchRoutes(
   app: FastifyInstance,
   deps: { twitch: TwitchConnection; publicUrl: string },
 ) {
-  app.get('/auth/twitch', async (_request, reply) => {
+  app.get('/auth/twitch', async (request, reply) => {
     if (!deps.twitch.configured)
       return reply
         .code(503)
@@ -20,7 +20,20 @@ export function registerTwitchRoutes(
         .send(
           'Twitch is not configured. Set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET and RIFF_SECRET.',
         );
-    return reply.redirect(deps.twitch.beginAuthorization());
+    // Optional feature consent (F22): ?features=channel-points,predictions
+    const features = z
+      .object({
+        features: z
+          .string()
+          .max(64)
+          .transform((v) => v.split(',').filter(Boolean))
+          .pipe(z.array(z.enum(['channel-points', 'predictions'])).max(2))
+          .optional(),
+      })
+      .safeParse(request.query);
+    return reply.redirect(
+      deps.twitch.beginAuthorization(features.success ? (features.data.features ?? []) : []),
+    );
   });
   app.get('/auth/twitch/callback', async (request, reply) => {
     const query = z

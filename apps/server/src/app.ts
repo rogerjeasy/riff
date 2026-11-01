@@ -60,6 +60,15 @@ import { createOverlayBroker } from './services/overlay/broker.js';
 import { createPreviewService } from './services/rehearsal/preview.js';
 import { createTwitchConnection, type TwitchConfig } from './services/twitch/connection.js';
 import type { FetchLike } from '@riff/twitch';
+import {
+  createChannelPointsService,
+  type ChannelPointsService,
+} from './services/channel-points/service.js';
+import {
+  createPredictionsService,
+  type PredictionsService,
+} from './services/predictions/service.js';
+import { registerChannelPointsRoutes } from './routes/channel-points.js';
 
 /** The studio is operator-local: one home channel per server process. */
 export const HOME_CHANNEL = 'home';
@@ -97,6 +106,8 @@ export function migrateConnection(database: DatabaseConnection) {
 
 export interface RiffServices {
   chatAuthoring: ChatAuthoringService;
+  channelPoints: ChannelPointsService;
+  predictions: PredictionsService;
   production: ProductionService;
   participation: ParticipationService;
   recipes: RecipeService;
@@ -176,8 +187,11 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   const productionRef: { current?: ProductionService } = {};
   const participationRef: { current?: ParticipationService } = {};
   const chatAuthoringRef: { current?: ChatAuthoringService } = {};
+  const pointsRef: { current?: ChannelPointsService } = {};
+  const predictionsRef: { current?: PredictionsService } = {};
   const runtime = createLiveRuntime({
     onAuthorChat: (message) => chatAuthoringRef.current?.handle(message) ?? false,
+    onPredictionProposal: (proposal) => predictionsRef.current?.propose(proposal),
     onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
     onStop: () => {
@@ -192,6 +206,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       } catch {
         /* Codes are fenced in memory first. */
       }
+      // Best effort after the in-memory fence: pause rewards, refund queue, lock prediction.
+      void pointsRef.current?.onPanic().catch(() => undefined);
+      void predictionsRef.current?.onPanic().catch(() => undefined);
       stopCollaboration();
     },
     repo,
@@ -291,6 +308,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     log: (message) => app.log.warn(message),
     onStatus: (status) => {
       if (status.state !== 'connected') stopCollaboration();
+      else {
+        void pointsRef.current?.refresh().catch(() => undefined);
+        void predictionsRef.current?.refresh().catch(() => undefined);
+      }
+    },
+    onRedemption: (redemption) => {
+      void pointsRef.current?.handleRedemption(redemption).catch((error: unknown) => {
+        app.log.warn({ err: error }, 'redemption handling failed');
+      });
     },
     wantsChatWrite: () => chatAuthoringRef.current?.enabled() ?? false,
   });
@@ -310,6 +336,28 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   chatAuthoringRef.current = chatAuthoring;
   chatAuthoring.boot();
+  const featureAccess = { api: () => twitch.api(), configured: twitch.configured };
+  const changedSoon = () => hub.publish('studio', null);
+  const channelPoints = createChannelPointsService({
+    database,
+    repo,
+    access: featureAccess,
+    route: (redemption) => runtime.handleRedemption(redemption),
+    blocked: () => runtime.panicked,
+    changed: changedSoon,
+    subscription: () => twitch.redemptions,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  pointsRef.current = channelPoints;
+  const predictions = createPredictionsService({
+    database,
+    repo,
+    access: featureAccess,
+    blocked: () => runtime.panicked,
+    changed: changedSoon,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  predictionsRef.current = predictions;
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
   const production = createProductionService({
     database,
@@ -456,6 +504,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       ...(dependencies.now ? { now: dependencies.now } : {}),
     }),
   );
+  registerChannelPointsRoutes(app, { points: channelPoints, predictions });
   app.addHook('onReady', async () => {
     twitch.start();
     // Warm the verifier (TypeScript parser, QuickJS WASM, worker startup) off the
@@ -497,6 +546,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   }
   const services: RiffServices = {
     chatAuthoring,
+    channelPoints,
+    predictions,
     production,
     participation,
     recipes,

@@ -97,3 +97,64 @@ export function normalizeChatMessage(
     at: meta.receivedAt,
   };
 }
+
+/** A `channel.channel_points_custom_reward_redemption.add` event as the host may see it. */
+export interface NormalizedRedemption {
+  /** Redemption id: the durable identity, also used by Update Redemption Status. */
+  readonly id: string;
+  /** EventSub envelope `message_id`. */
+  readonly deliveryId: string;
+  readonly channelId: string;
+  readonly viewerId: string;
+  readonly viewerLogin: string;
+  readonly viewerName: string;
+  readonly rewardId: string;
+  readonly rewardTitle: string;
+  readonly rewardCost: number;
+  /** `user_input`, sanitized like chat text; empty when the reward takes no input. */
+  readonly text: string;
+  readonly status: 'unknown' | 'unfulfilled' | 'fulfilled' | 'canceled';
+  readonly redeemedAt: string;
+  /** Host receive time in epoch milliseconds. */
+  readonly at: number;
+}
+
+// Fields per the EventSub reference "Channel Points Custom Reward Redemption Add Event"
+// (https://dev.twitch.tv/docs/eventsub/eventsub-reference/).
+const redemptionEvent = z.looseObject({
+  id,
+  broadcaster_user_id: id,
+  user_id: id,
+  user_login: z.string(),
+  user_name: z.string(),
+  user_input: z.string(),
+  status: z.enum(['unknown', 'unfulfilled', 'fulfilled', 'canceled']),
+  reward: z.looseObject({ id, title: z.string(), cost: z.number().int() }),
+  redeemed_at: z.string(),
+});
+
+/** Map a redemption event (the `payload.event` object); null for anything that does not parse. */
+export function normalizeRedemption(
+  event: unknown,
+  meta: { messageId: string; receivedAt: number },
+): NormalizedRedemption | null {
+  if (meta.messageId.length === 0 || !Number.isFinite(meta.receivedAt)) return null;
+  const parsed = redemptionEvent.safeParse(event);
+  if (!parsed.success) return null;
+  const data = parsed.data;
+  return {
+    id: data.id,
+    deliveryId: meta.messageId,
+    channelId: data.broadcaster_user_id,
+    viewerId: data.user_id,
+    viewerLogin: data.user_login,
+    viewerName: data.user_name,
+    rewardId: data.reward.id,
+    rewardTitle: data.reward.title,
+    rewardCost: data.reward.cost,
+    text: sanitizeChatText(data.user_input),
+    status: data.status,
+    redeemedAt: data.redeemed_at,
+    at: meta.receivedAt,
+  };
+}

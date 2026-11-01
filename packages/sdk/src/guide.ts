@@ -167,6 +167,34 @@ imports or capabilities. Preserve every snapshot field and increase each existin
 participant's remaining resources by new perParticipant minus old perParticipant.
 Keep the input revision unchanged: the host independently validates preservation
 and advances revision. This contract adds no generated handler capability.
+
+## Channel Points redemptions (SDK 0.4.0)
+
+A Channel Points trigger sets trigger.kind:'points.redeem' and trigger.reward to the
+reward title (1..45 characters, e.g. 'Hydrate'). The creator links that title to a
+reward Riff created on Twitch; only that reward's redemptions reach the handler, and
+chat text never matches it. trigger.command stays required as the console handle
+(e.g. '!hydrate') and must not be typed by viewers. Redemptions carry no chat badges,
+so trigger.audience MUST be ['viewer']; experience must be absent or null. Chat
+triggers omit kind or use 'chat.command' with reward:null.
+For a redemption event.kind is 'points.redeem', roles is ['viewer'] and event.text is
+the viewer's sanitized input ('' when the reward asks none). Admission is the same
+order as chat (DUPLICATE → UNRELATED → VIEWER_LIMIT → CHANNEL_LIMIT → ACCEPTED);
+UNRELATED means a chat message reached a redemption trigger, or a redemption reached a
+chat trigger. The host, not the handler, fulfils accepted redemptions and refunds
+rejected ones. Scenario steps model a redemption with kind:'points.redeem' (null or
+absent for chat); give a redemption step text '' unless the viewer typed input.
+
+## Prediction proposals (SDK 0.4.0)
+
+\`riff.predictions.propose(p): Promise<void>\` (capability \`predictions\`) asks the
+creator to open a Twitch prediction: { title: 1..45 chars, outcomes: 2..10 distinct
+strings of 1..25 chars, windowSeconds: 30..1800 }. At most one proposal per event; an
+invalid proposal is a fault. Proposals never open, lock, resolve or cancel anything:
+the creator reviews and opens them in the console, and only the creator picks the
+winner. A proposal counts like an effect for the viewer allowance but emits no overlay
+effect, so its scenario step expects effects:0. Example:
+\`await riff.predictions.propose({ title: 'Will we win?', outcomes: ['Yes', 'No'], windowSeconds: 120 })\`
 `;
 
 export const RIFF_DTS = `declare module 'riff' {
@@ -185,7 +213,8 @@ export const RIFF_DTS = `declare module 'riff' {
     winner: string | null; outcome: 'deadline' | 'goal' | null;
   }
   export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
-  export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number }
+  export interface ChatEvent { id: string; channelId: string; viewerId: string; roles: AudienceRole[]; text: string; at: number; kind?: 'points.redeem' }
+  export interface PredictionProposal { title: string; outcomes: string[]; windowSeconds: number }
   export interface ProjectileEffect { kind: 'projectile'; asset: 'tomato' | 'star' | 'heart'; x: number }
   /** Internal host timer event; chat events have no source field. */
   export interface TimerEvent { source: 'timer.fired'; id: string; channelId: string; name: string; scheduledAt: number; firedAt: number; missed: boolean; at: number }
@@ -195,6 +224,8 @@ export const RIFF_DTS = `declare module 'riff' {
     overlay: { emit(effect: ProjectileEffect): Promise<void> };
     /** Host-owned named timers. Example: await riff.timer.start('celebrate', 60000, { repeat: false }). */
     timer: { start(name: string, ms: number, options?: { repeat?: boolean }): Promise<void>; cancel(name: string): Promise<void> };
+    /** Ask the creator to open a prediction; never opens or settles one. */
+    predictions: { propose(proposal: PredictionProposal): Promise<void> };
     util: { now(): number; random(): number };
   }
   export type Handler = (event: ChatEvent | TimerEvent, riff: Riff) => void | Promise<void>;
@@ -205,7 +236,7 @@ export const RIFF_TEST_DTS = `declare module 'riff/test' {
   export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT';
   export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>> }
   export interface TimerAssertion { fired: number; effects: number }
-  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null; timers?: TimerAssertion | null }
+  export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null; timers?: TimerAssertion | null; kind?: 'points.redeem' | null }
   export interface Scenario { name: string; kind: 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window'; steps: ScenarioStep[] }
 }
 `;

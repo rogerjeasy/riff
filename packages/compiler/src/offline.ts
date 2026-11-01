@@ -4,10 +4,11 @@ import { describeAudience, describeWindow, extractIntentHints } from './intent.j
 import { compileExperienceOffline } from './experience-output.js';
 import { compileTimerOffline } from './timer-output.js';
 import { extractTimerHint } from './timer-hints.js';
+import { compilePointsOffline } from './offline-points.js';
 import type { CompilerTransport } from './transport.js';
 
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|ban|timeout|shoutout|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -141,6 +142,8 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;
+  const points = compilePointsOffline(request);
+  if (points) return points;
   const timer = compileTimerOffline(request);
   if (timer) return timer;
   const command = hints.command ? `!${hints.command}` : base?.trigger?.command;

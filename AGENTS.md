@@ -172,7 +172,8 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
 
 ### 2.4 The Twitch boundary (`packages/twitch`)
 
-- `helix.ts` is the only place that builds Helix requests. Every response is parsed
+- `helix.ts` is the only place that builds Helix requests (endpoint modules under
+  `helix/` shape paths and bodies through its single transport). Every response is parsed
   with zod; unknown fields are allowed (`.passthrough()`), missing required fields fail.
 - Retries only on 429 and 5xx, with jittered backoff and the `Ratelimit-Reset`
   header respected; never retry 4xx. Mutations (send message, create poll) are never
@@ -402,6 +403,9 @@ Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, 
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
 `rehearsal_regressions`, `scene_heads`, `scene_revisions`, `timers`.
+
+`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `channel_point_rewards`,
+`channel_point_redemptions`, `prediction_requests`.
 
 ---
 
@@ -949,3 +953,43 @@ and cancel control. There is no overlay countdown widget yet. Prompt pack
 "every N minutes"/"in N seconds" phrasing (`fixtures/named-timers.json`). A downstream
 test (`apps/server/test/capability-sync.test.ts`) asserts the d.ts, bridge and compiler
 validator expose the same capability set. No dependencies or env vars were added.
+
+## Channel Points and Predictions — F22
+
+Authority and outcomes are separate. SDK 0.4.0 manifests may set `trigger.kind:
+'points.redeem'` with `trigger.reward` (1–45 characters); audience must be `['viewer']`
+(redemptions carry no badges) and no experience is allowed. Chat never matches such a
+trigger and redemptions never match chat triggers (`matchesTrigger`). The `predictions`
+capability (`riff.predictions.propose`) is in CAPABILITIES, the QuickJS bridge and the
+manifest validator; it validates one proposal per event against documented Twitch bounds
+(title ≤45, 2–10 distinct outcomes ≤25, 30–1800 s) and returns it in the decision. Guest
+code can never open, lock, resolve or cancel a prediction or settle a redemption.
+
+`points.redeem` maps to `channel.channel_points_custom_reward_redemption.add` v1 (fixture
+copied from the doc example). Helix modules `helix/channel-points.ts` and
+`helix/predictions.ts` cover Create/Get/Update/Delete Custom Reward, Get/Update Redemption
+Status and Create/Get/End Prediction; creations pass `retryServerErrors:false`, and 403s
+explain that only the creating client may manage a reward and that Affiliate/Partner is
+required. Riff always creates rewards with `should_redemptions_skip_request_queue:false`
+so refunds stay possible.
+
+`services/channel-points` manages only rewards in `channel_point_rewards` (Riff-created),
+links one reward to one points interaction with an `auto` or `manual` policy, dedupes by
+redemption id in `channel_point_redemptions`, routes through `runtime.handleRedemption`
+(the same durable admission, allowance and budgets as chat) and then fulfils accepted
+redemptions or refunds refused ones; unlinked, paused, not-live or panicked redemptions are
+refunded. `services/predictions` stores automation proposals in `prediction_requests`
+(5 pending, 10-minute expiry), opens them only on a creator request, enforces one
+prediction at a time and settles only via `POST /api/predictions/end` with `confirm:true`
+and an outcome id of the current prediction. Panic pauses Riff rewards, refunds the queue,
+dismisses proposals and locks an active prediction (the creator still decides the outcome).
+
+Feature consent is incremental: `/auth/twitch?features=channel-points,predictions` adds
+`channel:manage:redemptions` / `channel:manage:predictions` to the granted scopes; the
+redemption EventSub subscription is created only when that scope is present. Eligibility
+comes from Get Users `broadcaster_type`. Private guarded routes: GET `/api/channel-points`,
+POST `/api/channel-points/{refresh,rewards}`, `/rewards/:id`, `/rewards/:id/delete`
+(`confirm:true`), `/rewards/:id/link`, `/redemptions/:id`; GET `/api/predictions`, POST
+`/api/predictions`, `/refresh`, `/proposals/:id/{open,dismiss}`, `/end`. Prompt pack
+`riff-compiler/7` and the offline compiler support redemption and proposal intents and refuse
+model- or chat-decided settlement. No new dependency or environment variable.

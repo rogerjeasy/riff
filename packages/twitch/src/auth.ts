@@ -21,6 +21,17 @@ export const CHAT_READ_SCOPES: readonly string[] = TRIGGERS['chat.message'].scop
  * Requested only when the creator opts into in-chat authoring replies.
  */
 export const CHAT_WRITE_SCOPES: readonly string[] = ['user:write:chat'];
+/**
+ * Feature consent for Riff-managed Channel Points rewards: create/update/delete rewards,
+ * update redemption status and receive `points.redeem` (all "channel:manage:redemptions").
+ */
+export const CHANNEL_POINTS_SCOPES: readonly string[] = TRIGGERS['points.redeem'].scopes;
+/**
+ * Create/End Prediction require "channel:manage:predictions" (Get accepts it too).
+ * https://dev.twitch.tv/docs/api/predictions/: "Running predictions is available to
+ * partners and affiliates only."
+ */
+export const PREDICTION_SCOPES: readonly string[] = ['channel:manage:predictions'];
 
 export interface TwitchTokenSet {
   readonly accessToken: string;

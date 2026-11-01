@@ -25,6 +25,15 @@ export const TRIGGERS = {
     scopes: ['user:read:chat'],
     fixture: 'channel.chat.message.json',
   },
+  'points.redeem': {
+    type: 'channel.channel_points_custom_reward_redemption.add',
+    version: '1',
+    docs: 'https://dev.twitch.tv/docs/eventsub/eventsub-subscription-types/#channelchannel_points_custom_reward_redemptionadd',
+    // Docs: "Must have channel:read:redemptions or channel:manage:redemptions scope."
+    // Riff manages its own rewards and redemption status, so it requests the manage scope.
+    scopes: ['channel:manage:redemptions'],
+    fixture: 'channel.channel_points_custom_reward_redemption.add.json',
+  },
 } as const satisfies Record<string, TriggerDefinition>;
 
 export type TriggerName = keyof typeof TRIGGERS;

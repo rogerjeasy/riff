@@ -120,6 +120,13 @@
       "when": 1793571086086,
       "tag": "0016_named_timers",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793571755975,
+      "tag": "0017_channel_points_predictions",
+      "breakpoints": true
     }
   ]
 }

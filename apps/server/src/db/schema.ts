@@ -674,3 +674,86 @@ export const timers = sqliteTable(
     index('timers_channel_due').on(table.channelId, table.scheduledAt),
   ],
 );
+
+/**
+ * F22: Channel Points rewards Riff created on Twitch (Twitch lets only the creating
+ * client manage them) and their host-owned link to one automation plus refund policy.
+ */
+export const channelPointRewards = sqliteTable(
+  'channel_point_rewards',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    rewardId: text('reward_id').notNull(),
+    broadcasterId: text('broadcaster_id').notNull(),
+    title: text('title').notNull(),
+    cost: integer('cost').notNull(),
+    prompt: text('prompt').notNull().default(''),
+    inputRequired: integer('input_required', { mode: 'boolean' }).notNull().default(false),
+    cooldownSeconds: integer('cooldown_seconds'),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+    automationId: text('automation_id'),
+    /** `auto`: fulfil accepted, refund refused. `manual`: accepted ones wait for the creator. */
+    policy: text('policy').$type<'auto' | 'manual'>().notNull().default('auto'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('channel_point_reward_identity').on(table.channelId, table.rewardId),
+    uniqueIndex('channel_point_reward_automation').on(table.channelId, table.automationId),
+  ],
+);
+/** Durable redemption ledger: the redemption id is the dedupe identity across redeliveries. */
+export const channelPointRedemptions = sqliteTable(
+  'channel_point_redemptions',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    redemptionId: text('redemption_id').notNull(),
+    rewardId: text('reward_id').notNull(),
+    automationId: text('automation_id'),
+    viewerId: text('viewer_id').notNull(),
+    viewerName: text('viewer_name').notNull(),
+    input: text('input').notNull().default(''),
+    redeemedAt: text('redeemed_at').notNull(),
+    receivedAt: integer('received_at').notNull(),
+    /** queued, then fulfilled or refunded; failed when Twitch refused the status update. */
+    status: text('status').$type<'queued' | 'fulfilled' | 'refunded' | 'failed'>().notNull(),
+    code: text('code'),
+    reason: text('reason').notNull().default(''),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('channel_point_redemption_identity').on(table.channelId, table.redemptionId),
+    index('channel_point_redemptions_recent').on(table.channelId, table.receivedAt),
+  ],
+);
+/** Prediction proposals from automations or the console; settlement stays creator-only. */
+export const predictionRequests = sqliteTable(
+  'prediction_requests',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    source: text('source').$type<'automation' | 'console'>().notNull(),
+    automationId: text('automation_id'),
+    versionId: text('version_id'),
+    eventId: text('event_id'),
+    title: text('title').notNull(),
+    outcomes: text('outcomes', { mode: 'json' }).$type<string[]>().notNull(),
+    windowSeconds: integer('window_seconds').notNull(),
+    status: text('status').$type<'proposed' | 'dismissed' | 'opened' | 'failed'>().notNull(),
+    predictionId: text('prediction_id'),
+    message: text('message').notNull().default(''),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    index('prediction_requests_channel').on(table.channelId, table.createdAt),
+    uniqueIndex('prediction_request_event').on(table.channelId, table.automationId, table.eventId),
+  ],
+);

@@ -1,0 +1,298 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/8"
+  },
+  "records": [
+    {
+      "request": {
+        "intent": "When someone redeems 'Hydrate', show a water splash.",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay"],
+          "trigger": {
+            "kind": "points.redeem",
+            "reward": "Hydrate",
+            "command": "!hydrate",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 60000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "Redeeming \"Hydrate\" shows a star",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "r1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              }
+            ]
+          },
+          {
+            "name": "Redemption 4 is refused; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "kind": "points.redeem"
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 31,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              }
+            ]
+          },
+          {
+            "name": "Typing the handle in chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!hydrate",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "A redelivered redemption is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "kind": "points.redeem"
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "kind": "points.redeem"
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone redeems \"Hydrate\" with Channel Points",
+          "what": "A star flies across your overlay",
+          "who": "Everyone who redeems the linked reward",
+          "howMuch": "Up to 3 per viewer in any 1 min; refused redemptions are refunded"
+        },
+        "assumptions": [
+          "There is no water effect yet, so a star splash appears.",
+          "Three redemptions per viewer are admitted.",
+          "Allowance resets over a rolling 60 seconds.",
+          "Riff fulfils accepted redemptions and refunds refused ones; link the reward in Channel Points."
+        ],
+        "kind": "candidate",
+        "title": "Hydrate Splash",
+        "summary": "Redeeming \"Hydrate\" with Channel Points sends a star across the overlay."
+      }
+    },
+    {
+      "request": {
+        "intent": "When I type !predict, propose a prediction 'Will we beat the boss?' with 'Yes' and 'No' for 90 seconds.",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.predictions.propose({title: \"Will we beat the boss?\", outcomes: [\"Yes\",\"No\"], windowSeconds: 90});\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["predictions"],
+          "trigger": {
+            "command": "!predict",
+            "audience": ["broadcaster", "moderator"],
+            "maxPerViewer": 1,
+            "windowMs": 300000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "!predict proposes the prediction",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "p1",
+                "viewer": "host",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!predict",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "One proposal per five minutes",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "p1",
+                "viewer": "host",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!predict",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0
+              },
+              {
+                "id": "p2",
+                "viewer": "host",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!predict",
+                "at": 1000,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "host",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              },
+              {
+                "id": "c2",
+                "viewer": "host",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!predicts",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Viewers outside broadcasters, moderators cannot propose",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "r1",
+                "viewer": "host",
+                "roles": ["viewer"],
+                "text": "!predict",
+                "at": 0,
+                "expect": "AUDIENCE",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone types !predict in chat",
+          "what": "Riff proposes \"Will we beat the boss?\" (Yes / No, 90 s) for you to open",
+          "who": "Only broadcasters, moderators",
+          "howMuch": "One proposal per 5 min; only you open, lock, resolve or cancel it"
+        },
+        "assumptions": ["Only you and your moderators can propose it."],
+        "kind": "candidate",
+        "title": "Prediction Prompt",
+        "summary": "!predict proposes \"Will we beat the boss?\" for you to open; you choose the winner."
+      }
+    }
+  ]
+}

@@ -299,3 +299,16 @@ countdown widget. Prompt pack `riff-compiler/7` and the offline compiler support
 "every N minutes" and "in N seconds" requests. Timers inside stateful sessions remain
 unsupported. Verified with Vitest service, route, sandbox, compiler and DOM tests; no
 live Twitch stream or OBS rendering of timer fires was exercised.
+
+## Channel Points and Predictions — F22, November 1, 2026
+
+`points.redeem` maps to `channel.channel_points_custom_reward_redemption.add` v1 with a
+doc-sourced fixture; Helix Create/Get/Update/Delete Custom Reward, Get/Update Redemption
+Status and Create/Get/End Prediction are zod-parsed against documented examples (creations
+are not retried on 5xx). Migration 0015 adds `channel_point_rewards`,
+`channel_point_redemptions` and `prediction_requests`. Feature consent is requested per
+panel; eligibility comes from Get Users `broadcaster_type`. SDK 0.4.0 adds the `predictions`
+proposal capability (bridge, d.ts and validator in sync) and `trigger.kind`/`trigger.reward`.
+Settlement of redemptions is host policy; settlement of predictions requires a confirmed
+creator request. Verified with fixtures, fake Helix and a local EventSub WebSocket; no real
+Affiliate channel, reward or prediction was exercised.

@@ -1,5 +1,7 @@
 import { ChatAuthoringPanel, useChatAuthoring } from './chat-authoring/panel.js';
 import { ProductionPanel } from './production/panel.js';
+import { ChannelPointsPanel } from './channel-points/channel-points-panel.js';
+import { PredictionsPanel } from './channel-points/predictions-panel.js';
 import { ParticipationPanel } from './participation/panel.js';
 import { InsightsPanel } from './insights/panel.js';
 import { RecipeLibrary } from './recipes/library.js';
@@ -325,6 +327,8 @@ export function App() {
             document.getElementById('intent')?.focus();
           }}
         />
+        <ChannelPointsPanel />
+        <PredictionsPanel />
         <RecipeLibrary
           versions={allVersions}
           onReview={(id) => {

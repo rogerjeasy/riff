@@ -31,6 +31,7 @@ import {
   type ChatEvent,
   type PermissionManifest,
   type ExecutionDecision,
+  type PredictionProposal,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import { transitionEvidenceId } from '../../db/repositories/transitions.js';
@@ -48,6 +49,24 @@ export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
   sourceMessageId?: string;
 }
 const PANIC_COMMAND = '!riff panic';
+/** A Channel Points redemption the host already matched to one linked automation. */
+export interface LiveRedemption {
+  /** Twitch redemption id; also the durable admission identity. */
+  id: string;
+  channelId: string;
+  viewerId: string;
+  viewerName: string;
+  /** Sanitized viewer input ('' when the reward takes none). */
+  text: string;
+  automationId: string;
+}
+/** A host-validated proposal; the creator decides whether to open it. */
+export interface LivePredictionProposal {
+  automationId: string;
+  versionId: string;
+  eventId: string;
+  proposal: PredictionProposal;
+}
 
 /**
  * The live control plane for one channel. Panic flips an in-memory flag first and
@@ -65,6 +84,7 @@ export function createLiveRuntime(deps: {
   onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
+  onPredictionProposal?: (proposal: LivePredictionProposal) => void;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -116,6 +136,8 @@ export function createLiveRuntime(deps: {
   function refreshInstructions() {
     const lines = [...engines.values()].map(({ version }) => {
       const t = (version.manifest as PermissionManifest).trigger;
+      if (t.kind === 'points.redeem')
+        return `Redeem “${t.reward ?? ''}” with Channel Points · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       const who = t.audience.includes('viewer') ? '' : ` (${describeAudience(t.audience)})`;
       const experience = experienceOf(version);
       if (!experience)
@@ -348,6 +370,14 @@ export function createLiveRuntime(deps: {
       // Timer operations commit only for accepted, unfenced work, after admission is durable.
       if (fence === generation && !panic && decision.timers?.length)
         applyTimers(automationId, version.id, decision);
+      if (decision.proposals?.length && fence === generation && !panic)
+        for (const proposal of decision.proposals)
+          deps.onPredictionProposal?.({
+            automationId,
+            versionId: version.id,
+            eventId: message.id,
+            proposal,
+          });
       lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
       publishActivity({
         at: Date.now(),
@@ -416,6 +446,88 @@ export function createLiveRuntime(deps: {
           : `Timer “${row.name}”: ${decision.reason}`,
     });
     hub.publish('studio', null);
+  }
+
+  /** One redemption, one linked automation, the same durable admission as chat. */
+  async function processRedemption(input: LiveRedemption): Promise<ExecutionDecision | null> {
+    const entry = engines.get(input.automationId);
+    if (!entry || panic || closed) return null;
+    const { engine, version } = entry;
+    const trigger = (version.manifest as PermissionManifest).trigger;
+    if (trigger.kind !== 'points.redeem' || experienceOf(version)) return null;
+    lastAt = Math.max(lastAt, now());
+    const event = eventSchema.safeParse({
+      id: input.id,
+      channelId: input.channelId,
+      viewerId: input.viewerId,
+      roles: ['viewer'],
+      text: input.text,
+      at: lastAt,
+      kind: 'points.redeem',
+    });
+    if (!event.success) return null;
+    const fence = generation;
+    let decision: ExecutionDecision;
+    try {
+      if (repo.hasAdmission(input.automationId, event.data.id))
+        return {
+          eventId: event.data.id,
+          artifactId: engine.artifactId,
+          mode: 'live',
+          code: 'DUPLICATE',
+          reason: DECISION_MESSAGES.DUPLICATE,
+          effects: [],
+          viewerId: event.data.viewerId,
+          at: event.data.at,
+          allowance: null,
+        };
+      decision = await engine.dispatch(event.data);
+      if (recordsAdmission(decision.code))
+        repo.recordAdmission({
+          automationId: input.automationId,
+          eventId: event.data.id,
+          viewerId: event.data.viewerId,
+          at: event.data.at,
+          code: decision.code,
+          effects: decision.effects.length,
+        });
+    } catch {
+      generation++;
+      engine.stop();
+      engines.delete(input.automationId);
+      admissions.delete(input.automationId);
+      try {
+        repo.updateAutomation(input.automationId, { status: 'paused' });
+      } catch {
+        /* memory fence already applied */
+      }
+      refreshInstructions();
+      hub.publish('studio', null);
+      return null;
+    }
+    if (decision.code === 'INCIDENT') {
+      quarantine(input.automationId, version, engine.incident?.fault ?? 'execution incident');
+      return decision;
+    }
+    const live = fence === generation && !panic;
+    const delivered = live
+      ? overlay.deliver(decision, input.viewerName, input.automationId, version.id)
+      : 0;
+    lastEvent = { at: Date.now(), viewer: input.viewerName, code: decision.code };
+    publishActivity({
+      at: Date.now(),
+      kind: 'decision',
+      automationId: input.automationId,
+      versionId: version.id,
+      eventId: input.id,
+      viewer: input.viewerName,
+      code: live ? decision.code : 'STOPPED',
+      message:
+        decision.code === 'ACCEPTED'
+          ? `${input.viewerName} redeemed “${trigger.reward ?? ''}” · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+          : decision.reason,
+    });
+    return live ? decision : { ...decision, code: 'STOPPED', effects: [] };
   }
 
   async function applyTransition(id: string) {
@@ -738,6 +850,19 @@ export function createLiveRuntime(deps: {
         .finally(() => {
           pendingChat--;
         });
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /**
+     * Route a linked redemption through admission and budgets. Null means it never reached
+     * a live engine (stopped, panicked, not live); the caller refunds per host policy.
+     */
+    handleRedemption(input: LiveRedemption): Promise<ExecutionDecision | null> {
+      if (closed || panic) return Promise.resolve(null);
+      const fence = generation;
+      const next = queue.then(() =>
+        fence === generation && !closed && !panic ? processRedemption(input) : null,
+      );
       queue = next.catch(() => undefined);
       return next;
     },
