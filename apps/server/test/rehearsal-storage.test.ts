@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { compileOffline } from '@riff/compiler';
-import { createSessionSnapshot, type RehearsalScenario } from '@riff/sandbox';
+import {
+  createSessionSnapshot,
+  rehearsalScenarioHash,
+  rehearsalScenarioSchema,
+  type RehearsalScenario,
+} from '@riff/sandbox';
 import type { ExperienceDefinition } from '@riff/sdk';
 import { createApp, migrateConnection, type RiffApp } from '../src/app.js';
 import { openDatabase } from '../src/db/client.js';
@@ -396,6 +401,219 @@ it('serializes expensive work, aborts cancellation/shutdown and releases the ope
     timed.close();
   } finally {
     service.close();
+    connection.close();
+  }
+}, 60_000);
+
+it('pins imported captures before edits and resolves only owned durable run provenance on new saves', async () => {
+  const connection = openDatabase(':memory:');
+  migrateConnection(connection);
+  const app = await createApp({ logger: false, database: connection });
+  apps.push(app);
+  try {
+    const service = app.riff.rehearsal;
+    const row = addVersion(app.riff.repo, true);
+    const definition = (row.manifest as { experience: ExperienceDefinition }).experience;
+    const snapshot = createSessionSnapshot(definition, 1000, 'pinned-round');
+    app.riff.repo.replaceSession({
+      automationId: row.automationId,
+      versionId: row.id,
+      definition,
+      snapshot,
+    });
+    const post = (url: string, payload: object) =>
+      app.inject({ method: 'POST', url, payload, headers: { 'x-riff-request': '1' } });
+    const capture = (
+      await post('/api/rehearsals/scenarios', {
+        name: 'Capture',
+        recording: { versionId: row.id, sessionId: snapshot.id, seed: 42 },
+      })
+    ).json().scenario;
+    const recorded = await service.runScenario(capture.id, {
+      expectedRevision: 0,
+      versionId: row.id,
+    });
+    // Later journal entries must not change the already imported capture or its source hash.
+    connection.client
+      .prepare(
+        'INSERT INTO session_journal(channel_id,session_id,automation_id,version_id,kind,at,event,code,digest) VALUES (?,?,?,?,?,?,?,?,?)',
+      )
+      .run('home', snapshot.id, row.automationId, row.id, 'advance', 1100, null, null, 'digest');
+    expect(
+      service.recording({ versionId: row.id, sessionId: snapshot.id, seed: 42 }).steps,
+    ).toHaveLength(1);
+    expect(service.scenario(capture.id).scenario.steps).toHaveLength(0);
+    const clean = { ...capture.scenario, provenance: { kind: 'synthetic' as const } };
+    const renamed = service.update(capture.id, {
+      name: 'Renamed',
+      expectedRevision: 0,
+      scenario: clean,
+    });
+    expect(renamed.scenario).toEqual(capture.scenario);
+    const edited = service.update(capture.id, {
+      name: 'Injected',
+      expectedRevision: 1,
+      scenario: { ...clean, steps: [{ kind: 'advance', key: 'injected', at: 1200 }] },
+    });
+    const derivative = {
+      kind: 'synthetic-derivative',
+      sourceScenarioHash: rehearsalScenarioHash(capture.scenario),
+    };
+    expect(edited.scenario.provenance).toEqual(derivative);
+    expect(service.scenario(edited.id)).toEqual(edited);
+    const editedRun = await service.runScenario(edited.id, {
+      expectedRevision: 2,
+      versionId: row.id,
+    });
+    expect(editedRun.result.provenance).toEqual(derivative);
+    for (const source of [recorded, editedRun]) {
+      for (const changed of [false, true]) {
+        const inputs = {
+          ...source.scenario,
+          seed: changed ? 43 : source.scenario.seed,
+          provenance: { kind: 'synthetic' },
+        };
+        const response = await post('/api/rehearsals/scenarios', {
+          name: 'Adopted',
+          scenario: inputs,
+          sourceRunId: source.id,
+        });
+        expect(response.statusCode).toBe(201);
+        const saved = response.json().scenario;
+        expect(saved.scenario.provenance).toEqual(
+          changed
+            ? {
+                kind: 'synthetic-derivative',
+                sourceScenarioHash: rehearsalScenarioHash(source.scenario),
+              }
+            : source.scenario.provenance,
+        );
+        expect(service.scenario(saved.id).scenario).toEqual(saved.scenario);
+        expect(
+          (await service.runScenario(saved.id, { expectedRevision: 0, versionId: row.id })).result
+            .provenance,
+        ).toEqual(saved.scenario.provenance);
+      }
+      expect(
+        (
+          await post('/api/rehearsals/scenarios', {
+            name: 'Forged',
+            scenario: source.scenario,
+            sourceRunId: source.id,
+          })
+        ).statusCode,
+      ).toBe(400);
+    }
+    const other = forChannel(connection, 'other');
+    other.ensure('Other');
+    const isolated = createRehearsalService(other);
+    expect(() =>
+      isolated.create({ name: 'Foreign', scenario: clean, sourceRunId: recorded.id }),
+    ).toThrowError('unavailable');
+    const foreignVersion = addVersion(other);
+    const foreignScenario = isolated.create({ name: 'Foreign', scenario });
+    const foreignRun = await isolated.runScenario(foreignScenario.id, {
+      versionId: foreignVersion.id,
+      expectedRevision: 0,
+    });
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Foreign source',
+          scenario: clean,
+          sourceRunId: foreignRun.id,
+        })
+      ).statusCode,
+    ).toBe(404);
+    await isolated.close();
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Missing',
+          scenario: clean,
+          sourceRunId: randomUUID(),
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Forged hash',
+          scenario: clean,
+          sourceRunId: recorded.id,
+          sourceScenarioHash: 'a'.repeat(64),
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Mixed authority',
+          recording: { versionId: row.id, sessionId: snapshot.id, seed: 42 },
+          sourceRunId: recorded.id,
+        })
+      ).statusCode,
+    ).toBe(400);
+    const nearCap: RehearsalScenario = {
+      ...scenario,
+      expectations: [],
+      steps: Array.from({ length: 120 }, (_, i) => ({
+        kind: 'chat' as const,
+        key: `step-${i}`,
+        event: {
+          id: `event-${i}`,
+          channelId: 'rehearsal',
+          viewerId: 'viewer',
+          roles: [],
+          text: 'x'.repeat(500),
+          at: 1000,
+        },
+      })),
+    };
+    let padding = 131050 - Buffer.byteLength(JSON.stringify(nearCap));
+    for (const step of nearCap.steps) {
+      if (step.kind !== 'chat') continue;
+      const extra = Math.min(padding, 1000);
+      step.event.text =
+        '€'.repeat(Math.floor(extra / 2)) +
+        (extra % 2 ? 'é' : '') +
+        'x'.repeat(500 - Math.ceil(extra / 2));
+      padding -= extra;
+    }
+    expect(Buffer.byteLength(JSON.stringify(nearCap))).toBe(131050);
+    expect(rehearsalScenarioSchema.safeParse(nearCap).success).toBe(true);
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Too large after metadata',
+          scenario: nearCap,
+          sourceRunId: recorded.id,
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(() =>
+      service.update(capture.id, { name: 'Too large', expectedRevision: 2, scenario: nearCap }),
+    ).toThrowError('Invalid');
+    expect(service.scenario(capture.id).revision).toBe(2);
+    // Pruned sources fail closed instead of silently saving synthetic inputs.
+    for (let i = 0; i < 101; i++)
+      app.riff.repo.insertRehearsalRun({
+        ...recorded,
+        id: randomUUID(),
+        createdAt: Date.now() + i,
+      });
+    expect(
+      (
+        await post('/api/rehearsals/scenarios', {
+          name: 'Pruned',
+          scenario: clean,
+          sourceRunId: recorded.id,
+        })
+      ).statusCode,
+    ).toBe(404);
+  } finally {
+    await app.close();
+    apps.splice(apps.indexOf(app), 1);
     connection.close();
   }
 }, 60_000);

@@ -29,9 +29,15 @@ requires a valid single-version start and at most 120 complete steps, and refuse
 migration-spanning or oversized input. It replaces account/event/channel identities,
 keeps duplicate relationships and roles, and replaces unrelated chat with a fixed
 marker. Only recognized contribution/join commands survive. Saved recordings can be
-created only through the host recording selector; subsequent edits become synthetic
-derivatives. Cosmetic randomness after anonymization is not a byte-identical live
-audit. Existing session audit is separate.
+created through the host recording selector or unchanged copies of an owned durable
+run. The studio imports directly into a saved capture, so later journal growth cannot
+change its origin. New scenario saves may supply `sourceRunId`; the host resolves the
+channel-owned immutable run and preserves its provenance only for unchanged inputs.
+Changed inputs become synthetic derivatives of that exact source hash. Name-only
+updates preserve provenance; input edits to stored recordings/derivatives bind their
+prior hash. Client provenance must still be synthetic, and the full 128 KiB bound is
+checked after host metadata is assigned. Missing or pruned sources fail closed.
+Cosmetic randomness after anonymization is not a byte-identical live audit. Existing session audit is separate.
 
 Authoring pins applicable ancestor regression records before queueing. Bounded
 quoted JSON evidence goes to the compiler in `rehearsalContext`, independently from

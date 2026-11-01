@@ -86,7 +86,7 @@ export function registerRehearsalRoutes(
     'POST',
     '/api/rehearsals/scenarios',
     z.union([
-      z.object({ name, scenario: rehearsalScenarioSchema }).strict(),
+      z.object({ name, scenario: rehearsalScenarioSchema, sourceRunId: id.optional() }).strict(),
       z.object({ name, recording }).strict(),
     ]),
     (body) => ({ scenario: rehearsal.create(body) }),

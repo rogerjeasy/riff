@@ -263,22 +263,49 @@ export function createRehearsalService(
       });
     });
   }
+  function fromSource(value: RehearsalScenario, source: RehearsalScenario) {
+    // Compare normalized inputs without trusting client provenance. The durable source
+    // alone grants recorded authority; edited inputs bind the exact source capture.
+    const unchanged =
+      rehearsalScenarioHash(value) ===
+      rehearsalScenarioHash({
+        ...source,
+        provenance: { kind: 'synthetic' },
+      });
+    return {
+      ...value,
+      provenance: unchanged
+        ? source.provenance
+        : {
+            kind: 'synthetic-derivative' as const,
+            sourceScenarioHash: rehearsalScenarioHash(source),
+          },
+    };
+  }
   return {
     scenarios: () => repo.rehearsalScenarios(),
     scenario,
     create(input: {
       name: string;
       scenario?: RehearsalScenario;
+      sourceRunId?: string | undefined;
       recording?: { versionId: string; sessionId: string; seed: number };
     }) {
-      const value = input.recording ? recording(input.recording) : input.scenario;
+      if (input.recording && (input.scenario || input.sourceRunId !== undefined))
+        throw new RehearsalServiceError('INVALID');
+      let value = input.recording ? recording(input.recording) : input.scenario;
       if (!value || (!input.recording && value.provenance.kind !== 'synthetic'))
         throw new RehearsalServiceError('INVALID');
+      if (input.sourceRunId !== undefined)
+        value = fromSource(value, run(input.sourceRunId).scenario);
+      // Recheck the full byte cap after the host adds provenance metadata.
+      const parsed = rehearsalScenarioSchema.safeParse(value);
+      if (!parsed.success) throw new RehearsalServiceError('INVALID');
       return repo.saveRehearsalScenario({
         id: randomUUID(),
         name: input.name,
         revision: 0,
-        scenario: rehearsalScenarioSchema.parse(value),
+        scenario: parsed.data,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -293,13 +320,7 @@ export function createRehearsalService(
       const value =
         old.scenario.provenance.kind === 'synthetic'
           ? input.scenario
-          : {
-              ...input.scenario,
-              provenance: {
-                kind: 'synthetic-derivative' as const,
-                sourceScenarioHash: rehearsalScenarioHash(old.scenario),
-              },
-            };
+          : fromSource(input.scenario, old.scenario);
       const parsed = rehearsalScenarioSchema.safeParse(value);
       if (!parsed.success) throw new RehearsalServiceError('INVALID');
       return repo.saveRehearsalScenario(
