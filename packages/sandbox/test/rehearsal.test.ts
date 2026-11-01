@@ -540,3 +540,67 @@ it('spaces stateless arrival and deadline presets across low channel budgets', a
     expect(run.status).toBe('passed');
   }
 });
+
+it('retains valid unchanged provenance near the byte cap and skips oversized derivative candidates', async () => {
+  const candidate = artifact(true);
+  const experience = { ...definition, maxParticipants: 256 };
+  candidate.manifest.experience = experience;
+  const initialSession = host.pauseSession(
+    host.createSessionSnapshot(experience, 0, 'large-origin'),
+    0,
+    experience,
+  );
+  const participants = Array.from(
+    { length: 256 },
+    (_, i) => [`viewer-${i}`, { teamId: 'red', remaining: 3, contributions: 0 }] as const,
+  );
+  initialSession.participants = Object.fromEntries(participants);
+  const input: host.RehearsalScenario = {
+    ...scenario([
+      { kind: 'resume', key: 'required', at: 0 },
+      { kind: 'advance', key: 'selected', at: 1 },
+    ]),
+    initialSession,
+    expectations: [{ id: 'phase', stepKey: 'selected', kind: 'phase', value: 'paused' }],
+  };
+  // JSON escapes an unpaired surrogate as six bytes; bounded synthetic viewer keys
+  // let this exercise the serialized byte limit with only two real host controls.
+  let padding = 131070 - Buffer.byteLength(JSON.stringify(input), 'utf8');
+  initialSession.participants = Object.fromEntries(
+    participants.map(([id, participant]) => {
+      const escaped = Math.min(100 - id.length, Math.floor(padding / 6));
+      padding -= escaped * 6;
+      const remainder = padding < 6 ? Math.min(padding, 100 - id.length - escaped) : 0;
+      padding -= remainder;
+      return [id + '\ud800'.repeat(escaped) + 'x'.repeat(remainder), participant];
+    }),
+  );
+  expect(padding).toBe(0);
+  expect(Buffer.byteLength(JSON.stringify(input), 'utf8')).toBe(131070);
+  expect(host.rehearsalScenarioSchema.safeParse(input).success).toBe(true);
+  const withoutRequired = { ...input, steps: input.steps.slice(1) };
+  expect((await host.runRehearsal({ artifact: candidate, scenario: withoutRequired })).status).toBe(
+    'passed',
+  );
+  const oversized = {
+    ...withoutRequired,
+    provenance: { kind: 'synthetic-derivative', sourceScenarioHash: 'a'.repeat(64) },
+  };
+  expect(host.rehearsalScenarioSchema.safeParse(oversized).success).toBe(false);
+  const reduced = await host.minimizeCounterexample({
+    artifact: candidate,
+    scenario: input,
+    checkId: 'expect:phase',
+  });
+  expect(reduced.scenario.steps).toEqual(input.steps);
+  expect(reduced.scenario.provenance).toEqual({ kind: 'synthetic' });
+  expect(Buffer.byteLength(JSON.stringify(reduced.scenario), 'utf8')).toBe(131070);
+  expect(reduced.removedSteps).toBe(0);
+  expect(reduced.attempts).toBe(2);
+  expect(reduced.dispatchedSteps).toBe(4);
+  expect(reduced.budgetStopped).toBe(false);
+  expect(reduced.run.checks.find((check) => check.id === 'expect:phase')).toMatchObject({
+    status: 'failed',
+    actual: 'running',
+  });
+});

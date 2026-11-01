@@ -60,10 +60,7 @@ export async function minimizeCounterexample(
   const signature = rehearsalHash(failure);
   const reproduces = (run: RehearsalResult) =>
     run.checks.some((c) => c.status === 'failed' && rehearsalHash(identity(c)) === signature);
-  let best: RehearsalScenario = {
-    ...original,
-    provenance: { kind: 'synthetic-derivative', sourceScenarioHash: baseline.scenarioHash },
-  };
+  let best = original;
   let attempts = 1;
   let dispatchedSteps = original.steps.length;
   let budgetStopped = false;
@@ -82,7 +79,10 @@ export async function minimizeCounterexample(
         ...best,
         steps,
         expectations: best.expectations.filter((c) => !removed.has(c.stepKey)),
+        provenance: { kind: 'synthetic-derivative', sourceScenarioHash: baseline.scenarioHash },
       };
+      // Derivative metadata can cost more bytes than a small deletion saves.
+      if (!rehearsalScenarioSchema.safeParse(candidate).success) continue;
       // Always reserve a full final validation of the current best, including controls.
       if (
         attempts + 1 >= REHEARSAL_LIMITS.minimizationReplays ||
