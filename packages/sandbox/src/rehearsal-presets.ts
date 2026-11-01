@@ -25,6 +25,8 @@ export function createRehearsalPreset(
   z.enum(REHEARSAL_PRESETS).parse(preset);
   const { manifest } = artifactSchema.parse(candidate);
   const definition = manifest.experience;
+  // Acceptance requires both the viewer window and the cosmetic channel window to expire.
+  const statelessWindowMs = Math.max(manifest.trigger.windowMs, 60_000);
   const reachesGoal = (contributions: number) =>
     definition?.objective.kind === 'collective-goal' &&
     definition.contribution.points * contributions >= (definition.objective.target ?? Infinity);
@@ -83,9 +85,7 @@ export function createRehearsalPreset(
     case 'late-arrival':
       join();
       add(manifest.trigger.command);
-      advance(
-        definition ? Math.floor(definition.durationMs / 2) : manifest.trigger.windowMs + clock,
-      );
+      advance(definition ? Math.floor(definition.durationMs / 2) : statelessWindowMs + clock);
       join('late-viewer');
       add(
         manifest.trigger.command,
@@ -117,7 +117,7 @@ export function createRehearsalPreset(
     case 'deadline':
       join();
       add(manifest.trigger.command);
-      advance(definition?.durationMs ?? manifest.trigger.windowMs + clock);
+      advance(definition?.durationMs ?? statelessWindowMs + clock);
       add(manifest.trigger.command, 'viewer-1', definition ? 'SESSION_FINISHED' : 'ACCEPTED');
       break;
   }

@@ -526,3 +526,17 @@ it('stops at 24 replays when the replay budget is tighter than the step budget',
   expect(reduced.dispatchedSteps).toBeLessThan(2400);
   expect(reduced.run.checks.find((c) => c.id === 'expect:all-points')?.actual).toBe(78);
 }, 60000);
+
+it('spaces stateless arrival and deadline presets across low channel budgets', async () => {
+  const candidate = artifact();
+  candidate.manifest.limits.effectsPerMinute = 1;
+  for (const preset of ['late-arrival', 'deadline'] as const) {
+    const input = host.createRehearsalPreset(candidate, preset, 7);
+    const run = await host.runRehearsal({ artifact: candidate, scenario: input });
+    expect(run.timeline.flatMap((frame) => (frame.decision ? [frame.decision.code] : []))).toEqual([
+      'ACCEPTED',
+      'ACCEPTED',
+    ]);
+    expect(run.status).toBe('passed');
+  }
+});
