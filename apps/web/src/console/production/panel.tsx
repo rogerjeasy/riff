@@ -5,18 +5,20 @@ import type { ProductionState } from './contracts.js';
 import { Connector } from './connector.js';
 import { ObsSetup } from './obs-setup.js';
 import { ProductionMappings } from './mappings.js';
+import { ImportWizard } from './import-wizard.js';
 import { useProduction } from './use-production.js';
 
 function summary(state: ProductionState | null, panic: boolean): { text: string; tone: Tone } {
   if (panic) return { text: 'Stopped', tone: 'warn' };
   if (!state) return { text: 'Loading…', tone: 'muted' };
-  const { obs, streamerbot } = state.connections;
-  if (obs.status === 'error' || streamerbot.status === 'error')
+  const { obs, streamerbot, firebot } = state.connections;
+  if ([obs, streamerbot, firebot].some((c) => c.status === 'error'))
     return { text: 'Needs attention', tone: 'bad' };
   const live = state.obsReview?.status === 'live';
   const names = [
     obs.status === 'connected' && 'OBS',
     streamerbot.status === 'connected' && 'Streamer.bot',
+    firebot.status === 'connected' && 'Firebot',
   ].filter(Boolean);
   if (!names.length)
     return { text: live ? 'Overlay placed · offline' : 'Not connected', tone: 'muted' };
@@ -24,12 +26,21 @@ function summary(state: ProductionState | null, panic: boolean): { text: string;
 }
 const time = (at: number) => new Date(at).toLocaleTimeString();
 
-export function ProductionPanel({ versions, panic }: { versions: Version[]; panic: boolean }) {
-  const { state, busy, error, mutate } = useProduction();
+export function ProductionPanel({
+  versions,
+  panic,
+  onDraftIntent,
+}: {
+  versions: Version[];
+  panic: boolean;
+  /** Hands an imported interaction description to the composer for editing and testing. */
+  onDraftIntent?: (text: string) => void;
+}) {
+  const { state, busy, error, mutate, send } = useProduction();
   return (
     <PanelCard
       title="Production setup"
-      subtitle="Place Riff in OBS and let selected Streamer.bot actions start or pause interactions."
+      subtitle="Place Riff in OBS, bridge Streamer.bot or Firebot actions, and import existing setups."
       className="production-panel"
       status={summary(state, panic)}
       actions={
@@ -39,9 +50,10 @@ export function ProductionPanel({ versions, panic }: { versions: Version[]; pani
       }
     >
       <p className="panel-lead">
-        Riff connects from its own server to your tools’ WebSocket servers, with their passwords
-        sealed on the server. On the streaming PC use <code>127.0.0.1</code>; a hosted Riff needs a
-        reachable, secured endpoint. The emergency stop fences every external action instantly.
+        Riff connects from its own server to your tools’ local servers; passwords and keys are used
+        only for the live connection and never stored. On the streaming PC use{' '}
+        <code>127.0.0.1</code>; a hosted Riff needs a reachable, secured endpoint (Firebot is
+        local-network only). The emergency stop fences every external action instantly.
       </p>
       {!state ? (
         error ? (
@@ -56,6 +68,7 @@ export function ProductionPanel({ versions, panic }: { versions: Version[]; pani
           <div className="production-connectors">
             <Connector kind="obs" state={state} busy={busy} panic={panic} mutate={mutate} />
             <Connector kind="streamerbot" state={state} busy={busy} panic={panic} mutate={mutate} />
+            <Connector kind="firebot" state={state} busy={busy} panic={panic} mutate={mutate} />
           </div>
           <ObsSetup state={state} busy={busy} panic={panic} mutate={mutate} />
           <ProductionMappings
@@ -64,6 +77,14 @@ export function ProductionPanel({ versions, panic }: { versions: Version[]; pani
             busy={busy}
             panic={panic}
             mutate={mutate}
+          />
+          <ImportWizard
+            state={state}
+            versions={versions}
+            busy={busy}
+            panic={panic}
+            send={send}
+            onDraftIntent={onDraftIntent}
           />
           {state.recent.length > 0 && (
             <details>

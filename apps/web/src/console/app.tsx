@@ -317,7 +317,14 @@ export function App() {
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
         <InsightsPanel />
-        <ProductionPanel versions={allVersions} panic={studio.panic} />
+        <ProductionPanel
+          versions={allVersions}
+          panic={studio.panic}
+          onDraftIntent={(text) => {
+            setDraft(text);
+            document.getElementById('intent')?.focus();
+          }}
+        />
         <RecipeLibrary
           versions={allVersions}
           onReview={(id) => {

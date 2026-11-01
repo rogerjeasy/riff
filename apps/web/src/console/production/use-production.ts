@@ -36,26 +36,39 @@ export function useProduction() {
       epoch.current++;
     };
   }, []);
-  async function mutate(path: string, body: unknown) {
-    if (mutating.current) return false;
+  /**
+   * One serialized production request. The response is parsed with `schema`; when it
+   * carries a production state, that state replaces the polled one.
+   */
+  async function send<T>(
+    path: string,
+    body: unknown,
+    schema: z.ZodType<T>,
+    options: { quiet?: boolean } = {},
+  ): Promise<{ ok: true; value: T } | { ok: false; message: string }> {
+    if (mutating.current) return { ok: false, message: 'Another production change is running.' };
     mutating.current = true;
     epoch.current++;
     setBusy(true);
-    setError('');
+    if (!options.quiet) setError('');
     try {
-      const next = z
-        .object({ state: stateSchema })
-        .parse(await request('POST', '/api/production/' + path, body, controller.current?.signal));
-      if (!controller.current?.signal.aborted) setState(next.state);
-      return true;
+      const value = schema.parse(
+        await request('POST', '/api/production/' + path, body, controller.current?.signal),
+      );
+      const next = stateSchema.safeParse((value as { state?: unknown } | null)?.state);
+      if (next.success && !controller.current?.signal.aborted) setState(next.data);
+      return { ok: true, value };
     } catch (e) {
-      if (!controller.current?.signal.aborted)
-        setError(e instanceof Error ? e.message : 'Production operation failed.');
-      return false;
+      const message = e instanceof Error ? e.message : 'Production operation failed.';
+      if (!controller.current?.signal.aborted && !options.quiet) setError(message);
+      return { ok: false, message };
     } finally {
       mutating.current = false;
       if (!controller.current?.signal.aborted) setBusy(false);
     }
   }
-  return { state, busy, error, mutate };
+  async function mutate(path: string, body: unknown) {
+    return (await send(path, body, z.object({ state: stateSchema }))).ok;
+  }
+  return { state, busy, error, mutate, send };
 }

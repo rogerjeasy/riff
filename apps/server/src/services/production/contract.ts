@@ -17,7 +17,8 @@ export class ProductionError extends Error {
  */
 export class ToolRefusal extends Error {}
 export const name = z.string().trim().min(1).max(120);
-export const kindSchema = z.enum(['obs', 'streamerbot']);
+export const kindSchema = z.enum(['obs', 'streamerbot', 'firebot']);
+export const botKindSchema = z.enum(['streamerbot', 'firebot']);
 export const mappingSchema = z
   .object({
     id: name,
@@ -25,6 +26,7 @@ export const mappingSchema = z
     versionId: z.string().uuid(),
     control: z.enum(['start', 'pause']),
     actionId: name.nullable(),
+    tool: botKindSchema.optional(),
   })
   .strict();
 export const mappingsSchema = z
@@ -115,6 +117,50 @@ export function connectionUrl(raw: string) {
     );
   return u.toString();
 }
+const privateHost = (host: string) => {
+  const octets = host.split('.').map(Number);
+  return (
+    host === 'localhost' ||
+    host === '::1' ||
+    (isIP(host) === 4 &&
+      (octets[0] === 127 ||
+        octets[0] === 10 ||
+        (octets[0] === 192 && octets[1] === 168) ||
+        (octets[0] === 172 && (octets[1] ?? -1) >= 16 && (octets[1] ?? -1) <= 31)))
+  );
+};
+/**
+ * Firebot's HTTP API has no authentication, so Riff only reaches it on an explicitly
+ * entered local/private address (http or https), never a public host.
+ */
+export function firebotUrl(raw: string) {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new ProductionError(
+      'INVALID',
+      'Enter a valid Firebot address, such as http://127.0.0.1:7472.',
+    );
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (
+    !['http:', 'https:'].includes(u.protocol) ||
+    u.username ||
+    u.password ||
+    u.search ||
+    u.hash ||
+    (u.pathname !== '/' && u.pathname !== '') ||
+    !privateHost(host)
+  )
+    throw new ProductionError(
+      'INVALID',
+      'Firebot has no API authentication, so use its local or private-network address (for example http://127.0.0.1:7472) without credentials, paths or query strings.',
+    );
+  return u.toString();
+}
+/** Minimum length of the creator-chosen key that authenticates inbound Firebot events. */
+export const FIREBOT_KEY_MIN = 12;
 /** Discovery lists are bounded by the service, which reports skipped entries. */
 export const discoveryLimits = { scenes: 200, actions: 500, name: 120 } as const;
 export interface ObsTransport {
@@ -136,6 +182,8 @@ export interface BotTransport {
   disconnect(): void;
   actions(): Promise<{ id: string; name: string; enabled: boolean }[]>;
   invoke(actionId: string, args: Record<string, unknown>): Promise<void>;
+  /** Read-only command discovery (Firebot); shown to the creator, never invoked. */
+  commands?(): Promise<{ id: string; trigger: string }[]>;
 }
 export type SetupInput = z.infer<typeof setupSchema>;
 export type ConnectInput = z.infer<typeof connectSchema>;
@@ -157,4 +205,6 @@ export interface StoredProduction {
   mappings: ProductionMapping[];
   receipts: { id: string; causal: string; at: number }[];
   completed: Record<string, string>;
+  /** Native import items already drafted, keyed `${tool}:${itemId}` (idempotent re-import). */
+  imports?: Record<string, 'intent' | 'bridge'>;
 }

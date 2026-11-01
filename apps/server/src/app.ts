@@ -65,7 +65,10 @@ import type { FetchLike } from '@riff/twitch';
 export const HOME_CHANNEL = 'home';
 
 interface AppDependencies {
-  production?: Pick<Parameters<typeof createProductionService>[0], 'obsFactory' | 'botFactory'>;
+  production?: Pick<
+    Parameters<typeof createProductionService>[0],
+    'obsFactory' | 'botFactory' | 'firebotFactory'
+  >;
   checkDatabase?: () => boolean;
   logger: NonNullable<FastifyServerOptions['logger']>;
   webRoot?: string;

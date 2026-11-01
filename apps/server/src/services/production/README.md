@@ -94,9 +94,50 @@ clock expiry cannot replay a finished round. Approval baselines already-finished
 Observer work is single-flight. Outbound metadata preserves causal loop protection;
 a tool that strips it cannot generate an accepted inbound event.
 
+## Firebot
+
+Firebot is a third connector (`kind:"firebot"`) using the same mapping, receipt, hop and
+finished-round rules as Streamer.bot. Mappings carry an optional `tool`
+(`"streamerbot"` when absent, so version 1 documents keep working); events only match
+mappings of the tool that delivered them, and finished-round actions run on that tool.
+Reconnecting or losing a bot clears the pending review and revokes only that tool's
+mappings. Firebot's local API has no authentication, so `url` must be a local or private
+`http(s)` address without credentials, path or query, and `password` is a creator-chosen
+event key of at least 12 characters that every inbound custom event must carry as
+`riff.key` (never stored). Allowed round-finished actions are discovered preset effect
+lists (`preset:<id>`) and custom variables (`variable:<name>`). See the
+[Firebot adapter](../../adapters/firebot/README.md).
+
+## Native import from Streamer.bot, Firebot and OBS
+
+`native/` reads exports as bounded data (256 KiB text, 1 MiB after decompression, 200
+items, 50 parts and 12 review lines per item); nothing is executed, fetched or evaluated.
+Firebot `.firebotsetup` files (commands, events, event sets, preset effect lists) and OBS
+scene collections (scenes, browser/media sources, `scripts-tool` scripts, plugin modules)
+follow their published source. Streamer.bot exports are best-effort because the format is
+undocumented (`// UNVERIFIED:` in `native/streamer-bot.ts` and `native/index.ts`): JSON or
+an import string (base64 of `SBAE` + gzip) is accepted, and parts are recognised only by
+descriptive type names and target fields.
+
+Recognised triggers are chat commands, cheers, subscriptions, raids, channel-point
+redemptions and follows; recognised actions are scene switch, source visibility, play
+media and chat message. Scripts, C# code, run-program steps, conditional/nested steps and
+unknown parts are listed as "needs review"; disabled items and components without a Riff
+equivalent are skipped with a reason. Browser-source URLs show only their host and file
+paths only their final segment, so overlay keys and local layouts never appear.
+
+Each report item is `mapped`, `review`, `imported` (reference only) or `skipped`, with a
+deterministic id. The creator decides per item: draft an authoring intent (handed to the
+composer and then the normal compile → test → approve pipeline), draft a bridge mapping
+(`import-<id>`, bot tools only, pinned to a chosen approved version and operation) or leave
+it out. Bridges are staged with `stageDrafts` through the existing mapping review and are
+never approved by import. A drafted ledger (`imports`, at most 1,000 entries in
+`production_state`) marks items already drafted, so re-importing the same export is
+idempotent and produces the same mapping ids.
+
 ## Import and routes
 
-Only `{format:"riff-production",version:1,mappings:[...]}` is supported. Import never
+Only `{format:"riff-production",version:1,mappings:[...]}` is supported by `/import`. Import never
 throws for unsupported content; it stages a review whose `unsupported` list blocks
 approval. Native Streamer.bot/Firebot exports are named unsupported. A riff-production
 document with another version, schema failures (for example 21 mappings) or
@@ -108,19 +149,23 @@ Maximum import size is 32 KiB; HTTP body cap is 40 KiB.
 
 GET `/api/production` returns `{state}`. Guarded POST routes also return `{state}`:
 
-- `/connect`: `{kind:"obs"|"streamerbot",url,password,discover:true}`.
+- `/connect`: `{kind:"obs"|"streamerbot"|"firebot",url,password,discover:true}`.
 - `/disconnect`: `{kind}`.
 - `/obs/review`: `{sceneName,inputName,width,height}` (320–3840 × 240–2160).
 - `/obs/apply`, `/obs/confirm`, `/obs/rollback`: `{digest}`.
-- `/mappings/review`: `{mappings:[{id,eventName,versionId,control:"start"|"pause",actionId:null|string}]}`.
+- `/mappings/review`: `{mappings:[{id,eventName,versionId,control:"start"|"pause",actionId:null|string,tool?:"streamerbot"|"firebot"}]}`.
 - `/mappings/approve`: `{digest}` — replaces the live mappings.
 - `/mappings/discard`: `{digest}` — drops the pending review; live mappings unchanged.
 - `/import`: `{document}`.
+- `/import/preview`: `{tool:"streamerbot"|"firebot"|"obs",text}` → `{report}` (no state change).
+- `/import/drafts`: `{tool,text,decisions:[{id,decision:"intent"|"bridge"|"skip",versionId?,control?}]}`
+  → `{state,report,intents}`. Both import routes accept bodies up to 300 KiB.
 
 Modules: `runtime.ts` (storage, epochs, per-connector deadlines, `revoke`, panic stop),
 `connections.ts` (connect/discovery/disconnect), `obs-setup.ts`, `mappings.ts`
 (review/approve/discard/import and diffs), `events.ts` (receipts, inbound events,
-round-finished actions); `service.ts` only composes them.
+round-finished actions), `imports.ts` and `native/` (native export reading and drafts);
+`service.ts` only composes them.
 
 Root calls synchronous `stop()` during panic, `observe()` on its timer and `close()`
 on shutdown. Tests inject transports and use real SQLite. `production-protocol.test.ts`
