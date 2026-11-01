@@ -1,3 +1,5 @@
+import { renderCollaboration } from './collaboration.js';
+import type { SharedProjection } from '../collaboration/schema.js';
 import { renderCommunity } from './community.js';
 import type { Community } from '../community/schema.js';
 import { overlayMessageSchema } from './messages.js';
@@ -22,24 +24,43 @@ const sceneOverlay = createSceneOverlay(stage, { reducedMotion, showLabels });
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 let retry = 0;
 let community: Community | null = null;
+let collaboration: SharedProjection | null = null;
+let collaborationAt = 0;
+const collaborationRoot = document.createElement('section');
+collaborationRoot.className = 'overlay-community';
+collaborationRoot.setAttribute('aria-label', 'Shared experience');
+root.append(collaborationRoot);
 const communityRoot = document.createElement('section');
 communityRoot.className = 'overlay-community';
 communityRoot.setAttribute('aria-label', 'Community co-creation');
 root.append(communityRoot);
 function renderCommunitySafely() {
   const area = sceneOverlay.communityRegion();
-  renderCommunity(communityRoot, area ? community : null, Date.now());
+  renderCommunity(communityRoot, area && !collaboration ? community : null, Date.now());
+  renderCollaboration(
+    collaborationRoot,
+    area ? collaboration : null,
+    area
+      ? {
+          width: (innerWidth * area.width) / 1000,
+          height: (innerHeight * area.height) / 1000,
+          now: Date.now(),
+          receivedAt: collaborationAt,
+        }
+      : undefined,
+  );
   // A compact card in the bottom-right corner of the free area, never stretched across it.
   if (area)
-    Object.assign(communityRoot.style, {
-      left: 'auto',
-      top: 'auto',
-      right: `${(1000 - area.x - area.width) / 10}%`,
-      bottom: `${(1000 - area.y - area.height) / 10}%`,
-      maxWidth: `min(520px, ${area.width / 10}%)`,
-      maxHeight: `${area.height / 10}%`,
-      overflow: 'hidden',
-    });
+    for (const card of [communityRoot, collaborationRoot])
+      Object.assign(card.style, {
+        left: 'auto',
+        top: 'auto',
+        right: `${(1000 - area.x - area.width) / 10}%`,
+        bottom: `${(1000 - area.y - area.height) / 10}%`,
+        maxWidth: `min(520px, ${area.width / 10}%)`,
+        maxHeight: `${area.height / 10}%`,
+        overflow: 'hidden',
+      });
 }
 let sessions: {
   automationId: string;
@@ -52,6 +73,8 @@ setInterval(() => {
   renderCommunitySafely();
 }, 250);
 function clearOverlay(withdrawCommunity = true) {
+  collaboration = null;
+  renderCollaboration(collaborationRoot, null);
   if (withdrawCommunity) {
     community = null;
     renderCommunity(communityRoot, null, Date.now());
@@ -118,6 +141,12 @@ function connect() {
       ) {
         sceneOverlay.clear();
         sessions = [];
+        collaboration = null;
+        renderCollaboration(collaborationRoot, null);
+      }
+      if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'collaboration') {
+        collaboration = null;
+        renderCollaboration(collaborationRoot, null);
       }
       if (raw && typeof raw === 'object' && 'type' in raw && raw.type === 'community') {
         // A rejected replacement cannot leave withdrawn text cached on screen.
@@ -141,6 +170,10 @@ function connect() {
     } else if (data.type === 'sessions') {
       sessions = data.payload.sessions;
       sceneOverlay.setSessions(sessions);
+    } else if (data.type === 'collaboration') {
+      collaboration = data.payload;
+      collaborationAt = Date.now();
+      renderCommunitySafely();
     } else if (data.type === 'community') {
       // The broker fences publication during panic; a fresh frame also resumes
       // community on the same socket after explicit channel recovery.

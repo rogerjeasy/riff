@@ -1,3 +1,4 @@
+import { CollaborationPanel } from './collaboration/panel.js';
 import { CanvasEditor } from './canvas/editor.js';
 import { type Scene } from '../scenes/schema.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -275,6 +276,7 @@ export function App() {
               ?.scrollIntoView({ behavior: 'instant', block: 'start' });
           }}
         />
+        <CollaborationPanel versions={allVersions} panic={studio.panic} />
         <div className="workspace">
           <div className="col">
             <Composer

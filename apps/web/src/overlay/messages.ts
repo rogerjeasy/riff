@@ -1,9 +1,15 @@
+import { projectionSchema } from '../collaboration/schema.js';
 import { sceneProjectionSchema } from '../scenes/schema.js';
 import { z } from 'zod';
 import { communitySchema } from '../community/schema.js';
 import { overlaySessionSchema } from '../sessions/schemas.js';
 
 export const overlayMessageSchema = z.discriminatedUnion('type', [
+  z.object({
+    v: z.literal(1),
+    type: z.literal('collaboration'),
+    payload: projectionSchema.nullable(),
+  }),
   z.object({
     v: z.literal(1),
     type: z.literal('scenes'),

@@ -12,6 +12,7 @@ export default defineConfig({
     strictPort: true,
     // Keep the browser's Host so the server's same-origin guard sees the console origin.
     proxy: {
+      '/peer': { target: api, changeOrigin: false, xfwd: true },
       '/api': { target: api, changeOrigin: false, xfwd: true },
       '/auth': { target: api, changeOrigin: false, xfwd: true },
       '/ws': { target: api.replace(/^http/, 'ws'), ws: true, changeOrigin: false, xfwd: true },
