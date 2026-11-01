@@ -72,15 +72,16 @@ export function InteractiveStudio({
   }
   useEffect(() => {
     const c = new AbortController();
+    const own = epoch.current;
     void Promise.all([api.rehearsalScenarios(c.signal), api.rehearsalRegressions(c.signal)])
       .then(([s, g]) => {
-        if (!c.signal.aborted) {
+        if (!c.signal.aborted && own === epoch.current) {
           setLibrary(s);
           setRegressions(g);
         }
       })
       .catch((cause) => {
-        if (!c.signal.aborted)
+        if (!c.signal.aborted && own === epoch.current)
           setError(
             cause instanceof ApiError ? cause.message : 'The private library could not load.',
           );

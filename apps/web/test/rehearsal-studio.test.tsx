@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { App } from '../src/console/app.js';
 import { Evidence } from '../src/console/review/evidence.js';
 import * as projectile from '../src/effects/projectile.js';
@@ -627,4 +627,98 @@ it('keeps normal delivery identities distinct after save, studio reopen and relo
   const ids = body.scenario.steps.flatMap((s) => (s.kind === 'chat' ? [s.event.id] : []));
   expect(new Set(ids.slice(0, 3)).size).toBe(3);
   expect(ids[3]).toBe(ids[2]);
+});
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+function openWithDeferredLibrary() {
+  const scenarios = deferred<ScenarioRecord[]>();
+  const regressions = deferred<Regression[]>();
+  vi.mocked(api.rehearsalScenarios).mockReturnValueOnce(scenarios.promise);
+  vi.mocked(api.rehearsalRegressions).mockReturnValueOnce(regressions.promise);
+  render(<Rehearsal version={version} versions={[version]} onPreviewed={previewed} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Open interactive studio' }));
+  return { scenarios, regressions };
+}
+async function createDuringBootstrap() {
+  fireEvent.click(screen.getByRole('button', { name: 'Load preset' }));
+  await screen.findByText(/2 of 120 steps/);
+  fireEvent.click(screen.getByRole('button', { name: 'Save scenario' }));
+  await screen.findByRole('option', { name: 'My scenario · revision 2' });
+}
+it('preserves successfully saved scenario and regression when older bootstrap snapshots finish last', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await createDuringBootstrap();
+  const reduced = replay(2, true);
+  const failed = reduced.result.checks[0];
+  if (!failed) throw new Error('Expected failure');
+  reduced.minimization = {
+    scenario,
+    run: reduced.result,
+    checkId: failed.id,
+    failure: failed,
+    originalEvidenceHash: 'c'.repeat(64),
+    originalStepCount: 2,
+    removedSteps: 0,
+    attempts: 2,
+    dispatchedSteps: 4,
+    budgetStopped: false,
+  };
+  const regression: Regression = {
+    id: 'g-latest',
+    name: 'Retained after bootstrap',
+    automationId: 'a1',
+    originVersionId: 'v1',
+    originArtifactId: artifact,
+    sourceRunId: reduced.id,
+    scenario,
+    checkId: failed.id,
+    failure: failed,
+    failedEvidenceHash: 'c'.repeat(64),
+    createdAt: 0,
+  };
+  vi.mocked(api.rehearsalRun).mockResolvedValue(replay(2, true));
+  vi.spyOn(api, 'rehearsalMinimize').mockResolvedValue(reduced);
+  vi.spyOn(api, 'rehearsalSaveRegression').mockResolvedValue(regression);
+  fireEvent.click(screen.getByRole('button', { name: 'Run to end' }));
+  await screen.findByText(/Expected 2 effects, observed 1/);
+  fireEvent.change(screen.getByLabelText('Failed check'), { target: { value: failed.id } });
+  fireEvent.click(screen.getByRole('button', { name: 'Reduce selected failure' }));
+  await screen.findByText(/Reduction finished/);
+  fireEvent.click(screen.getByRole('button', { name: 'Save regression' }));
+  await screen.findByRole('option', { name: 'Retained after bootstrap' });
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'Retained after bootstrap' })).toBeTruthy();
+});
+it('preserves a newer explicit library reload when initial snapshots finish afterward', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  vi.mocked(api.rehearsalScenarios).mockResolvedValue([{ ...saved, revision: 8 }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload library' }));
+  await screen.findByRole('option', { name: 'My scenario · revision 8' });
+  await act(async () => {
+    bootstrap.scenarios.resolve([]);
+    bootstrap.regressions.resolve([]);
+  });
+  expect(screen.getByRole('option', { name: 'My scenario · revision 8' })).toBeTruthy();
+});
+it('ignores an obsolete bootstrap failure after a successful scenario save', async () => {
+  const bootstrap = openWithDeferredLibrary();
+  await createDuringBootstrap();
+  await act(async () => {
+    bootstrap.scenarios.reject(new ApiError('Old library failed.', 409, 'UNAVAILABLE'));
+    bootstrap.regressions.resolve([]);
+  });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('option', { name: 'My scenario · revision 2' })).toBeTruthy();
+  expect(screen.getByText(/Saved inputs returned by the host/)).toBeTruthy();
 });
