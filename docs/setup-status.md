@@ -224,3 +224,34 @@ identity certification or automatic update/activation is implied.
 
 See the [recipe implementation](../apps/server/src/services/recipes/README.md) and
 [verification record](superpowers/plans/2026-11-01-contextual-remix.md).
+
+## Production setup and inclusive participation — November 1, 2026
+
+F39 adds guarded host connections to authenticated OBS v5 and Streamer.bot, explicit
+scene discovery, exact selected browser-source review, a diagnostic frame with visual
+confirmation, live-source enablement and checked rollback. Named bot mappings can start
+or pause an already approved current interaction and invoke a selected action at round
+finish. Durable causal claims and quotas bound loops and replay. Panic fences the bridge
+before cleanup. The dock now exposes the existing artifact evidence/approval controls.
+
+F40 adds a public text companion at `/participate`, reviewed en/fr/es/de rule templates,
+rate-limited `!riff help [language]`, durable broadcast preferences and independent device
+preferences. High contrast, reduced motion and effect labels flow through protected scenes,
+recipe exports, explicit recipient adoption and the existing verification/review pipeline.
+No new dependency, Twitch scope, outbound chat message or guest capability is introduced.
+
+Production setup requires `RIFF_SECRET` and authenticated endpoints reachable by the Riff
+host. Hosted instances do not automatically reach a creator's localhost. Native Firebot
+and Streamer.bot configuration migration remains unsupported; only strict versioned Riff
+mappings are imported for review. Actual OBS pixels and Streamer.bot execution have not
+been exercised here. The added Playwright narrow-screen/axe scenarios cannot start because
+this environment rejects binding `127.0.0.1:8788` with EPERM. Socket-independent mocks and
+DOM tests do not establish real-tool or browser usability. See the
+[production contract](../apps/server/src/services/production/README.md) and
+[participation contract](../apps/server/src/services/participation/README.md).
+
+Verification for this increment: 685 tests in 66 socket-independent Vitest files and
+15 tooling tests passed. Full lint, strict types, formatting, build, overlay bundle
+isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
+source files passed. Two existing socket-dependent test files were excluded from the
+local run. CI includes the new production, participation and dock checks.

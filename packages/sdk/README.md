@@ -11,3 +11,8 @@ new bridge API, and the guest SDK version remains unchanged.
 
 `recipes.ts` adds host-only portable package, profile, synthetic proof and exact review
 contracts for F38. These types do not grant guest capabilities or publication authority.
+
+F39 production and F40 participation exports are host/UI contracts only: connector
+reviews, named mappings, public guidance and presentation settings. They add no guest
+capabilities. Recipe presentation/profile metadata optionally carries high contrast and
+effect labels alongside language/reduced motion; omitted fields preserve legacy editions.

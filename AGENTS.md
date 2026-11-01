@@ -817,3 +817,33 @@ review can restore it after all reports are resolved. See the
 [recipe service contract](apps/server/src/services/recipes/README.md) for bounds,
 routes, trust limits and verification details. No generated capability or SDK version
 change is introduced.
+
+## Production setup and inclusive participation — F39/F40
+
+Migration 0014 adds channel-scoped `production_state` and `participation_state` JSON rows.
+`services/production` owns authenticated OBS v5 (msgpack under Node) and Streamer.bot
+connections (passwords are used once and never stored), sealed source snapshots, exact selected-source setup reviews and approved event/action
+mappings. Private `/api/production` routes retain mutation/session guards. OBS setup
+first displays the credential-free `/production-test` diagnostic; explicit visual
+confirmation enables the scoped live overlay. Rollback checks unchanged settings and
+only removes a newly created scene item. Reconnect fences apply/confirm (new connection
+identity) but keeps an applied setup's sealed snapshot, so rollback and re-review still
+work. Reviewing or importing mappings only stages a draft; approval replaces live
+mappings and consumes the review; `/mappings/discard` drops it. Native external
+scripts/configuration migration is unsupported; strict `riff-production` imports stage
+an inspectable mapping diff. No adapter access is granted to generated code or previews.
+Panic fences authority before cleanup; durable causal receipts, bounded queues and
+finished-round claims prevent replay/loops. See the production service README for limits.
+
+`services/participation` composes reviewed en/fr/es/de rule templates with current
+approved manifests/sessions and recipe presentation. Private `/api/participation`
+settings use revision CAS; public `/participation` (1 s cache, per-client token bucket, unknown query keys ignored)
+and `/participate` expose only rules, commands, eligible roles, goal progress,
+phase, objectives and aggregates. Per-device explicit choices are separate from shared
+broadcast settings. `!riff help [language]` highlights protected on-stream guidance for 15 s (`help` flag on
+the scene projection; an explicit channel language is never overridden by viewers),
+limited to one/viewer/30 seconds and six/channel/60 seconds, with durable deduplication;
+it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/text labels
+survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
+The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
+checks do not claim live OBS/Streamer.bot rendering or accessibility certification.

@@ -1,5 +1,9 @@
-# Firebot adapter
+# Firebot configuration boundary
 
-Inspect the chosen release schema/protocol before implementing import or live transport. Unknown executable actions remain disabled.
+F39 explicitly recognizes native Firebot imports as unsupported. Import never executes
+C#, shell commands, plugins or scripts. The production panel accepts only the versioned
+`riff-production` mapping document and displays unsupported fields/formats before approval.
 
-This directory establishes ownership for the approved product scope. Its product implementation is not part of the workspace scaffold.
+There is no live Firebot transport or native migration in this increment. See
+[the production service](../../services/production/README.md) for the supported OBS and
+Streamer.bot connections, reviewed operations and configuration format.
