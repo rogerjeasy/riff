@@ -299,7 +299,7 @@ export function createLiveRuntime(deps: {
         fence === generation && !panic
           ? experienceOf(version)
             ? sessionDelivered
-            : overlay.deliver(decision, message.viewerName)
+            : overlay.deliver(decision, message.viewerName, automationId, version.id)
           : 0;
       lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
       publishActivity({

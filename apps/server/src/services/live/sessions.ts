@@ -91,6 +91,7 @@ export function createSessionControl(deps: {
             return [
               {
                 automationId: row.automationId,
+                versionId: row.versionId,
                 title: automation.title,
                 definition: row.definition,
                 snapshot: sessionSnapshotSchema.parse(row.snapshot),
@@ -144,7 +145,7 @@ export function createSessionControl(deps: {
         pending.at < now() - 2000
       )
         continue;
-      sent += overlay.deliver(pending.decision, pending.viewer);
+      sent += overlay.deliver(pending.decision, pending.viewer, automationId, pending.versionId);
     }
     return sent;
   }

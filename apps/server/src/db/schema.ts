@@ -1,3 +1,4 @@
+import type { SceneRevision } from '../services/scenes/contract.js';
 import type {
   ScenarioRecord,
   RunRecord,
@@ -500,4 +501,37 @@ export const rehearsalRegressions = sqliteTable(
     createdAt: integer('created_at').notNull(),
   },
   (t) => [index('rehearsal_regressions_channel').on(t.channelId, t.automationId)],
+);
+
+/** Scene heads use CAS; presentation revisions remain immutable audit evidence. */
+export const sceneHeads = sqliteTable(
+  'scene_heads',
+  {
+    versionId: text('version_id')
+      .primaryKey()
+      .references(() => versions.id),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    artifactId: text('artifact_id').notNull(),
+    revision: integer('revision').notNull(),
+    appliedRevision: integer('applied_revision'),
+  },
+  (t) => [index('scene_heads_channel').on(t.channelId)],
+);
+export const sceneRevisions = sqliteTable(
+  'scene_revisions',
+  {
+    id: text('id').primaryKey(),
+    versionId: text('version_id')
+      .notNull()
+      .references(() => versions.id),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    revision: integer('revision').notNull(),
+    evidence: text('evidence', { mode: 'json' }).$type<SceneRevision>().notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (t) => [uniqueIndex('scene_revision_identity').on(t.channelId, t.versionId, t.revision)],
 );

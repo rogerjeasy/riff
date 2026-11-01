@@ -59,6 +59,7 @@ export function createAuthoringService(deps: {
   queue?: ReturnType<typeof createCompileQueue>;
   proposals?: ProposalService;
   rehearsal?: RehearsalService;
+  inheritScene?: (versionId: string, parentVersionId: string) => void;
 }) {
   const { repo, hub, transport } = deps;
   const queue = deps.queue ?? createCompileQueue();
@@ -125,6 +126,8 @@ export function createAuthoringService(deps: {
       compileRunId: snapshot.id,
       status: result.status === 'ready' ? 'candidate' : 'failed',
     });
+    if (base?.artifactId && version.artifactId && result.status === 'ready')
+      deps.inheritScene?.(version.id, base.id);
     return version;
   }
 

@@ -1,15 +1,28 @@
 import type { CommunityProjection } from '../proposals/projection.js';
 import { randomUUID } from 'node:crypto';
-import type { ExecutionDecision, ExperienceDefinition, SessionSnapshot } from '@riff/sdk';
+import type {
+  ExecutionDecision,
+  ExperienceDefinition,
+  SessionSnapshot,
+  SceneDocument,
+} from '@riff/sdk';
 
 /** Versioned overlay protocol. The overlay ignores unknown types. */
 export type OverlayMessage =
   | { v: 1; type: 'hello'; payload: { channel: string } }
+  | { v: 1; type: 'scenes'; payload: { scenes: SceneProjection[] } }
   | { v: 1; type: 'heartbeat'; payload: { at: number } }
   | {
       v: 1;
       type: 'effect';
-      payload: { id: string; asset: string; x: number; viewer: string | null };
+      payload: {
+        id: string;
+        asset: string;
+        x: number;
+        viewer: string | null;
+        automationId?: string;
+        versionId?: string;
+      };
     }
   | { v: 1; type: 'instructions'; payload: { lines: string[] } }
   | { v: 1; type: 'clear'; payload: { reason: 'panic' | 'pause' | 'rotate' } }
@@ -17,8 +30,18 @@ export type OverlayMessage =
   | { v: 1; type: 'community'; payload: CommunityProjection | null }
   | { v: 1; type: 'test'; payload: { at: number } };
 
+export interface SceneProjection {
+  automationId: string;
+  versionId: string;
+  revision: number;
+  digest: string;
+  scene: SceneDocument;
+  instructions: string[];
+}
+
 export interface SessionProjection {
   automationId: string;
+  versionId?: string;
   title: string;
   definition: ExperienceDefinition;
   snapshot: SessionSnapshot;
@@ -37,6 +60,7 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
   const sockets = new Set<OverlaySocket>();
   let instructions: string[] = [];
   let sessions: SessionProjection[] = [];
+  let scenes: SceneProjection[] = [];
   let community: CommunityProjection | null = null;
   let stopped = false;
   const broadcast = (message: OverlayMessage) => {
@@ -68,11 +92,20 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
         } satisfies OverlayMessage),
       );
       socket.send(
+        JSON.stringify({ v: 1, type: 'scenes', payload: { scenes } } satisfies OverlayMessage),
+      );
+      socket.send(
         JSON.stringify({ v: 1, type: 'sessions', payload: { sessions } } satisfies OverlayMessage),
       );
       socket.send(
         JSON.stringify({ v: 1, type: 'community', payload: community } satisfies OverlayMessage),
       );
+    },
+    setScenes(next: SceneProjection[]) {
+      const safe = stopped ? [] : next;
+      if (JSON.stringify(scenes) === JSON.stringify(safe)) return;
+      scenes = structuredClone(safe);
+      broadcast({ v: 1, type: 'scenes', payload: { scenes } });
     },
     setCommunity(next: CommunityProjection) {
       if (stopped) return;
@@ -98,14 +131,26 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
     get connections() {
       return sockets.size;
     },
-    deliver(decision: ExecutionDecision, viewer: string | null) {
+    deliver(
+      decision: ExecutionDecision,
+      viewer: string | null,
+      automationId?: string,
+      versionId?: string,
+    ) {
       if (decision.mode !== 'live') throw new Error('Only live decisions may reach the overlay');
       if (decision.code !== 'ACCEPTED') return 0;
       for (const effect of decision.effects)
         broadcast({
           v: 1,
           type: 'effect',
-          payload: { id: randomUUID(), asset: effect.asset, x: effect.x, viewer },
+          payload: {
+            id: randomUUID(),
+            asset: effect.asset,
+            x: effect.x,
+            viewer,
+            ...(automationId ? { automationId } : {}),
+            ...(versionId ? { versionId } : {}),
+          },
         });
       return decision.effects.length;
     },
@@ -114,6 +159,8 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
       broadcast({ v: 1, type: 'instructions', payload: { lines: instructions } });
     },
     clear(reason: 'panic' | 'pause' | 'rotate') {
+      scenes = [];
+      broadcast({ v: 1, type: 'scenes', payload: { scenes } });
       if (reason === 'panic') {
         sessions = [];
         community = null;
@@ -127,9 +174,12 @@ export function createOverlayBroker(options: { heartbeatMs?: number } = {}) {
     },
     /** Rotation invalidates every existing socket. */
     disconnectAll() {
+      const previous = scenes;
       this.clear('rotate');
       for (const socket of sockets) socket.close(4001, 'Overlay key rotated');
       sockets.clear();
+      // The scene authority is unchanged by key rotation; only fresh sockets see it.
+      this.setScenes(previous);
     },
     close() {
       clearInterval(timer);

@@ -71,6 +71,13 @@
       "when": 1793495939033,
       "tag": "0009_private_rehearsals",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1793523429893,
+      "tag": "0010_visual_scenes",
+      "breakpoints": true
     }
   ]
 }

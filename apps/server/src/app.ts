@@ -1,3 +1,5 @@
+import { createSceneService } from './services/scenes/service.js';
+import { registerSceneRoutes } from './routes/scenes.js';
 import { createRehearsalService } from './services/rehearsal/service.js';
 import { registerRehearsalRoutes } from './routes/rehearsals.js';
 import { createProposalService } from './services/proposals/service.js';
@@ -10,7 +12,7 @@ import helmet from '@fastify/helmet';
 import staticFiles from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { createOfflineTransport, type CompilerTransport } from '@riff/compiler';
+import { createOfflineTransport, createCompileQueue, type CompilerTransport } from '@riff/compiler';
 import { verifyCandidate } from '@riff/sandbox';
 import { EXAMPLES } from '@riff/sdk';
 import { openDatabase, type DatabaseConnection } from './db/client.js';
@@ -62,6 +64,7 @@ export interface RiffServices {
   authoring: ReturnType<typeof createAuthoringService>;
   proposals: ReturnType<typeof createProposalService>;
   rehearsal: ReturnType<typeof createRehearsalService>;
+  scenes: ReturnType<typeof createSceneService>;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -114,12 +117,17 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   runtime.boot();
   const studio = createStudioService({ repo, hub, runtime, overlay });
   const rehearsal = createRehearsalService(repo);
+  const transport = dependencies.transport ?? createOfflineTransport({ delayMs: 250 });
+  const queue = createCompileQueue();
+  const scenes = createSceneService({ database, repo, runtime, overlay, hub, transport, queue });
   const authoring = createAuthoringService({
+    queue,
+    inheritScene: scenes.inherit,
     rehearsal,
     repo,
     hub,
     proposals,
-    transport: dependencies.transport ?? createOfflineTransport({ delayMs: 250 }),
+    transport,
   });
   const publishCommunity = () => {
     if (runtime.panicked) return;
@@ -176,6 +184,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     proposals,
   });
   registerRehearsalRoutes(app, { rehearsal, authoring });
+  registerSceneRoutes(app, scenes);
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
@@ -193,6 +202,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     clearInterval(communityTimer);
     if (studioSoon) clearTimeout(studioSoon);
     unsubscribeCommunity();
+    scenes.close();
     authoring.close();
     preview.close();
     await rehearsal.close();
@@ -213,6 +223,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     authoring,
     proposals,
     rehearsal,
+    scenes,
   };
   return Object.assign(app as FastifyInstance, { riff: services });
 }
