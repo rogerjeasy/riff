@@ -131,7 +131,11 @@ export function RegressionPanel({
               )}
               <label>
                 Failed check
-                <select value={failedCheck} onChange={(e) => setFailedCheck(e.target.value)}>
+                <select
+                  value={failedCheck}
+                  disabled={!failures.length}
+                  onChange={(e) => setFailedCheck(e.target.value)}
+                >
                   <option value="">
                     {failures.length ? 'Choose a failed check' : 'No failed checks yet'}
                   </option>
@@ -246,6 +250,7 @@ export function RegressionPanel({
             Saved regression
             <select
               value={regressionId}
+              disabled={!regressions.length}
               onChange={(e) => {
                 setRegressionId(e.target.value);
                 setReviewed(false);

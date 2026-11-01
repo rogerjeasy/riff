@@ -208,6 +208,41 @@
   max-width: 100%;
   min-width: 0;
 }
+/* Fields must read as fields: the Tailwind reset leaves bare text with no box. */
+.canvas-editor input:not([type='checkbox'], [type='radio'], [type='range']),
+.canvas-editor select,
+.canvas-editor textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--line-strong);
+  background: #110f17;
+  color: var(--text);
+  font-size: 13.5px;
+}
+.canvas-editor select {
+  padding-right: 28px;
+  cursor: pointer;
+}
+.canvas-editor textarea {
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+.canvas-editor input:focus-visible,
+.canvas-editor select:focus-visible,
+.canvas-editor textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(255 122 69 / 0.18);
+}
+.canvas-editor input:disabled,
+.canvas-editor select:disabled,
+.canvas-editor textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 .canvas-language {
   display: grid;
   gap: 10px;

@@ -703,7 +703,10 @@ export function CollaborationPanel({
                       onChange={(e) => setSelected(e.target.value)}
                       disabled={disabled || !shareable.length}
                     >
-                      <option value="">Choose a version</option>
+                      {/* Placeholder only: the first verified version is preselected. */}
+                      <option value="" disabled>
+                        Choose a version
+                      </option>
                       {shareable.map((v) => (
                         <option key={v.id} value={v.id}>
                           {v.title} · v{v.number}

@@ -394,7 +394,8 @@ export function InteractiveStudio({
               if (item) load(item);
             }}
           >
-            <option value="">
+            {/* A placeholder, not a choice: loading inputs is the only action here. */}
+            <option value="" disabled>
               {library.length ? 'Choose saved inputs' : 'No saved scenarios yet'}
             </option>
             {library.map((s) => (

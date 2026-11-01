@@ -28,7 +28,7 @@
   font: inherit;
 }
 .shared-toggle::before {
-  content: '▸';
+  content: '▸' / '';
   grid-row: 1 / span 2;
   color: var(--faint);
   transition: transform 0.15s ease;

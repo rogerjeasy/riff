@@ -367,7 +367,9 @@ export function InputEditor({
                 value={target || scenario.steps.at(-1)?.key || ''}
                 onChange={(e) => setTarget(e.target.value)}
               >
-                <option value="">Choose step</option>
+                <option value="" disabled>
+                  Choose step
+                </option>
                 {scenario.steps.map((s, i) => (
                   <option key={s.key} value={s.key}>
                     {i + 1}. {stepTitle(s)}

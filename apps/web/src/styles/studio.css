@@ -52,6 +52,16 @@ select {
   font: inherit;
   color: inherit;
 }
+/* Anything unavailable looks unavailable, including fields inside a disabled fieldset. */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+select:not(:disabled) {
+  cursor: pointer;
+}
 :focus-visible {
   outline: 2px solid var(--accent-soft);
   outline-offset: 2px;
@@ -1114,15 +1124,31 @@ details > summary {
 details > summary::-webkit-details-marker {
   display: none;
 }
+/* Every disclosure shows that it expands. Zero specificity, so sections that draw their
+   own marker (details.block, the scenario studio) keep it. */
+:where(details) > :where(summary)::before {
+  content: '▸' / '';
+  display: inline-block;
+  width: 0.9em;
+  flex: none;
+  color: var(--faint);
+}
+:where(details[open]) > :where(summary)::before {
+  content: '▾' / '';
+}
+:where(details) > :where(summary):hover::before {
+  color: var(--text);
+}
+
 details.block > summary h3 {
   margin: 0;
 }
 details.block > summary::before {
-  content: '▸';
+  content: '▸' / '';
   color: var(--faint);
 }
 details.block[open] > summary::before {
-  content: '▾';
+  content: '▾' / '';
 }
 details.block > summary .muted {
   font-size: 13px;
@@ -2387,8 +2413,24 @@ pre {
 .interactive-studio details > summary::-webkit-details-marker {
   display: none;
 }
+/* Every disclosure shows that it expands. Zero specificity, so sections that draw their
+   own marker (details.block, the scenario studio) keep it. */
+:where(details) > :where(summary)::before {
+  content: '▸' / '';
+  display: inline-block;
+  width: 0.9em;
+  flex: none;
+  color: var(--faint);
+}
+:where(details[open]) > :where(summary)::before {
+  content: '▾' / '';
+}
+:where(details) > :where(summary):hover::before {
+  color: var(--text);
+}
+
 .interactive-studio details > summary::before {
-  content: '▸';
+  content: '▸' / '';
   color: var(--faint);
   transition: transform 0.15s;
 }
