@@ -255,3 +255,29 @@ Verification for this increment: 685 tests in 66 socket-independent Vitest files
 isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
 source files passed. Two existing socket-dependent test files were excluded from the
 local run. CI includes the new production, participation and dock checks.
+
+## Sub, gift, resub, cheer and raid triggers (F19) — November 1, 2026
+
+`packages/twitch/src/triggers.ts` adds `subscribe` (`channel.subscribe`), `gift`
+(`channel.subscription.gift`), `resub` (`channel.subscription.message`), `cheer`
+(`channel.cheer`) and `raid` (`channel.raid`, `to_broadcaster_user_id`), all version 1,
+with versions, scopes and conditions checked against the EventSub subscription types page
+on November 1, 2026. Fixtures are the documentation notification examples (inline `//`
+comments removed). Normalization validates each payload with zod, hides anonymous
+gifts/cheers behind one `anonymous` identity, clamps amounts and sanitizes resub/cheer
+text and display names.
+
+Manifests may declare `trigger.event {kind, minimum}` with the reserved command `@kind`
+(SDK 0.4.0, additive; chat artifacts keep their identity). Events carry `event.twitch`
+and enter the same engine admission (dedupe → kind → `BELOW_MINIMUM` → per-viewer window
+→ channel budget) and live queue, durable admission records, panic fences and overlay path
+as chat. Prompt pack `riff-compiler/7` and the offline compiler support event intents.
+The Twitch connection subscribes on demand for families live interactions use when the
+token carries the scope, and `GET /api/twitch/triggers` reports use, consent and
+subscription state; `/auth/twitch?triggers=` requests extra consent while keeping earlier
+scopes. Rehearsal and previews accept labeled synthetic Twitch events only.
+
+Not verified here: delivery from a real Twitch channel (tests use the documented protocol
+against a local WebSocket stand-in), and recipe export/adaptation of event-triggered
+interactions (the recipe profile flow remains chat-command based). No new dependency,
+table or environment variable.

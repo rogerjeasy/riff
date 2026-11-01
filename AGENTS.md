@@ -402,6 +402,8 @@ Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, 
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
 `rehearsal_regressions`, `scene_heads`, `scene_revisions`.
+Twitch event triggers (F19) add routes `GET /api/twitch/triggers` and the optional
+`/auth/twitch?triggers=<family,...>` consent query; no table.
 
 ---
 
@@ -847,3 +849,35 @@ it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/tex
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## Sub, gift, resub, cheer and raid triggers — F19
+
+`triggers.ts` maps the platform trigger names `subscribe`, `gift`, `resub`, `cheer` and
+`raid` to `channel.subscribe`, `channel.subscription.gift`,
+`channel.subscription.message`, `channel.cheer` and `channel.raid` (all v1; raids use
+`to_broadcaster_user_id`), each with a documentation fixture, condition fields, scopes
+(`channel:read:subscriptions`, `bits:read`, none for raids) and a consent family. The SDK
+`TWITCH_EVENT_KINDS` equal those names; a server test keeps them in sync.
+`normalizeTwitchEvent` validates payloads with zod, keeps anonymous gifts/cheers anonymous
+(`viewerId` `anonymous`), clamps amounts and sanitizes viewer text (§4).
+
+SDK 0.4.0 manifests may declare `trigger.event {kind, minimum}`; `trigger.command` must
+then equal the reserved non-chat token `@kind`, audience is `['viewer']` and experience is
+null. This is additive: chat artifacts keep their identity. Handlers read
+`event.twitch {kind, amount, tier, anonymous, gift}`. The engine admits platform events
+through the shared path (dedupe → kind/UNRELATED → `BELOW_MINIMUM` → per-viewer window →
+channel budget); chat interactions ignore platform events and rounds never receive them.
+`hostScenarios` derives an independent event suite. Strict compiler output requires
+nullable `trigger.event` and per-step `twitch`; prompt pack `riff-compiler/7` documents the
+triggers and embeds `cheer-shower`/`raid-welcome` examples; the offline compiler handles
+event intents, stating projectile stand-ins for confetti or banners.
+
+The server subscribes to a family on the current EventSub session only while a live
+interaction uses it and the token carries its scope; Twitch-directed reconnects keep
+subscriptions, fresh sessions recreate them, and a revoked family is marked without
+stopping chat. `runtime.handleTwitchEvent` uses the chat queue, durable admission, budgets
+and panic fences, and never reaches reserved commands, proposals, help or shared sessions.
+Previews and rehearsal presets use labeled synthetic Twitch events, never EventSub
+transport messages. The console's Twitch event triggers panel shows availability, use,
+missing consent and subscription state with scoped consent links; the private stage adds a
+synthetic event simulator. Recipe adaptation of event triggers is not supported yet.

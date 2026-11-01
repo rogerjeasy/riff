@@ -333,6 +333,10 @@ change an approved live layout.
 2. Set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` and `RIFF_SECRET`
    (`openssl rand -base64 32`) in `.env`, restart, and press **Connect Twitch**.
    Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+   Event-triggered interactions (F19) add consent only when you choose it in the
+   **Twitch event triggers** panel: `channel:read:subscriptions` for new subs, gifted
+   subs and resubs, `bits:read` for cheers; incoming raids need no extra scope. Riff
+   subscribes to an event family only while an approved live interaction uses it.
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
