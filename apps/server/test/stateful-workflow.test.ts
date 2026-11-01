@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest';
 import { createApp, migrateConnection, type RiffApp } from '../src/app.js';
 import { openDatabase } from '../src/db/client.js';
 import type { LiveChatMessage } from '../src/services/live/runtime.js';
+import type { RunSnapshot } from '../src/services/authoring/service.js';
 const apps: RiffApp[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
@@ -369,17 +370,30 @@ async function generated(app: RiffApp, intent: string, baseVersionId: string | n
   });
   expect(response.statusCode).toBe(202);
   const id = response.json<{ id: string }>().id;
-  for (let i = 0; i < 200; i++) {
-    const run = app.riff.authoring.runs().find((r) => r.id === id);
-    if (run?.result) {
-      expect(run.result.status).toBe('ready');
-      const version = app.riff.repo.version(run.result.versionId!);
-      expect(version).toBeDefined();
-      return version!;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw Error('Generation did not finish');
+  // Observe the actual lifecycle instead of assuming verification finishes within
+  // 200 timer ticks. Parallel test workers can delay a healthy WASM verification.
+  const run = await new Promise<RunSnapshot>((resolve, reject) => {
+    const deadline = setTimeout(() => {
+      unsubscribe();
+      const pending = app.riff.authoring.runs().find((r) => r.id === id);
+      reject(new Error(`Generation did not finish (stage: ${pending?.stage ?? 'missing'})`));
+    }, 15_000);
+    const check = () => {
+      const current = app.riff.authoring.runs().find((r) => r.id === id);
+      if (!current?.result) return;
+      clearTimeout(deadline);
+      unsubscribe();
+      resolve(current);
+    };
+    const unsubscribe = app.riff.hub.subscribe((message) => {
+      if (message.type === 'run') check();
+    });
+    check();
+  });
+  expect(run.result?.status).toBe('ready');
+  const version = app.riff.repo.version(run.result!.versionId!);
+  expect(version).toBeDefined();
+  return version!;
 }
 it.each([
   [BATTLE, '!red', '!throw', 'red'],
