@@ -1,5 +1,6 @@
 import { createProposalService } from './services/proposals/service.js';
 import { communityProjection } from './services/proposals/projection.js';
+import type { ProposalCommand } from './services/proposals/commands.js';
 import { registerProposalRoutes } from './routes/proposals.js';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
@@ -81,7 +82,18 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     HOME_CHANNEL,
     dependencies.now ? { now: dependencies.now } : {},
   );
-  const proposalChanged = () => {
+  let studioSoon: ReturnType<typeof setTimeout> | null = null;
+  const proposalChanged = (kind?: ProposalCommand['kind']) => {
+    // Suggestions, votes and credit cannot revoke lineage. Coalesce their bursts so a
+    // busy ballot refreshes open consoles a few times a second, not once per vote.
+    if (kind === 'suggest' || kind === 'vote' || kind === 'credit' || kind === 'invalid') {
+      studioSoon ??= setTimeout(() => {
+        studioSoon = null;
+        hub.publish('studio', null);
+      }, 250);
+      studioSoon.unref();
+      return;
+    }
     try {
       authoring.reconcileSelections();
     } finally {
@@ -173,6 +185,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   app.addHook('onClose', async () => {
     clearInterval(communityTimer);
+    if (studioSoon) clearTimeout(studioSoon);
     unsubscribeCommunity();
     authoring.close();
     preview.close();

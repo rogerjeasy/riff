@@ -1,4 +1,5 @@
 import { ProposalError, type ProposalService } from '../proposals/service.js';
+import { parseProposalCommand, type ProposalCommand } from '../proposals/commands.js';
 import {
   createSessionControl,
   experienceOf,
@@ -55,7 +56,7 @@ export function createLiveRuntime(deps: {
   overlay: OverlayBroker;
   now?: () => number;
   proposals?: ProposalService;
-  onProposalChange?: () => void;
+  onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -191,7 +192,7 @@ export function createLiveRuntime(deps: {
       { eventId: message.id, text: message.text },
     );
     if (command?.consumed) {
-      deps.onProposalChange?.();
+      deps.onProposalChange?.(parseProposalCommand(message.text)?.kind);
       return [];
     }
     if (panic) return [];

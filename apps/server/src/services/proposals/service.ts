@@ -62,6 +62,22 @@ export function createProposalService(
     if (!actor.roles.includes('moderator') || !repo.hasGrant(actor.accountId)) fail('FORBIDDEN');
   };
   const proposal = (id: string) => repo.getProposal(id) ?? fail('NOT_FOUND');
+  /** Chat may name an item by its short channel number (`12`, `#12`) or immutable ID. */
+  const shortNumber = (reference: string) => {
+    const match = /^#?(\d{1,9})$/.exec(reference);
+    return match ? Number(match[1]) : null;
+  };
+  const proposalRef = (reference: string) => {
+    const number = shortNumber(reference);
+    return (
+      (number === null ? repo.getProposal(reference) : repo.proposalByNumber(number)) ??
+      fail('NOT_FOUND')
+    );
+  };
+  const ballotRef = (reference: string) => {
+    const number = shortNumber(reference);
+    return number === null ? repo.ballot(reference) : repo.ballotByNumber(number);
+  };
   const receipt = (
     actor: ChatActor,
     eventId: string,
@@ -257,7 +273,7 @@ export function createProposalService(
   ): CommandResult {
     return receipt(actor, input.eventId, 'vote', null, () => {
       repo.expireBallots(now());
-      const ballot = repo.ballot(input.ballotId);
+      const ballot = ballotRef(input.ballotId);
       if (!ballot) return { ok: false, code: 'NOT_FOUND' };
       if (ballot.closedAt !== null || now() >= ballot.deadlineAt)
         return { ok: false, code: 'BALLOT_CLOSED' };
@@ -339,10 +355,15 @@ export function createProposalService(
   ) {
     return repo.transaction(() => {
       repo.expireBallots(now());
+      const rows = repo.list(
+        input.state,
+        page(input.limit, 50, 50),
+        page(input.offset, 0, 1000000),
+      );
+      const contributors = repo.contributorCounts(rows.map((p) => p.id));
       return {
-        proposals: repo
-          .list(input.state, page(input.limit, 50, 50), page(input.offset, 0, 1000000))
-          .map((p) => ({ ...p, contributorCount: repo.contributors(p.id).length })),
+        proposals: rows.map((p) => ({ ...p, contributorCount: contributors.get(p.id) ?? 1 })),
+        counts: repo.stateCounts(),
         grants: repo.grants(),
         ballots: repo.ballots(50).map((ballot) => ({
           ...ballot,
@@ -357,12 +378,9 @@ export function createProposalService(
   function publicProposal(p: ProposalRow) {
     return {
       proposalId: p.id,
+      number: p.number,
       text: publicText(p.text),
-      authors: repo
-        .contributors(p.id)
-        .filter((c) => repo.credit(c.accountId))
-        .slice(0, 5)
-        .map((c) => publicText(c.displayName)),
+      authors: repo.creditedAuthors(p.id, 5).map(publicText),
     };
   }
   function publicBallot(ballot: BallotRow) {
@@ -381,11 +399,12 @@ export function createProposalService(
     const max = Math.max(0, ...choices.map((c) => c.votes));
     return {
       id: ballot.id,
+      number: ballot.number,
       revision: ballot.revision,
       deadlineAt: ballot.deadlineAt,
       closedAt: ballot.closedAt,
       options: choices,
-      tied: choices.filter((c) => c.votes === max).length > 1,
+      tied: max > 0 && choices.filter((c) => c.votes === max).length > 1,
     };
   }
   function publicProjection() {
@@ -393,13 +412,9 @@ export function createProposalService(
       repo.expireBallots(now());
       const ballot = repo.openBallot();
       return {
-        commands: [
-          '!riff suggest <text>',
-          '!riff vote <ballot-id> <option>',
-          '!riff credit on|off',
-        ],
+        commands: ['!riff suggest <idea>', '!riff vote <ballot> <option>', '!riff credit on|off'],
         creditNotice:
-          'Chat submissions are already public on Twitch. Credit off removes Riff attribution, not the original chat message.',
+          'Ideas typed in chat are public on Twitch. Riff names you only after !riff credit on; credit off removes the name, not your chat message.',
         ballot: ballot ? publicBallot(ballot) : null,
         outcomes: repo
           .ballots(6)
@@ -409,7 +424,14 @@ export function createProposalService(
         selections: repo.authorizedSelections(5).flatMap((s) => {
           const p = repo.getProposal(s.proposalId);
           return s.revokedAt === null && eligible(p)
-            ? [{ id: s.id, ...publicProposal(p), status: 'selected' as const }]
+            ? [
+                {
+                  id: s.id,
+                  ...publicProposal(p),
+                  selectedAt: s.createdAt,
+                  status: 'selected' as const,
+                },
+              ]
             : [];
         }),
       };
@@ -445,7 +467,7 @@ export function createProposalService(
           return { ok: true };
         }
         if (command.kind === 'shortlist' || command.kind === 'hide') {
-          const p = proposal(command.proposalId);
+          const p = proposalRef(command.proposalId);
           moderate(actor, { proposalId: p.id, expectedRevision: p.revision, action: command.kind });
           return { ok: true, proposalId: p.id };
         }

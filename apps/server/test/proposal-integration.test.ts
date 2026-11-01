@@ -704,3 +704,31 @@ it.each(['before approval', 'inside pending transaction'] as const)(
   },
   30000,
 );
+
+it('coalesces console refreshes for vote bursts but publishes moderation at once', async () => {
+  const f = await setup();
+  const app = f.app;
+  await chat(app, '!riff suggest Add two throws to every player', 'e1', 'author');
+  const p = app.riff.proposals.snapshot().proposals[0]!;
+  const shortlisted = app.riff.proposals.moderate(
+    { kind: 'creator' },
+    { proposalId: p.id, expectedRevision: p.revision, action: 'shortlist' },
+  );
+  const ballot = app.riff.proposals.createBallot(
+    { kind: 'creator' },
+    { proposalIds: [{ id: shortlisted.id, revision: shortlisted.revision }], durationSeconds: 60 },
+  );
+  let studio = 0;
+  const unsubscribe = app.riff.hub.subscribe((message) => {
+    if (message.type === 'studio') studio++;
+  });
+  for (let index = 0; index < 30; index++)
+    await chat(app, `!riff vote ${ballot.number} 1`, `vote-${index}`, `voter-${index}`);
+  expect(studio).toBe(0);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(studio).toBe(1);
+  expect(app.riff.proposals.publicProjection().ballot?.options[0]?.votes).toBe(30);
+  await chat(app, `!riff hide ${p.number}`, 'hide', 'owner', ['broadcaster']);
+  expect(studio).toBe(2);
+  unsubscribe();
+});

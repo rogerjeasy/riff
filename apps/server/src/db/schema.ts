@@ -289,6 +289,8 @@ export const proposals = sqliteTable(
       .references(() => channels.id),
     text: text('text').notNull(),
     normalizedText: text('normalized_text').notNull(),
+    /** Short channel-scoped number viewers and moderators can type in chat. */
+    number: integer('number').notNull().default(0),
     state: text('state', { enum: ['pending', 'shortlisted', 'hidden', 'selected'] }).notNull(),
     revision: integer('revision').notNull(),
     createdAt: integer('created_at').notNull(),
@@ -297,6 +299,7 @@ export const proposals = sqliteTable(
   (t) => [
     uniqueIndex('proposal_normalized').on(t.channelId, t.normalizedText),
     index('proposal_channel_state').on(t.channelId, t.state),
+    uniqueIndex('proposal_number').on(t.channelId, t.number),
   ],
 );
 export const proposalContributors = sqliteTable(
@@ -372,12 +375,17 @@ export const proposalBallots = sqliteTable(
   {
     id: text('id').primaryKey(),
     channelId: text('channel_id').notNull(),
+    /** Short channel-scoped number viewers type in `!riff vote <number> <option>`. */
+    number: integer('number').notNull().default(0),
     revision: integer('revision').notNull(),
     createdAt: integer('created_at').notNull(),
     deadlineAt: integer('deadline_at').notNull(),
     closedAt: integer('closed_at'),
   },
-  (t) => [index('proposal_ballot_channel').on(t.channelId, t.createdAt)],
+  (t) => [
+    index('proposal_ballot_channel').on(t.channelId, t.createdAt),
+    uniqueIndex('proposal_ballot_number').on(t.channelId, t.number),
+  ],
 );
 export const proposalBallotOptions = sqliteTable(
   'proposal_ballot_options',

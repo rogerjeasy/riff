@@ -645,3 +645,97 @@ it('samples manual close time inside the transaction and persists deadline recon
     revision: 1,
   });
 });
+
+it('gives ideas and ballots short channel numbers that chat can type', () => {
+  const f = setup();
+  const ids = ['Add two throws now', 'Make shields cheaper', 'Golden tomato bonus'].map(
+    (text, index) => {
+      const result = f.service.submit(actor(`v${index}`), { eventId: `s${index}`, text });
+      if (!result.ok) throw new Error(result.code);
+      return result.proposalId!;
+    },
+  );
+  const other = f.other.submit(actor(), { eventId: 'o1', text: 'Another channel idea' });
+  expect(other.ok).toBe(true);
+  expect(f.service.snapshot().proposals.map((p) => p.number)).toEqual([3, 2, 1]);
+  expect(f.other.snapshot().proposals.map((p) => p.number)).toEqual([1]);
+  f.service.setGrant(creator, 'mod', true);
+  const mod = actor('mod', ['moderator']);
+  expect(
+    f.service.handleCommand(mod, { eventId: 'm1', text: '!riff shortlist #1' }).result,
+  ).toEqual({ ok: true, proposalId: ids[0] });
+  expect(f.service.handleCommand(mod, { eventId: 'm2', text: '!riff shortlist 2' }).result).toEqual(
+    { ok: true, proposalId: ids[1] },
+  );
+  expect(f.service.handleCommand(mod, { eventId: 'm3', text: '!riff hide #99' }).result).toEqual({
+    ok: false,
+    code: 'NOT_FOUND',
+  });
+  const rows = f.service.snapshot({ state: 'shortlisted' }).proposals;
+  const ballot = f.service.createBallot(creator, {
+    proposalIds: rows.map((p) => ({ id: p.id, revision: p.revision })),
+    durationSeconds: 60,
+  });
+  expect(ballot.number).toBe(1);
+  expect(
+    f.service.handleCommand(actor('a'), { eventId: 'v1', text: '!riff vote 1 2' }).result,
+  ).toEqual({ ok: true });
+  expect(
+    f.service.handleCommand(actor('b'), { eventId: 'v2', text: '!riff vote #1 #1' }).result,
+  ).toEqual({ ok: true });
+  // The explicit number still fences delayed chat from a later ballot.
+  expect(
+    f.service.handleCommand(actor('c'), { eventId: 'v3', text: '!riff vote 2 1' }).result,
+  ).toEqual({ ok: false, code: 'NOT_FOUND' });
+  const projection = f.service.publicProjection();
+  expect(projection.ballot).toMatchObject({ number: 1, tied: true });
+  expect(projection.ballot?.options.map((o) => o.number).sort()).toEqual([1, 2]);
+  expect(projection.commands).toContain('!riff vote <ballot> <option>');
+});
+
+it('reports zero-vote ballots as untied and credits only consenting contributors in order', () => {
+  const f = setup();
+  const first = f.service.submit(actor('a'), { eventId: '1', text: 'Add two throws now' });
+  if (!first.ok) throw new Error(first.code);
+  for (const [index, name] of ['b', 'c', 'd'].entries())
+    f.service.submit(
+      { ...actor(name), displayName: name.toUpperCase() },
+      {
+        eventId: `g${index}`,
+        text: 'add two THROWS now',
+      },
+    );
+  f.service.setCredit({ ...actor('d'), displayName: 'D' }, true);
+  f.service.setCredit(actor('b'), true);
+  f.service.setCredit(actor('c'), false);
+  const p = f.service.snapshot().proposals[0]!;
+  expect(p.contributorCount).toBe(4);
+  expect(f.service.snapshot().counts).toEqual({
+    pending: 1,
+    shortlisted: 0,
+    selected: 0,
+    hidden: 0,
+  });
+  const shortlisted = f.service.moderate(creator, {
+    proposalId: p.id,
+    expectedRevision: p.revision,
+    action: 'shortlist',
+  });
+  f.service.createBallot(creator, {
+    proposalIds: [{ id: shortlisted.id, revision: shortlisted.revision }],
+    durationSeconds: 30,
+  });
+  const ballot = f.service.publicProjection().ballot!;
+  expect(ballot.tied).toBe(false);
+  expect(ballot.options[0]?.authors).toEqual(['B', 'D']);
+  const selected = f.service.select(creator, {
+    proposalId: shortlisted.id,
+    expectedRevision: shortlisted.revision,
+    brief: 'Add two throws now',
+  });
+  expect(f.service.publicProjection().selections[0]).toMatchObject({
+    id: selected.id,
+    number: 1,
+    selectedAt: selected.createdAt,
+  });
+});

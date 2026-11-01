@@ -57,6 +57,13 @@
       "when": 1793488947110,
       "tag": "0007_brief_mephistopheles",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793492223761,
+      "tag": "0008_short_audience_numbers",
+      "breakpoints": true
     }
   ]
 }

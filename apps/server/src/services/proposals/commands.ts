@@ -12,9 +12,9 @@ export function parseProposalCommand(text: string): ProposalCommand | null {
   if (/^panic$/i.test(body)) return { kind: 'panic' };
   const suggest = /^suggest(?:\s+([\s\S]*))?$/i.exec(body);
   if (suggest) return { kind: 'suggest', text: suggest[1] ?? '' };
-  const vote = /^vote\s+([a-zA-Z0-9_-]{1,128})\s+([1-5])$/i.exec(body);
+  const vote = /^vote\s+(#?[a-zA-Z0-9_-]{1,128})\s+#?([1-5])$/i.exec(body);
   if (vote) return { kind: 'vote', ballotId: vote[1] ?? '', option: Number(vote[2]) };
-  const moderate = /^(shortlist|hide)\s+([a-zA-Z0-9_-]{1,128})$/i.exec(body);
+  const moderate = /^(shortlist|hide)\s+(#?[a-zA-Z0-9_-]{1,128})$/i.exec(body);
   if (moderate)
     return {
       kind: (moderate[1] ?? '').toLowerCase() as 'shortlist' | 'hide',

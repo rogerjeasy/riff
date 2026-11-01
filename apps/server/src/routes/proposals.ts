@@ -20,17 +20,25 @@ export function proposalFailure(reply: FastifyReply, error: unknown) {
           : code.endsWith('LIMIT')
             ? 429
             : 409;
-  return reply
-    .code(status)
-    .send({
-      code,
-      message:
-        code === 'STALE'
-          ? 'This audience item changed. Refresh and review again.'
-          : code === 'REVOKED'
-            ? 'This audience selection was removed. Select an eligible proposal again.'
-            : 'This audience action is unavailable. Refresh and review the current item.',
-    });
+  return reply.code(status).send({
+    code,
+    message:
+      code === 'STALE'
+        ? 'This idea changed while you were looking at it. The inbox has refreshed; check it and try again.'
+        : code === 'REVOKED'
+          ? 'This idea was hidden or replaced, so its selection no longer counts. Pick an eligible idea again.'
+          : code === 'BALLOT_OPEN'
+            ? 'A vote is already open. End it before starting another.'
+            : code === 'INELIGIBLE'
+              ? 'Only shortlisted ideas can go to a vote or be built. Refresh to see the latest state.'
+              : code === 'GRANT_LIMIT'
+                ? 'You can grant up to 100 moderators. Revoke one first.'
+                : code === 'PROPOSAL_LIMIT'
+                  ? 'The inbox holds 100 open ideas. Hide some before restoring more.'
+                  : code === 'BALLOT_CLOSED'
+                    ? 'That vote has already closed.'
+                    : 'This audience action is unavailable. Refresh and review the current item.',
+  });
 }
 /** Existing operator-local mutation guard is creator authority. No body can supply chat roles. */
 export function registerProposalRoutes(

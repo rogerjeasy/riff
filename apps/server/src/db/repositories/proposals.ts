@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, isNull, lte, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lte, max, ne, sql } from 'drizzle-orm';
 import type { DatabaseConnection } from '../client.js';
 import {
   proposals,
@@ -29,6 +29,66 @@ export function proposalRepository(connection: DatabaseConnection, channelId: st
         .where(and(eq(proposals.channelId, channelId), eq(proposals.id, id)))
         .get();
     },
+    proposalByNumber(number: number) {
+      return db
+        .select()
+        .from(proposals)
+        .where(and(eq(proposals.channelId, channelId), eq(proposals.number, number)))
+        .get();
+    },
+    /** One grouped read per page instead of loading every contributor row. */
+    stateCounts() {
+      const counts = { pending: 0, shortlisted: 0, selected: 0, hidden: 0 };
+      for (const row of db
+        .select({ state: proposals.state, n: count() })
+        .from(proposals)
+        .where(eq(proposals.channelId, channelId))
+        .groupBy(proposals.state)
+        .all())
+        counts[row.state] = row.n;
+      return counts;
+    },
+    contributorCounts(ids: string[]) {
+      const counts = new Map<string, number>();
+      if (!ids.length) return counts;
+      for (const row of db
+        .select({ id: proposalContributors.proposalId, n: count() })
+        .from(proposalContributors)
+        .where(
+          and(
+            eq(proposalContributors.channelId, channelId),
+            inArray(proposalContributors.proposalId, ids),
+          ),
+        )
+        .groupBy(proposalContributors.proposalId)
+        .all())
+        counts.set(row.id, row.n);
+      return counts;
+    },
+    /** Earliest consenting contributors only; a single bounded join, run every overlay tick. */
+    creditedAuthors(proposalId: string, limit = 5) {
+      return db
+        .select({ displayName: proposalContributors.displayName })
+        .from(proposalContributors)
+        .innerJoin(
+          proposalCredit,
+          and(
+            eq(proposalCredit.channelId, channelId),
+            eq(proposalCredit.accountId, proposalContributors.accountId),
+            eq(proposalCredit.enabled, true),
+          ),
+        )
+        .where(
+          and(
+            eq(proposalContributors.channelId, channelId),
+            eq(proposalContributors.proposalId, proposalId),
+          ),
+        )
+        .orderBy(asc(proposalContributors.createdAt), sql`proposal_contributors.rowid`)
+        .limit(limit)
+        .all()
+        .map((row) => row.displayName);
+    },
     findNormalized(text: string) {
       return db
         .select()
@@ -36,9 +96,16 @@ export function proposalRepository(connection: DatabaseConnection, channelId: st
         .where(and(eq(proposals.channelId, channelId), eq(proposals.normalizedText, text)))
         .get();
     },
-    insertProposal(row: Omit<typeof proposals.$inferInsert, 'channelId'>) {
+    /** Numbers are assigned here, inside the caller's immediate transaction. */
+    insertProposal(row: Omit<typeof proposals.$inferInsert, 'channelId' | 'number'>) {
+      const number =
+        (db
+          .select({ n: max(proposals.number) })
+          .from(proposals)
+          .where(eq(proposals.channelId, channelId))
+          .get()?.n ?? 0) + 1;
       db.insert(proposals)
-        .values({ ...row, channelId })
+        .values({ ...row, number, channelId })
         .run();
     },
     updateProposal(id: string, revision: number, state: ProposalRow['state'], at: number) {
@@ -72,7 +139,7 @@ export function proposalRepository(connection: DatabaseConnection, channelId: st
         .where(
           and(eq(proposals.channelId, channelId), state ? eq(proposals.state, state) : undefined),
         )
-        .orderBy(desc(proposals.createdAt), asc(proposals.id))
+        .orderBy(desc(proposals.createdAt), desc(proposals.number), asc(proposals.id))
         .limit(limit)
         .offset(offset)
         .all();
@@ -228,6 +295,13 @@ export function proposalRepository(connection: DatabaseConnection, channelId: st
         .where(and(eq(proposalBallots.channelId, channelId), isNull(proposalBallots.closedAt)))
         .get();
     },
+    ballotByNumber(number: number) {
+      return db
+        .select()
+        .from(proposalBallots)
+        .where(and(eq(proposalBallots.channelId, channelId), eq(proposalBallots.number, number)))
+        .get();
+    },
     ballot(id: string) {
       return db
         .select()
@@ -244,9 +318,15 @@ export function proposalRepository(connection: DatabaseConnection, channelId: st
         .limit(limit)
         .all();
     },
-    insertBallot(row: Omit<typeof proposalBallots.$inferInsert, 'channelId'>) {
+    insertBallot(row: Omit<typeof proposalBallots.$inferInsert, 'channelId' | 'number'>) {
+      const number =
+        (db
+          .select({ n: max(proposalBallots.number) })
+          .from(proposalBallots)
+          .where(eq(proposalBallots.channelId, channelId))
+          .get()?.n ?? 0) + 1;
       db.insert(proposalBallots)
-        .values({ ...row, channelId })
+        .values({ ...row, number, channelId })
         .run();
     },
     closeBallot(id: string, revision: number, at: number) {
