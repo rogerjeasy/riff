@@ -1,5 +1,6 @@
 import { ProductionPanel } from './production/panel.js';
 import { ParticipationPanel } from './participation/panel.js';
+import { InsightsPanel } from './insights/panel.js';
 import { RecipeLibrary } from './recipes/library.js';
 import { DirectorPanel } from './director/panel.js';
 import { CollaborationPanel } from './collaboration/panel.js';
@@ -302,6 +303,7 @@ export function App() {
         <CollaborationPanel versions={allVersions} panic={studio.panic} />
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
+        <InsightsPanel />
         <ProductionPanel versions={allVersions} panic={studio.panic} />
         <RecipeLibrary
           versions={allVersions}

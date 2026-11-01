@@ -847,3 +847,24 @@ it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/tex
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## Voice entry and aggregate insights — F09/F30
+
+`services/voice` adds push-to-talk authoring. `GET /api/voice` reports the provider;
+`POST /api/voice/transcribe` takes a raw `audio/webm|mp4|mpeg|wav` body (2 MiB route limit,
+≤60 s by the `x-riff-audio-duration-ms` header) behind the existing mutation guard, one at a
+time and six per minute. The injected transport is OpenAI file transcription
+(`/v1/audio/transcriptions`, `file` + `model`, verified against the speech-to-text guide on
+November 1, 2026) over native `fetch`, or a deterministic `mock`. Env: `RIFF_TRANSCRIPTION_MODE`
+(`off`|`mock`|`openai`; empty → `openai` when `OPENAI_API_KEY` is set), `OPENAI_API_KEY`,
+`RIFF_TRANSCRIPTION_MODEL` (default `gpt-transcribe`). Audio is never persisted or logged;
+transcripts are sanitized and capped at 1,200 characters and land in an editable review
+field that never auto-submits. Without a provider the console uses the browser Web Speech
+API where available, else shows "Voice unavailable — type instead".
+
+`services/insights` computes tenant-scoped aggregates for `GET /api/insights?range=stream|24h|7d`
+from existing tables (`activity`, `session_journal`, `compile_runs`, proposal tables): no
+new table or migration. Groups of 1–2 people are suppressed; no viewer identity, per-viewer
+list, leaderboard or spending ranking is produced. The console Insights card shows KPI
+tiles, a keyboard-readable SVG participation chart with a data table, blocked reasons, a
+per-interaction table and plain-language takeaways. No new dependency.

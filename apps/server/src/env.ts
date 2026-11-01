@@ -28,6 +28,13 @@ const schema = z
     TWITCH_CLIENT_SECRET: optional,
     TWITCH_EVENTSUB_WS_URL: optional,
     TWITCH_HELIX_URL: optional,
+    /** F09 push-to-talk transcription: off | mock | openai (default: openai when keyed). */
+    RIFF_TRANSCRIPTION_MODE: z.preprocess(
+      (value) => (typeof value === 'string' && !value.trim() ? undefined : value),
+      z.enum(['off', 'mock', 'openai']).optional(),
+    ),
+    OPENAI_API_KEY: optional,
+    RIFF_TRANSCRIPTION_MODEL: optional,
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
@@ -48,6 +55,10 @@ const schema = z
       path: ['RIFF_CONSOLE_ACCESS_TOKEN'],
     },
   )
+  .refine((value) => value.RIFF_TRANSCRIPTION_MODE !== 'openai' || !!value.OPENAI_API_KEY, {
+    message: 'RIFF_TRANSCRIPTION_MODE=openai requires OPENAI_API_KEY.',
+    path: ['RIFF_TRANSCRIPTION_MODE'],
+  })
   .refine((value) => !value.RIFF_SECRET || value.RIFF_SECRET.length >= 32, {
     message: 'RIFF_SECRET must be at least 32 characters (try: openssl rand -base64 32).',
     path: ['RIFF_SECRET'],
@@ -84,6 +95,11 @@ export function parseEnv(input: Record<string, string | undefined>) {
             helixBaseUrl: env.TWITCH_HELIX_URL,
           }
         : null,
+    transcription: {
+      mode: env.RIFF_TRANSCRIPTION_MODE ?? (env.OPENAI_API_KEY ? 'openai' : 'off'),
+      apiKey: env.OPENAI_API_KEY,
+      model: env.RIFF_TRANSCRIPTION_MODEL ?? 'gpt-transcribe',
+    },
     logLevel: env.LOG_LEVEL,
   };
 }

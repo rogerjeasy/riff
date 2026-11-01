@@ -424,3 +424,21 @@ coordinator sessions and 10,000 event receipts per session. Behavior changes req
 new agreement and new consent. Roles from another channel, raw participant snapshots,
 private prompts and Twitch credentials never become shared authority or public output.
 See [the collaboration contract](apps/server/src/services/collaboration/README.md).
+
+## Voice entry and insights — F09/F30
+
+**Voice.** In Describe, hold **Hold to talk** (or Space/Enter on it), or tap once to start
+and again to stop. A level meter and a timer show the 60-second cap. The transcript appears
+in an editable review box; choose **Use as description** or **Add to description**, then
+press Generate as usual. Typing always works. Set `OPENAI_API_KEY` (and optionally
+`RIFF_TRANSCRIPTION_MODEL`) to transcribe on the server, or `RIFF_TRANSCRIPTION_MODE=mock`
+for deterministic offline transcripts. Without either, browsers with speech recognition use
+it; others show “Voice unavailable — type instead”. Audio is never stored. See
+[the voice contract](apps/server/src/services/voice/README.md).
+
+**Insights.** The **Insights** card summarizes the last stream, 24 hours or 7 days: people
+taking part, admitted vs blocked actions over time, why actions were blocked, a
+per-interaction table, round outcomes, generation success/latency, incidents and proposal
+engagement, with suggestions such as “12 actions on Tomato Battle were blocked by the
+per-viewer limit — consider raising it…”. It is aggregate only: groups under three people are
+hidden and no one is ranked. See [the insights contract](apps/server/src/services/insights/README.md).

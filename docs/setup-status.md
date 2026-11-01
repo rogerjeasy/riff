@@ -255,3 +255,21 @@ Verification for this increment: 685 tests in 66 socket-independent Vitest files
 isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
 source files passed. Two existing socket-dependent test files were excluded from the
 local run. CI includes the new production, participation and dock checks.
+
+## Voice entry and aggregate insights (F09/F30) — November 1, 2026
+
+F09 adds push-to-talk to Describe with hold/tap control, a level meter, a 60-second cap,
+and an editable transcript review that never auto-submits. Permission-denied, no-device,
+unsupported, not-configured, transcribing and failed-with-retry states are explicit.
+`POST /api/voice/transcribe` accepts a bounded raw audio body behind the mutation guard
+and calls OpenAI file transcription (`gpt-transcribe` by default) or a deterministic mock;
+audio is never stored. The OpenAI transport is verified against the official guide and a
+fake `fetch` only; no live key was exercised. Browser Web Speech fallback and real
+microphone capture were not exercised in a real browser here (jsdom stubs only).
+
+F30 adds `GET /api/insights` and a console Insights card computed from existing tables with
+groups under three people suppressed and no per-viewer output. No migration or dependency.
+
+Verification: 73 Vitest files / 775 tests passed (`vitest run --maxWorkers=4`; an unbounded
+run under heavy machine load hit 20-second timeouts in pre-existing heavy tests, which pass
+on re-run). Lint, strict types, formatting, build, bundle and focused secret checks passed.

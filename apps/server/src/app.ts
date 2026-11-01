@@ -1,3 +1,8 @@
+import { createVoiceService } from './services/voice/service.js';
+import type { TranscriptionTransport } from './services/voice/transport.js';
+import { registerVoiceRoutes } from './routes/voice.js';
+import { createInsightsService } from './services/insights/service.js';
+import { registerInsightsRoutes } from './routes/insights.js';
 import { createProductionService, type ProductionService } from './services/production/service.js';
 import { registerProductionRoutes } from './routes/production.js';
 import {
@@ -68,6 +73,8 @@ interface AppDependencies {
   peerFetch?: typeof fetch;
   /** Hosted console sign-in; omitted locally, where the console stays open. */
   console?: ConsoleAccess;
+  /** F09 push-to-talk transcription; null/omitted means voice is not configured. */
+  transcription?: TranscriptionTransport | null;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -402,6 +409,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
+  registerVoiceRoutes(app, createVoiceService({ transport: dependencies.transcription ?? null }));
+  registerInsightsRoutes(
+    app,
+    createInsightsService({
+      database,
+      channelId: HOME_CHANNEL,
+      ...(dependencies.now ? { now: dependencies.now } : {}),
+    }),
+  );
   app.addHook('onReady', async () => {
     twitch.start();
     // Warm the verifier (TypeScript parser, QuickJS WASM, worker startup) off the
