@@ -13,6 +13,23 @@ plain language, rehearses it privately, and activates only the exact artifact th
 creator approved. Real Twitch chat (EventSub) then drives it on an OBS overlay, with
 pause, rollback and an emergency stop always one click away.
 
+## For judges
+
+**Hosted instance (nothing to install).** Open the private sign-in link from the Devpost
+testing instructions. It points to `https://judge.18-210-118-156.sslip.io` and signs you in
+for 30 days without a password. All judges share this one instance, so you may see
+interactions other judges created; it holds no creator data.
+
+- **Without Twitch:** describe an interaction, read the evidence, run the private
+  rehearsal, approve it, and open the overlay URL from the console in a browser tab.
+- **With your own Twitch channel:** press **Connect Twitch**, authorize, then type the
+  command in your chat. Polls, Channel Points and Predictions also need an
+  Affiliate/Partner channel.
+- **Emergency stop** is always in the header and works even if generation is busy.
+
+**Run it locally:** follow "Try it in two minutes" below. It needs no accounts and uses
+the offline compiler, which is labelled in the UI.
+
 ## Try it in two minutes
 
 ```sh
