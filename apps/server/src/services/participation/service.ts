@@ -80,6 +80,15 @@ export function createParticipationService(deps: {
     timer: ReturnType<typeof setTimeout> | undefined;
   const cache = new Map<string, { at: number; stamp: string; view: ParticipationView }>();
   const preferences = createViewerLanguageStore({ database, channelId: repo.channelId, now });
+  /**
+   * Live Twitch chat names its channel by the broadcaster's Twitch user id, while host
+   * repositories use the internal channel key; accept either for this channel only.
+   */
+  const ownChannel = (channelId: string) => {
+    if (channelId === repo.channelId) return true;
+    const broadcaster = repo.state().twitchUserId;
+    return !!broadcaster && channelId === broadcaster;
+  };
   /** In-memory F20 windows: per hashed viewer, accepted per channel, replies per channel. */
   const languageViewers = new Map<string, number>(),
     languageAccepted: number[] = [],
@@ -182,7 +191,7 @@ export function createParticipationService(deps: {
       if (
         closed ||
         deps.blocked() ||
-        message.channelId !== repo.channelId ||
+        !ownChannel(message.channelId) ||
         (message.sourceChannelId && message.sourceChannelId !== message.channelId) ||
         !message.id ||
         message.id.length > 160 ||
@@ -386,7 +395,7 @@ export function createParticipationService(deps: {
       if (
         closed ||
         deps.blocked() ||
-        message.channelId !== repo.channelId ||
+        !ownChannel(message.channelId) ||
         (message.sourceChannelId && message.sourceChannelId !== message.channelId)
       )
         return { consumed: true, accepted: false };

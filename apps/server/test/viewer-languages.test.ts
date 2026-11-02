@@ -114,6 +114,25 @@ describe('F20 viewer language preferences', () => {
     expect(parseLanguageCommand('!riff help fr')).toBeNull();
   });
 
+  it('accepts real Twitch chat, whose channel id is the broadcaster user id (production regression)', async () => {
+    const { app, sent } = await boot({ replies: true });
+    await live(app);
+    app.riff.repo.updateState({ twitchUserId: '700001' });
+    // EventSub delivers channel.chat.message with the broadcaster's Twitch user id, not 'home'.
+    await app.riff.runtime.handleChat(
+      chat('700001', '700001', '!riff language fr', {
+        roles: ['broadcaster', 'viewer'] as LiveChatMessage['roles'],
+        sourceMessageId: 'twitch-msg-1',
+      }),
+    );
+    expect(app.riff.participation.viewerLanguage('700001')).toBe('fr');
+    await app.riff.runtime.handleChat(chat('700001', 'u-viewer', '!riff help'));
+    expect(sent.length).toBeGreaterThanOrEqual(1);
+    // Another channel's id is still refused.
+    await app.riff.runtime.handleChat(chat('999999', 'u-2', '!riff language de'));
+    expect(app.riff.participation.viewerLanguage('u-2')).toBe('en');
+  });
+
   it('sets, clears and persists a choice keyed by EventSub user id across restart', async () => {
     const database = openDatabase(':memory:');
     databases.push(database);
