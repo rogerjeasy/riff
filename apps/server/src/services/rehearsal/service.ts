@@ -12,6 +12,7 @@ import {
   runRehearsal,
   type RehearsalPreset,
   type RehearsalScenario,
+  canonicalFormatText,
   definitionCommands,
 } from '@riff/sandbox';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
@@ -141,7 +142,12 @@ export function createRehearsalService(
               id: eventId(entry.event.id),
               channelId: 'rehearsal',
               viewerId: viewer(entry.event.viewerId),
-              text: commands.includes(command) ? command : 'unrelated',
+              // Version 3 arguments survive only when drawn from the definition's bounded sets.
+              text: commands.includes(command)
+                ? command
+                : ((manifest.experience
+                    ? canonicalFormatText(manifest.experience, entry.event.text)
+                    : null) ?? 'unrelated'),
             },
           };
         }

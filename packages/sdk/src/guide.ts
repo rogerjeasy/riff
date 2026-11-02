@@ -10,7 +10,8 @@ additively, the native Twitch capabilities polls, chat.announce and shoutout; ex
 0.4.0 artifacts keep their identity and behavior. 0.2.0 artifacts must be regenerated.
 Experience definition version 2 (additive, same SDK 0.4.0 bridge) adds declarative
 mechanics; version 1 definitions, snapshots and identities are unchanged and never
-carry a mechanics key.
+carry a mechanics key. Definition version 3 (additive, same bridge) adds one non-game
+\`format\`; versions 1 and 2 never carry a format key.
 
 ## Handler
 
@@ -148,6 +149,39 @@ contributions count every resource-spending action. Admission after phase checks
 join → intermission → enrollment → elimination → action limits → resources.
 Scenario session assertions may also check round, winner, wins and
 standings {health, eliminated, bursts, tier}.
+
+## Version 3 formats (definition version 3)
+
+Set version:3 and format = one of the blocks below; teams:[], no mechanics,
+objective {kind:'highest-score', target:null} (the community finishes together at the
+deadline). The host owns every choice; handlers only read snapshot.format. Each slot
+(stage or question) gets an equal window: slot i covers elapsed time
+[i*w, (i+1)*w) with w = floor(durationMs / slots); pause freezes it. Every accepted
+action spends one resource and adds contribution.points to scores.community.
+- mural: { kind:'mural', width: 2..16, height: 2..16, palette: 2..8 distinct names
+  from red, orange, yellow, green, teal, blue, purple, pink, white, black,
+  overwrite: boolean, reveal: 'live'|'end' }. Chat: \`<contribution.command> <cell> <color>\`,
+  e.g. \`!paint b3 red\` (column letter, 1-based row; A1 top-left). Any other argument is
+  INVALID_CHOICE (nothing spent); overwrite:false makes painted cells CELL_TAKEN.
+  resource.perParticipant is the paint allowance. Free text is never stored.
+- composition: { kind:'composition', tieBreak:'first-listed', stages: 2..4
+  { id, label, options: 2..4 { id, label } } }. Chat: \`<command> <option id|number>\`,
+  e.g. \`!vote fast\` or \`!vote 1\`, for the current stage only; one vote per viewer
+  per stage (ALREADY_CHOSEN). Each stage's result is the most-voted option; ties and
+  empty stages resolve to the first listed option. resource.perParticipant must equal the
+  stage count. The result is a visual composition; no audio is played.
+- quiz: { kind:'quiz', passPercent: 1..100, revealMs: 0..30000, questions: 1..5
+  { prompt (<=140), options: 2..4 strings (<=60), answer: option index, explanation
+  (<=200) } }. contribution.command must be '!a'; answer with !a, !b, !c, !d (an
+  option the question lacks is INVALID_CHOICE). One final answer per viewer per
+  question (ALREADY_CHOSEN); the last revealMs of a window is ANSWER_CLOSED and shows
+  the answer and explanation. A question is solved when correct answers are at least
+  passPercent of its answers. No per-viewer ranking; scores count participation.
+  resource.perParticipant must equal the question count.
+Each slot window must leave at least 5000 ms to act. snapshot.format = { canvas:
+number[] (mural palette indexes, -1 empty, row-major; [] otherwise), choices: { [viewerId]:
+number[] per slot, -1 = none } }. Scenario session assertions may check format
+{ slot, painted, tally (current slot's option counts), solved }.
 
 ## Native Twitch actions (SDK 0.4.0)
 
@@ -333,13 +367,18 @@ export const RIFF_DTS = `declare module 'riff' {
     burst: { command: string | null; label: string; participants: number; windowMs: number; points: number; limit: number; shieldMs: number } | null;
     milestones: { id: string; label: string; score: number; unlock: { command: string; points: number } | null }[];
   }
+  export type ExperienceFormat =
+    | { kind: 'mural'; width: number; height: number; palette: string[]; overwrite: boolean; reveal: 'live' | 'end' }
+    | { kind: 'composition'; tieBreak: 'first-listed'; stages: { id: string; label: string; options: { id: string; label: string }[] }[] }
+    | { kind: 'quiz'; passPercent: number; revealMs: number; questions: { prompt: string; options: string[]; answer: number; explanation: string }[] };
   export interface ExperienceDefinition {
-    version: 1 | 2; title: string; durationMs: number; maxParticipants: number;
+    version: 1 | 2 | 3; title: string; durationMs: number; maxParticipants: number;
     teams: { id: string; label: string; joinCommand: string }[];
     resource: { name: string; perParticipant: number };
     contribution: { command: string; points: number };
     objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
     mechanics?: ExperienceMechanics;
+    format?: ExperienceFormat;
   }
   export interface SessionParticipant { teamId: string | null; remaining: number; contributions: number }
   export interface SessionStanding {
@@ -357,6 +396,7 @@ export const RIFF_DTS = `declare module 'riff' {
     participants: Record<string, SessionParticipant>; scores: Record<string, number>;
     winner: string | null; outcome: 'deadline' | 'goal' | 'elimination' | null;
     mechanics?: SessionMechanicsState;
+    format?: { canvas: number[]; choices: Record<string, number[]> };
   }
   export type AudienceRole = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
   export interface TwitchEventDetail { kind: 'subscribe' | 'gift' | 'resub' | 'cheer' | 'raid'; amount: number; tier: '1000' | '2000' | '3000' | null; anonymous: boolean; gift: boolean }
@@ -386,8 +426,8 @@ export const RIFF_DTS = `declare module 'riff' {
 `;
 
 export const RIFF_TEST_DTS = `declare module 'riff/test' {
-  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT' | 'ELIMINATED' | 'LOCKED' | 'HEALTH_FULL' | 'BURST_COUNTED' | 'BURST_ACTIVE' | 'BURST_LIMIT' | 'ROUND_INTERMISSION' | 'BELOW_MINIMUM';
-  export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>>; round?: number; winner?: string | null; wins?: Record<string,number>; standings?: Record<string,{ health?: number | null; eliminated?: boolean; bursts?: number; tier?: number }> }
+  export type DecisionCode = 'ACCEPTED' | 'UNRELATED' | 'AUDIENCE' | 'VIEWER_LIMIT' | 'CHANNEL_LIMIT' | 'DUPLICATE' | 'NOT_JOINED' | 'RESOURCE_LIMIT' | 'SESSION_PAUSED' | 'SESSION_FINISHED' | 'ALREADY_JOINED' | 'PARTICIPANT_LIMIT' | 'ELIMINATED' | 'LOCKED' | 'HEALTH_FULL' | 'BURST_COUNTED' | 'BURST_ACTIVE' | 'BURST_LIMIT' | 'ROUND_INTERMISSION' | 'INVALID_CHOICE' | 'ALREADY_CHOSEN' | 'CELL_TAKEN' | 'ANSWER_CLOSED' | 'BELOW_MINIMUM';
+  export interface SessionAssertion { phase?: import('riff').SessionSnapshot['phase']; scores?: Record<string,number>; remainingMs?: number; participants?: Record<string,Partial<import('riff').SessionParticipant>>; round?: number; winner?: string | null; wins?: Record<string,number>; standings?: Record<string,{ health?: number | null; eliminated?: boolean; bursts?: number; tier?: number }>; format?: { slot?: number; painted?: number; tally?: number[]; solved?: number } }
   export interface TimerAssertion { fired: number; effects: number }
   export interface ScenarioStep { id: string; viewer: string; roles: import('riff').AudienceRole[]; text: string; at: number; expect: DecisionCode; effects: number; session?: SessionAssertion | null; timers?: TimerAssertion | null; kind?: 'points.redeem' | null; twitch?: import('riff').TwitchEventDetail | null }
   export interface Scenario { name: string; kind: 'happy' | 'limit' | 'role' | 'negative' | 'duplicate' | 'window'; steps: ScenarioStep[] }

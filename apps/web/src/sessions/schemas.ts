@@ -69,10 +69,85 @@ const mechanicsSchema = z
       .max(4),
   })
   .strict();
+const MURAL_PALETTE = [
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'teal',
+  'blue',
+  'purple',
+  'pink',
+  'white',
+  'black',
+] as const;
+const text = (max: number) => label.max(max);
+const optionLabel = z
+  .string()
+  .trim()
+  .min(1)
+  .max(60)
+  .refine(
+    (value) => !Array.from(value).some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127),
+  );
+/** Definition version 3 formats; the host remains the authority on cross-field rules. */
+const formatSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('mural'),
+      width: bounded(2, 16),
+      height: bounded(2, 16),
+      palette: z.array(z.enum(MURAL_PALETTE)).min(2).max(8),
+      overwrite: z.boolean(),
+      reveal: z.enum(['live', 'end']),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('composition'),
+      tieBreak: z.literal('first-listed'),
+      stages: z
+        .array(
+          z
+            .object({
+              id: teamId,
+              label,
+              options: z
+                .array(z.object({ id: teamId, label: optionLabel }).strict())
+                .min(2)
+                .max(4),
+            })
+            .strict(),
+        )
+        .min(2)
+        .max(4),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('quiz'),
+      passPercent: bounded(1, 100),
+      revealMs: bounded(0, 30000),
+      questions: z
+        .array(
+          z
+            .object({
+              prompt: text(140),
+              options: z.array(optionLabel).min(2).max(4),
+              answer: bounded(0, 3),
+              explanation: text(200),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(5),
+    })
+    .strict(),
+]);
 /** Browser-owned validation mirrors the public contract; no SDK runtime crosses HTTP. */
 export const experienceDefinitionSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2)]),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     title: label.max(120),
     durationMs: z.number().int().min(1000).max(3600000),
     maxParticipants: z.number().int().min(1).max(256),
@@ -86,6 +161,7 @@ export const experienceDefinitionSchema = z
       })
       .strict(),
     mechanics: mechanicsSchema.optional(),
+    format: formatSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -98,6 +174,17 @@ export const experienceDefinitionSchema = z
     }
     if ((value.version === 2) !== (value.mechanics !== undefined)) {
       ctx.addIssue({ code: 'custom', message: 'Only version 2 definitions carry mechanics.' });
+    }
+    if (
+      (value.version === 3) !== (value.format !== undefined) ||
+      (value.format !== undefined && value.teams.length > 0) ||
+      (value.format?.kind === 'quiz' &&
+        value.format.questions.some((q) => q.answer >= q.options.length))
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Only teamless version 3 definitions carry a format.',
+      });
     }
     if (
       (value.objective.kind === 'highest-score') !== (value.objective.target === null) ||
@@ -193,6 +280,13 @@ export const sessionSnapshotSchema = z
       })
       .strict()
       .optional(),
+    format: z
+      .object({
+        canvas: z.array(z.number().int().min(-1).max(7)).max(256),
+        choices: dictionary(z.array(z.number().int().min(-1).max(3)).max(5), 256),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -255,6 +349,27 @@ export const overlaySessionSchema = z
     if (snapshot.mechanics) {
       ctx.addIssue({ code: 'custom', message: 'Version 1 sessions carry no mechanics' });
       return;
+    }
+    const f = definition.format;
+    if (Boolean(f) !== Boolean(snapshot.format)) {
+      ctx.addIssue({ code: 'custom', message: 'Format state must match the definition' });
+      return;
+    }
+    if (f && snapshot.format) {
+      const slots =
+        f.kind === 'composition' ? f.stages.length : f.kind === 'quiz' ? f.questions.length : 0;
+      const canvasOk =
+        f.kind === 'mural'
+          ? snapshot.format.canvas.length === f.width * f.height &&
+            snapshot.format.canvas.every((cell) => cell < f.palette.length)
+          : snapshot.format.canvas.length === 0;
+      const choicesOk = Object.values(snapshot.format.choices).every(
+        (row) => f.kind !== 'mural' && row.length === slots,
+      );
+      if (!canvasOk || !choicesOk) {
+        ctx.addIssue({ code: 'custom', message: 'Format state must match the definition' });
+        return;
+      }
     }
     const totals = new Map(keys.map((key) => [key, 0]));
     let valid =

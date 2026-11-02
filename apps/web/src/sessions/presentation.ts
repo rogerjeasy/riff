@@ -8,6 +8,7 @@ import {
   viewerReasons,
 } from './mechanics-hud.js';
 import { sessionText, type SessionCopyKey, type SessionLanguage } from './mechanics-copy.js';
+import { appendFormat, formatOutcome, formatRules, formatViewerReasons } from './formats-hud.js';
 
 export function sameDefinition(
   a: ExperienceDefinition | null | undefined,
@@ -29,12 +30,15 @@ export function sameDefinition(
           value.objective.kind,
           value.objective.target,
           mechanicsKey(value.mechanics),
+          mechanicsKey(value.format),
         ]
       : null;
   return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 }
 /** Order-independent comparison key for version 2 mechanics (null for version 1). */
-function mechanicsKey(value: ExperienceDefinition['mechanics']): string | null {
+function mechanicsKey(
+  value: ExperienceDefinition['mechanics'] | ExperienceDefinition['format'],
+): string | null {
   const sorted = (input: unknown): unknown =>
     Array.isArray(input)
       ? input.map(sorted)
@@ -112,6 +116,7 @@ export function createSessionHud(
     );
   hud.append(scores);
   appendMechanics(hud, definition, snapshot, now, language);
+  appendFormat(hud, definition, snapshot, now, language);
   const resource = {
     per: definition.resource.perParticipant,
     resource: definition.resource.name,
@@ -141,7 +146,10 @@ export function createSessionHud(
           ),
         ),
       );
-    const reasons = viewerReasons(definition, snapshot, options.viewerId, now, language);
+    const reasons = [
+      ...viewerReasons(definition, snapshot, options.viewerId, now, language),
+      ...formatViewerReasons(definition, snapshot, options.viewerId, now, language),
+    ];
     if (reasons.length) {
       const status = element('ul', 'session-viewer-status');
       status.setAttribute('role', 'status');
@@ -159,19 +167,24 @@ export function createSessionHud(
     element(
       'p',
       'session-rules',
-      [
-        joins
-          ? t('rulesTeams', { joins, command, points }, points)
-          : t('rulesTeamless', { command, points }, points),
-        objectiveRule(definition, language),
-        joins ? t('teamsFixed') : '',
-        mechanicsRules(definition, language),
-      ]
+      (definition.format
+        ? [formatRules(definition, language)]
+        : [
+            joins
+              ? t('rulesTeams', { joins, command, points }, points)
+              : t('rulesTeamless', { command, points }, points),
+            objectiveRule(definition, language),
+            joins ? t('teamsFixed') : '',
+            mechanicsRules(definition, language),
+          ]
+      )
         .filter(Boolean)
         .join(' '),
     ),
   );
-  const v2Outcome = mechanicsOutcome(definition, snapshot, language);
+  const v2Outcome =
+    mechanicsOutcome(definition, snapshot, language) ??
+    formatOutcome(definition, snapshot, language);
   if (v2Outcome) hud.append(element('p', 'session-outcome', v2Outcome));
   else if (snapshot.phase === 'finished') {
     const winner = definition.teams.find((team) => team.id === snapshot.winner)?.label;

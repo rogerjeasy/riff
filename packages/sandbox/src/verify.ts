@@ -5,6 +5,7 @@ import {
   type Capability,
   type DecisionCode,
   type ExecutionDecision,
+  type ExperienceDefinition,
   type PermissionManifest,
   type Scenario,
   type SessionSnapshot,
@@ -18,6 +19,8 @@ import { createSessionSnapshot } from './session.js';
 import { instrumentHandler } from './instrument.js';
 import { createVirtualTimers } from './timers.js';
 import { mechanicsHostScenarios } from './mechanics-suite.js';
+import { formatHostScenarios } from './formats-suite.js';
+import { currentSlot, slotTally, solvedCount } from './formats.js';
 
 export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
 export type StageStatus = 'passed' | 'failed' | 'skipped';
@@ -209,7 +212,7 @@ export async function runScenarios(
         const actual = outputCount(decision);
         const passed =
           timersMatch &&
-          matchesSessionAssertion(decision.session, step.session) &&
+          matchesSessionAssertion(decision.session, step.session, artifact.manifest.experience) &&
           decision.code === step.expect &&
           (expectEffects === -2 || (expectEffects < 0 ? actual > 0 : actual === expectEffects));
         steps.push({
@@ -253,6 +256,7 @@ export async function runScenarios(
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   if (manifest.experience?.mechanics) return mechanicsHostScenarios(manifest);
+  if (manifest.experience?.format) return formatHostScenarios(manifest);
   if (manifest.experience) return sessionHostScenarios(manifest);
   if (manifest.trigger.kind === 'points.redeem') return redemptionHostScenarios(manifest);
   if (manifest.trigger.kind === 'twitch.event') return eventHostScenarios(manifest);
@@ -516,6 +520,7 @@ function eventHostScenarios(manifest: PermissionManifest): Scenario[] {
 export function matchesSessionAssertion(
   actual: SessionSnapshot | undefined,
   expected: SessionAssertion | null | undefined,
+  definition?: ExperienceDefinition | null,
 ): boolean {
   if (!expected) return true;
   if (!actual) return false;
@@ -535,6 +540,20 @@ export function matchesSessionAssertion(
     if (standing.eliminated !== undefined && found.eliminated !== standing.eliminated) return false;
     if (standing.bursts !== undefined && found.bursts !== standing.bursts) return false;
     if (standing.tier !== undefined && found.unlocked.length !== standing.tier) return false;
+  }
+  if (expected.format) {
+    const f = expected.format;
+    if (!definition?.format || !actual.format) return false;
+    const slot = currentSlot(definition, actual);
+    if (f.slot !== undefined && slot !== f.slot) return false;
+    if (f.painted !== undefined && actual.format.canvas.filter((c) => c >= 0).length !== f.painted)
+      return false;
+    if (
+      f.tally !== undefined &&
+      JSON.stringify(slotTally(definition, actual.format, slot)) !== JSON.stringify(f.tally)
+    )
+      return false;
+    if (f.solved !== undefined && solvedCount(definition, actual) !== f.solved) return false;
   }
   for (const [key, participant] of Object.entries(expected.participants ?? {})) {
     if (!Object.hasOwn(actual.participants, key)) return false;

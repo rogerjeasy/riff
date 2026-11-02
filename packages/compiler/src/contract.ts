@@ -3,7 +3,9 @@ import {
   AUDIENCE_ROLES,
   CAPABILITIES,
   DECISION_CODES,
+  FORMAT_LIMITS,
   MECHANIC_LIMITS,
+  MURAL_COLORS,
   PROJECTILE_ASSETS,
   SDK_VERSION,
   SESSION_LIMITS,
@@ -113,16 +115,15 @@ const behaviorSchema = z
 function withoutNullMechanics(manifest: unknown): unknown {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return manifest;
   const experience = (manifest as { experience?: unknown }).experience;
-  if (
-    !experience ||
-    typeof experience !== 'object' ||
-    Array.isArray(experience) ||
-    !Object.hasOwn(experience, 'mechanics') ||
-    (experience as { mechanics?: unknown }).mechanics !== null
-  )
-    return manifest;
+  if (!experience || typeof experience !== 'object' || Array.isArray(experience)) return manifest;
+  // Strict output sends mechanics:null / format:null for versions that do not carry them.
+  const nulls = ['mechanics', 'format'].filter(
+    (key) =>
+      Object.hasOwn(experience, key) && (experience as Record<string, unknown>)[key] === null,
+  );
+  if (!nulls.length) return manifest;
   const rest = Object.fromEntries(
-    Object.entries(experience as Record<string, unknown>).filter(([key]) => key !== 'mechanics'),
+    Object.entries(experience as Record<string, unknown>).filter(([key]) => !nulls.includes(key)),
   );
   return { ...manifest, experience: rest };
 }
@@ -181,6 +182,74 @@ const MECHANICS_JSON_SCHEMA = nullable(
     },
   }),
 );
+
+/** Definition version 3 formats for the strict model schema; host zod rules stay authoritative. */
+const id = { type: 'string', pattern: '^[a-z0-9_-]{1,32}$' } as const;
+const FORMAT_JSON_SCHEMA = {
+  anyOf: [
+    { type: 'null' },
+    strictObject({
+      kind: { type: 'string', enum: ['mural'] },
+      width: int(FORMAT_LIMITS.muralSize),
+      height: int(FORMAT_LIMITS.muralSize),
+      palette: {
+        type: 'array',
+        minItems: FORMAT_LIMITS.palette.min,
+        maxItems: FORMAT_LIMITS.palette.max,
+        items: { type: 'string', enum: Object.keys(MURAL_COLORS) },
+      },
+      overwrite: { type: 'boolean' },
+      reveal: { type: 'string', enum: ['live', 'end'] },
+    }),
+    strictObject({
+      kind: { type: 'string', enum: ['composition'] },
+      tieBreak: { type: 'string', enum: ['first-listed'] },
+      stages: {
+        type: 'array',
+        minItems: FORMAT_LIMITS.stages.min,
+        maxItems: FORMAT_LIMITS.stages.max,
+        items: strictObject({
+          id,
+          label,
+          options: {
+            type: 'array',
+            minItems: FORMAT_LIMITS.options.min,
+            maxItems: FORMAT_LIMITS.options.max,
+            items: strictObject({
+              id,
+              label: { type: 'string', minLength: 1, maxLength: FORMAT_LIMITS.optionLength },
+            }),
+          },
+        }),
+      },
+    }),
+    strictObject({
+      kind: { type: 'string', enum: ['quiz'] },
+      passPercent: int(FORMAT_LIMITS.passPercent),
+      revealMs: int(FORMAT_LIMITS.revealMs),
+      questions: {
+        type: 'array',
+        minItems: FORMAT_LIMITS.questions.min,
+        maxItems: FORMAT_LIMITS.questions.max,
+        items: strictObject({
+          prompt: { type: 'string', minLength: 1, maxLength: FORMAT_LIMITS.promptLength },
+          options: {
+            type: 'array',
+            minItems: FORMAT_LIMITS.options.min,
+            maxItems: FORMAT_LIMITS.options.max,
+            items: { type: 'string', minLength: 1, maxLength: FORMAT_LIMITS.optionLength },
+          },
+          answer: { type: 'integer', minimum: 0, maximum: FORMAT_LIMITS.options.max - 1 },
+          explanation: {
+            type: 'string',
+            minLength: 1,
+            maxLength: FORMAT_LIMITS.explanationLength,
+          },
+        }),
+      },
+    }),
+  ],
+};
 
 /**
  * Structured compiler output. Executable content is only ever read from these fields,
@@ -271,10 +340,12 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                     'contribution',
                     'objective',
                     'mechanics',
+                    'format',
                   ],
                   properties: {
-                    version: { type: 'integer', enum: [1, 2] },
+                    version: { type: 'integer', enum: [1, 2, 3] },
                     mechanics: MECHANICS_JSON_SCHEMA,
+                    format: FORMAT_JSON_SCHEMA,
                     title: { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.titleLength },
                     durationMs: {
                       type: 'integer',

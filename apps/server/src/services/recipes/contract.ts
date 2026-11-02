@@ -6,10 +6,16 @@ import {
   SDK_VERSION,
   TRIGGER_LIMITS,
   AUDIENCE_ROLES,
+  type ExperienceDefinition,
   type RecipePackage,
   type RecipeProfile,
 } from '@riff/sdk';
-import { definitionCommands, manifestSchema, scenariosSchema } from '@riff/sandbox';
+import {
+  canonicalFormatText,
+  definitionCommands,
+  manifestSchema,
+  scenariosSchema,
+} from '@riff/sandbox';
 import { findPrivateText } from './secrets.js';
 import { checkDeclarations } from './parameters.js';
 
@@ -292,7 +298,12 @@ export const commandsOf = (manifest: RecipePackage['manifest']) => [
 ];
 
 /** Export only synthetic test identities and command-shaped inputs; live/private text is never copied. */
-export function publicTests(raw: unknown, command: string, joinCommands: string[] = []): unknown {
+export function publicTests(
+  raw: unknown,
+  command: string,
+  joinCommands: string[] = [],
+  experience?: ExperienceDefinition | null,
+): unknown {
   const tests = scenariosSchema.safeParse(raw);
   if (!tests.success)
     throw new RecipeError(
@@ -318,7 +329,8 @@ export function publicTests(raw: unknown, command: string, joinCommands: string[
       viewer: identity(step.viewer),
       text: commands.has(step.text.trim().toLowerCase())
         ? step.text.trim().toLowerCase()
-        : 'synthetic unrelated input',
+        : ((experience ? canonicalFormatText(experience, step.text) : null) ??
+          'synthetic unrelated input'),
       ...(step.session
         ? {
             session: {

@@ -73,6 +73,10 @@ export const CODE_LABEL: Record<DecisionCode, string> = {
   BURST_ACTIVE: 'Shield active',
   BURST_LIMIT: 'Burst limit',
   ROUND_INTERMISSION: 'Between rounds',
+  INVALID_CHOICE: 'Not a listed choice',
+  ALREADY_CHOSEN: 'Already chose',
+  CELL_TAKEN: 'Cell taken',
+  ANSWER_CLOSED: 'Answers closed',
   BELOW_MINIMUM: 'Below minimum',
 };
 

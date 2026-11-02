@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ChatEvent, DecisionCode, PermissionManifest } from '@riff/sdk';
 import { artifactSchema } from './contract.js';
 import { syntheticTwitchEvent } from './verify.js';
+import { formatSampleText, slotAt, slotMs } from './formats.js';
 import {
   RehearsalError,
   rehearsalScenarioSchema,
@@ -20,6 +21,9 @@ export const REHEARSAL_PRESETS = [
   'elimination',
   'match',
   'unlock',
+  'paint',
+  'stages',
+  'answers',
 ] as const;
 export type RehearsalPreset = (typeof REHEARSAL_PRESETS)[number];
 /** Version 2 mechanic presets that apply to this manifest. Example: mechanicPresetsFor(manifest). */
@@ -32,6 +36,17 @@ export function mechanicPresetsFor(manifest: PermissionManifest): RehearsalPrese
     ...(m.match ? (['match'] as const) : []),
     ...(m.milestones.some((x) => x.unlock) ? (['unlock'] as const) : []),
   ];
+}
+/** Version 3 format presets that apply to this manifest. Example: formatPresetsFor(manifest). */
+export function formatPresetsFor(manifest: PermissionManifest): RehearsalPreset[] {
+  const kind = manifest.experience?.format?.kind;
+  return kind === 'mural'
+    ? ['paint']
+    : kind === 'composition'
+      ? ['stages']
+      : kind === 'quiz'
+        ? ['answers']
+        : [];
 }
 /** Construct explicitly synthetic normalized inputs using the chosen manifest's commands and limits. */
 export function createRehearsalPreset(
@@ -96,23 +111,40 @@ export function createRehearsalPreset(
     clock = at;
     steps.push({ kind: 'advance', key: `step-${steps.length + 1}`, at });
   };
+  // Version 3 formats need bounded arguments; the session starts at the first event
+  // (at = 1), so the next event's elapsed time equals the current clock.
+  const format = definition?.format;
+  const act = (variant = 0) =>
+    definition && format
+      ? formatSampleText(definition, slotAt(definition, clock).slot, variant)
+      : manifest.trigger.command;
+  const finishPhase = () => {
+    if (!definition) return;
+    advance(definition.durationMs + 1);
+    expectations.push({
+      id: `step-${steps.length}`,
+      stepKey: `step-${steps.length}`,
+      kind: 'phase',
+      value: 'finished',
+    });
+  };
   switch (preset) {
     case 'proof':
       add('unrelated rehearsal message', 'noise', 'UNRELATED');
-      add(manifest.trigger.command, 'ineligible', 'AUDIENCE', []);
+      add(act(), 'ineligible', 'AUDIENCE', []);
       join();
-      add(manifest.trigger.command, 'viewer-1', 'ACCEPTED');
+      add(act(), 'viewer-1', 'ACCEPTED');
       break;
     case 'crowd-burst':
       for (let i = 0; i < Math.min(40, definition?.maxParticipants ?? 40); i++) {
         const viewer = `viewer-${i + 1}`;
         join(viewer);
-        add(manifest.trigger.command, viewer);
+        add(act(i), viewer);
       }
       break;
     case 'duplicate-delivery': {
       join();
-      const first = add(manifest.trigger.command, 'viewer-1', 'ACCEPTED');
+      const first = add(act(), 'viewer-1', 'ACCEPTED');
       const key = `step-${steps.length + 1}`;
       steps.push({ kind: 'chat', key, event: { ...first, roles: [...first.roles], at: ++clock } });
       expectations.push({ id: key, stepKey: key, kind: 'decision', value: 'DUPLICATE' });
@@ -120,24 +152,45 @@ export function createRehearsalPreset(
     }
     case 'late-arrival':
       join();
-      add(manifest.trigger.command);
+      add(act());
       advance(definition ? Math.floor(definition.durationMs / 2) : statelessWindowMs + clock);
       join('late-viewer');
       add(
-        manifest.trigger.command,
+        act(1),
         'late-viewer',
-        mechanics && hitsToEliminate <= 1
-          ? undefined
-          : reachesGoal(1)
-            ? 'SESSION_FINISHED'
-            : definition?.maxParticipants === 1
-              ? definition.teams.length
-                ? 'NOT_JOINED'
-                : 'PARTICIPANT_LIMIT'
-              : 'ACCEPTED',
+        definition && format && slotAt(definition, clock).reveal
+          ? 'ANSWER_CLOSED'
+          : mechanics && hitsToEliminate <= 1
+            ? undefined
+            : reachesGoal(1)
+              ? 'SESSION_FINISHED'
+              : definition?.maxParticipants === 1
+                ? definition.teams.length
+                  ? 'NOT_JOINED'
+                  : 'PARTICIPANT_LIMIT'
+                : 'ACCEPTED',
       );
       break;
     case 'exhaustion': {
+      if (definition && format && format.kind !== 'mural') {
+        // One choice per stage or question: a second choice in the same window is refused.
+        add(act(0), 'viewer-1', 'ACCEPTED');
+        add(act(1), 'viewer-1', 'ALREADY_CHOSEN');
+        break;
+      }
+      if (definition && format?.kind === 'mural') {
+        const allowance = definition.resource.perParticipant;
+        const cells = format.width * format.height;
+        for (let i = 0; i <= allowance; i++)
+          add(
+            act(i),
+            'viewer-1',
+            i === allowance && (format.overwrite || allowance < cells)
+              ? 'RESOURCE_LIMIT'
+              : undefined,
+          );
+        break;
+      }
       join();
       const allowance = definition?.resource.perParticipant ?? manifest.trigger.maxPerViewer;
       for (let i = 0; i <= allowance; i++)
@@ -154,10 +207,10 @@ export function createRehearsalPreset(
     }
     case 'deadline':
       join();
-      add(manifest.trigger.command);
+      add(act());
       advance(definition?.durationMs ?? statelessWindowMs + clock);
       add(
-        manifest.trigger.command,
+        act(),
         'viewer-1',
         !definition
           ? 'ACCEPTED'
@@ -264,6 +317,46 @@ export function createRehearsalPreset(
       const spender = `viewer-${Math.floor(needed / allowance) + 1}`;
       if (spender !== viewer || needed % allowance === 0) join(spender);
       add(milestone.unlock.command, spender, unsafeV2(needed) ? undefined : 'ACCEPTED');
+      break;
+    }
+    case 'paint': {
+      if (!definition || format?.kind !== 'mural') throw inapplicable('a mural');
+      const cmd = definition.contribution.command;
+      const [first = 'red', second = first] = format.palette;
+      add(`${cmd} a1 ${first}`, 'viewer-1', 'ACCEPTED');
+      add(`${cmd} a1 ${second}`, 'viewer-2', format.overwrite ? 'ACCEPTED' : 'CELL_TAKEN');
+      add(`${cmd} a1 rainbow`, 'viewer-2', 'INVALID_CHOICE');
+      add(`${cmd} b1 ${second}`, 'viewer-3', 'ACCEPTED');
+      finishPhase();
+      break;
+    }
+    case 'stages': {
+      if (!definition || format?.kind !== 'composition') throw inapplicable('a staged vote');
+      const w = slotMs(definition);
+      for (const [i, stage] of format.stages.entries()) {
+        if (i > 0) advance(i * w);
+        const cmd = definition.contribution.command;
+        add(`${cmd} ${stage.options[0]?.id ?? ''}`, 'viewer-1', 'ACCEPTED');
+        add(`${cmd} ${stage.options[1]?.id ?? ''}`, 'viewer-2', 'ACCEPTED');
+        if (i === 0) add(`${cmd} ${stage.options[1]?.id ?? ''}`, 'viewer-1', 'ALREADY_CHOSEN');
+      }
+      finishPhase();
+      break;
+    }
+    case 'answers': {
+      if (!definition || format?.kind !== 'quiz') throw inapplicable('a quiz');
+      const w = slotMs(definition);
+      const letters = ['!a', '!b', '!c', '!d'];
+      for (const [i, question] of format.questions.entries()) {
+        if (i > 0) advance(i * w);
+        add(letters[question.answer] ?? '!a', 'viewer-1', 'ACCEPTED');
+        add(letters[question.answer === 0 ? 1 : 0] ?? '!b', 'viewer-2', 'ACCEPTED');
+        if (format.revealMs > 0) {
+          advance(i * w + w - format.revealMs);
+          add('!a', 'viewer-3', 'ANSWER_CLOSED');
+        }
+      }
+      finishPhase();
       break;
     }
   }

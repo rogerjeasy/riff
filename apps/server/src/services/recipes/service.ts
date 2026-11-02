@@ -572,6 +572,7 @@ export function createRecipeService(deps: {
             version.tests,
             manifest.trigger.command,
             commandsOf(manifest).slice(1),
+            manifest.experience,
           ),
           scene,
           presentation: (deps.publicPresentation ?? ((original) => original))({

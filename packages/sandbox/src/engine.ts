@@ -21,6 +21,7 @@ import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
 import { mechanicsActionFor, stageMechanicsAction } from './mechanics.js';
+import { currentSlot, formatActionFor, stageFormatAction } from './formats.js';
 import {
   actionSchema,
   artifactSchema,
@@ -55,6 +56,10 @@ export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   BURST_ACTIVE: 'The burst effect is already active.',
   BURST_LIMIT: 'The burst limit for this round has been reached.',
   ROUND_INTERMISSION: 'The next round has not started yet.',
+  INVALID_CHOICE: 'That is not one of the choices offered right now, so nothing was spent.',
+  ALREADY_CHOSEN: 'This viewer already made a choice for this stage or question.',
+  CELL_TAKEN: 'That cell is already painted and this mural keeps painted cells.',
+  ANSWER_CLOSED: 'Answers for this question are closed while the answer is revealed.',
   BELOW_MINIMUM: 'This Twitch event is below the minimum this interaction reacts to.',
 };
 const workerReply = z
@@ -458,6 +463,36 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     const staged = advanceSession(session, event.at, experience);
     // Sessions are chat-only; a redemption or Twitch platform event never joins,
     // contributes or acts.
+    if (experience.format) {
+      // Formats parse bounded arguments for the slot that is current at this event time.
+      const action =
+        event.kind || event.twitch
+          ? null
+          : formatActionFor(experience, event.text, currentSlot(experience, staged));
+      if (!action) {
+        session = staged;
+        return decision(event.id, 'UNRELATED', base);
+      }
+      if (!event.roles.some((role) => trigger.audience.includes(role))) {
+        session = staged;
+        return decision(event.id, 'AUDIENCE', base);
+      }
+      if (staged.phase !== 'running') {
+        session = staged;
+        return decision(
+          event.id,
+          staged.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
+          base,
+        );
+      }
+      const stage = stageFormatAction(experience, staged, event, action);
+      if (!stage.invoke) {
+        session = staged;
+        return decision(event.id, stage.code, base);
+      }
+      const actor = staged.participants[event.viewerId];
+      return runGuest(event, before, staged, actor?.contributions ?? 0, stage.reason);
+    }
     if (experience.mechanics) {
       const action =
         event.kind || event.twitch

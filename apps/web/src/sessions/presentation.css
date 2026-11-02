@@ -219,3 +219,74 @@
 .round-audit .audit-result[data-status='error'] {
   color: var(--bad, #ff5f5f);
 }
+
+/* Version 3 formats: mural grid, staged composition card and quiz reveal. */
+.session-format {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+.session-format-status,
+.session-quiz-summary {
+  margin: 0;
+  color: #d8c8ed;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.session-mural {
+  display: grid;
+  gap: 1px;
+  width: min(100%, 320px);
+  aspect-ratio: 1;
+  background: rgb(255 255 255 / 0.14);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.session-mural-cell {
+  display: block;
+  background: rgb(15 10 25 / 0.82);
+}
+.session-format-options,
+.session-composition {
+  margin: 0;
+  padding-left: 1.4em;
+  display: grid;
+  gap: 4px;
+}
+.session-composition {
+  list-style: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.08);
+}
+.session-composition-title {
+  font-weight: 700;
+}
+.session-pending {
+  opacity: 0.72;
+  font-style: italic;
+}
+.session-quiz-prompt {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.session-format-option[data-correct='true'] {
+  color: #b9f5c9;
+  font-weight: 700;
+}
+.session-format-option[data-correct='true']::after {
+  content: ' ✓';
+}
+.session-quiz-reveal {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgb(48 164 108 / 0.18);
+}
+.session-quiz-reveal p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

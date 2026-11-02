@@ -1,0 +1,694 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/13",
+    "note": "Deterministic version 3 format template responses (audience mural, staged composition vote, educational group challenge) recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "intent": "Let chat paint a 8x8 pixel mural with !paint",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!paint",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 180000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 3,
+            "title": "Pixel Mural",
+            "durationMs": 180000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "paints",
+              "perParticipant": 5
+            },
+            "contribution": {
+              "command": "!paint",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            },
+            "format": {
+              "kind": "mural",
+              "width": 8,
+              "height": 8,
+              "palette": ["red", "orange", "yellow", "green", "blue", "purple", "white", "black"],
+              "overwrite": true,
+              "reveal": "live"
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "A valid choice is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint a1 red",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered choices never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint a1 red",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint a1 red",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the activity",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!paint a1 red",
+                "at": 180000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "Only listed cells and colors can be painted",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "bare",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint",
+                "at": 0,
+                "expect": "INVALID_CHOICE",
+                "effects": 0
+              },
+              {
+                "id": "free-text",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint a1 hello",
+                "at": 1,
+                "expect": "INVALID_CHOICE",
+                "effects": 0
+              },
+              {
+                "id": "paint0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint a1 red",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "paint1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint b1 red",
+                "at": 3,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "paint2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint c1 red",
+                "at": 4,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "paint3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint d1 red",
+                "at": 5,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "paint4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint e1 red",
+                "at": 6,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!paint f1 red",
+                "at": 30,
+                "expect": "RESOURCE_LIMIT",
+                "effects": 0,
+                "session": {
+                  "participants": {
+                    "alice": {
+                      "remaining": 0
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Type !paint <cell> <color>, e.g. !paint b3 red",
+          "what": "paint a 8×8 mural with 8 colors (shown live)",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "5 paints per viewer; open for 180 seconds"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Palette: red, orange, yellow, green, blue, purple, white and black.",
+          "Each viewer can paint 5 cells.",
+          "Later paint replaces a cell’s color.",
+          "The mural stays open for 3 minutes.",
+          "Viewers type !paint <cell> <color>, for example !paint b3 red; no free text is shown."
+        ],
+        "kind": "candidate",
+        "title": "Pixel Mural",
+        "summary": "Type !paint <cell> <color>, e.g. !paint b3 red: paint a 8×8 mural with 8 colors (shown live)."
+      }
+    },
+    {
+      "intent": "Let chat compose a song in three stages: tempo, instrument, mood",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!vote",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 180000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 3,
+            "title": "Song Stages",
+            "durationMs": 180000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "votes",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!vote",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            },
+            "format": {
+              "kind": "composition",
+              "tieBreak": "first-listed",
+              "stages": [
+                {
+                  "id": "tempo",
+                  "label": "Tempo",
+                  "options": [
+                    {
+                      "id": "slow",
+                      "label": "Slow · 70 BPM"
+                    },
+                    {
+                      "id": "medium",
+                      "label": "Medium · 100 BPM"
+                    },
+                    {
+                      "id": "fast",
+                      "label": "Fast · 140 BPM"
+                    }
+                  ]
+                },
+                {
+                  "id": "instrument",
+                  "label": "Instrument",
+                  "options": [
+                    {
+                      "id": "piano",
+                      "label": "Piano"
+                    },
+                    {
+                      "id": "guitar",
+                      "label": "Guitar"
+                    },
+                    {
+                      "id": "synth",
+                      "label": "Synth"
+                    },
+                    {
+                      "id": "drums",
+                      "label": "Drums"
+                    }
+                  ]
+                },
+                {
+                  "id": "mood",
+                  "label": "Mood",
+                  "options": [
+                    {
+                      "id": "happy",
+                      "label": "Happy"
+                    },
+                    {
+                      "id": "dreamy",
+                      "label": "Dreamy"
+                    },
+                    {
+                      "id": "epic",
+                      "label": "Epic"
+                    },
+                    {
+                      "id": "chill",
+                      "label": "Chill"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "A valid choice is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!vote slow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered choices never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!vote slow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!vote slow",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the activity",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!vote slow",
+                "at": 180000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "One choice per viewer per stage or question",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "choose",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!vote slow",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "again",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!vote 2",
+                "at": 2,
+                "expect": "ALREADY_CHOSEN",
+                "effects": 0
+              },
+              {
+                "id": "bare",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!vote",
+                "at": 3,
+                "expect": "INVALID_CHOICE",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Type !vote <option> during each stage",
+          "what": "vote stage by stage (Tempo → Instrument → Mood); the overlay shows the composition",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "One choice per viewer per stage; 180 seconds in total"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Each stage is open for 60 seconds.",
+          "Viewers type !vote <option> (name or number) once per stage; ties go to the first listed option.",
+          "The result is shown as a composition card on the overlay; no sound is played."
+        ],
+        "kind": "candidate",
+        "title": "Song Stages",
+        "summary": "Type !vote <option> during each stage: vote stage by stage (Tempo → Instrument → Mood); the overlay shows the composition."
+      }
+    },
+    {
+      "intent": "Run a 3-question quiz about the solar system with !a !b !c",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  const snapshot = riff.session.snapshot();\n  await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: snapshot.revision % 2 === 0 ? 0.25 : 0.75 });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "capabilities": ["overlay", "session"],
+          "trigger": {
+            "command": "!a",
+            "audience": ["viewer"],
+            "maxPerViewer": 3,
+            "windowMs": 90000
+          },
+          "limits": {
+            "effectsPerEvent": 1,
+            "effectsPerMinute": 120
+          },
+          "experience": {
+            "version": 3,
+            "title": "Solar System Quiz",
+            "durationMs": 90000,
+            "maxParticipants": 256,
+            "teams": [],
+            "resource": {
+              "name": "answers",
+              "perParticipant": 3
+            },
+            "contribution": {
+              "command": "!a",
+              "points": 1
+            },
+            "objective": {
+              "kind": "highest-score",
+              "target": null
+            },
+            "format": {
+              "kind": "quiz",
+              "passPercent": 60,
+              "revealMs": 10000,
+              "questions": [
+                {
+                  "prompt": "Which planet is the largest in our solar system?",
+                  "options": ["Jupiter", "Saturn", "Earth"],
+                  "answer": 0,
+                  "explanation": "Jupiter is the largest planet: about 11 times wider than Earth."
+                },
+                {
+                  "prompt": "Which planet is closest to the Sun?",
+                  "options": ["Venus", "Mercury", "Mars"],
+                  "answer": 1,
+                  "explanation": "Mercury orbits closest to the Sun, at about 58 million km on average."
+                },
+                {
+                  "prompt": "Which planet is known as the Red Planet?",
+                  "options": ["Jupiter", "Venus", "Mars"],
+                  "answer": 2,
+                  "explanation": "Iron oxide (rust) in its soil and dust gives Mars its red colour."
+                }
+              ]
+            }
+          }
+        },
+        "tests": [
+          {
+            "name": "A valid choice is accepted and shows one effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!a",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat does nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "unrelated",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          },
+          {
+            "name": "Redelivered choices never count twice",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!a",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "same",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!a",
+                "at": 2,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "session": {
+                  "scores": {
+                    "community": 1
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "The exact deadline ends the activity",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "deadline",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "!a",
+                "at": 90000,
+                "expect": "SESSION_FINISHED",
+                "effects": 0,
+                "session": {
+                  "phase": "finished"
+                }
+              }
+            ]
+          },
+          {
+            "name": "One choice per viewer per stage or question",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "choose",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!a",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 1
+              },
+              {
+                "id": "again",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "!b",
+                "at": 2,
+                "expect": "ALREADY_CHOSEN",
+                "effects": 0
+              },
+              {
+                "id": "bare",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "hello",
+                "at": 3,
+                "expect": "UNRELATED",
+                "effects": 0
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Answer each question with !a, !b, !c or !d",
+          "what": "3 questions answered with !a !b !c; solved together at 60%",
+          "who": "everyone; up to 256 participants",
+          "howMuch": "One choice per viewer per question; 90 seconds in total"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Each question is open for 30 seconds.",
+          "The last 10 seconds of each question reveal the answer and explanation; answers close then.",
+          "A question is solved together when at least 60% of answers are right; there is no per-viewer ranking.",
+          "Questions come from a built-in solar-system sample; review them before going live."
+        ],
+        "kind": "candidate",
+        "title": "Solar System Quiz",
+        "summary": "Answer each question with !a, !b, !c or !d: 3 questions answered with !a !b !c; solved together at 60%."
+      }
+    }
+  ]
+}

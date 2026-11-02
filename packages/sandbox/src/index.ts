@@ -60,6 +60,22 @@ export {
   roundWinner,
 } from './mechanics.js';
 export {
+  canonicalFormatText,
+  currentSlot,
+  formatSchema,
+  formatSampleText,
+  formatStateSchema,
+  formatUsage,
+  inReveal,
+  slotAt,
+  questionSolved,
+  slotMs,
+  slotTally,
+  solvedCount,
+  tallyWinner,
+} from './formats.js';
+export { formatHostScenarios } from './formats-suite.js';
+export {
   AUDIT_MAX_ENTRIES,
   classifyTransition,
   replaySessionJournal,
@@ -118,6 +134,7 @@ export {
 export {
   createRehearsalPreset,
   mechanicPresetsFor,
+  formatPresetsFor,
   REHEARSAL_PRESETS,
   type RehearsalPreset,
 } from './rehearsal-presets.js';

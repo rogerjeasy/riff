@@ -336,6 +336,21 @@ Integration: version 2 mechanics actions ignore Channel Points redemptions exact
 version 1 sessions, and F30 insights group the seven new mechanics codes under one
 "Game rule" blocked reason.
 
+## Non-game formats (F31 definition version 3) — November 2, 2026
+
+Implemented additive experience definition version 3 on the SDK 0.4.0 bridge with one
+declarative `format`: audience mural (`!paint <cell> <color>` on a bounded grid and host
+palette, per-viewer paint allowance, optional final cells, live or end reveal), staged
+music-composition vote (equal stage windows, one vote per viewer per stage, first-listed
+tie-break, visual composition card without audio) and educational group challenge (`!a`–`!d`,
+one final answer per question, reveal window with the creator's explanation, collective pass
+mark, participation-only scores). Four decision codes (`INVALID_CHOICE`, `ALREADY_CHOSEN`,
+`CELL_TAKEN`, `ANSWER_CLOSED`, grouped under the insights "Game rule" reason), an independent
+host suite, reset/preserve compatibility rules, `paint`/`stages`/`answers` rehearsal presets,
+prompt pack `riff-compiler/13`, offline templates with `fixtures/stateful-formats.json`, and
+en/fr/es/de HUD, scoreboard and participation copy. No tables, migrations, routes, env vars or
+dependencies were added. Not claimed: a real-model version 3 compile or a live Twitch round.
+
 ## Native Twitch polls, announcements and shoutouts — November 1, 2026
 
 F21/F23 add Helix Create/Get/End Poll, Send Chat Announcement and Send a Shoutout

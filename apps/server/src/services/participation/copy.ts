@@ -4,6 +4,7 @@ import {
   type ParticipationLanguage,
   type TwitchEventKind,
 } from '@riff/sdk';
+import { formatUsage } from '@riff/sandbox';
 
 type Role = Exclude<PermissionManifest['trigger']['audience'][number], 'viewer'>;
 type Unit = 'second' | 'minute';
@@ -219,6 +220,10 @@ const mechanicsEn = {
     other: 'Trigger {label} {target} times to win',
   },
   eliminationOutcome: 'Last team standing',
+  muralFormat: 'Paint one cell per action, e.g. {example} · colors: {colors}',
+  stagesFormat: 'One vote per stage: {stages} · ties go to the first option',
+  quizFormat: 'One answer per question · solved together at {percent}% correct',
+  formatGoal: 'Everyone creates it together; no ranking',
 } satisfies Record<string, Phrase>;
 export type MechanicsKey = keyof typeof mechanicsEn;
 export const MECHANICS_COPY: Record<ParticipationLanguage, Record<MechanicsKey, Phrase>> = {
@@ -251,6 +256,10 @@ export const MECHANICS_COPY: Record<ParticipationLanguage, Record<MechanicsKey, 
       other: 'Déclenchez {label} {target} fois pour gagner',
     },
     eliminationOutcome: 'Dernière équipe en lice',
+    muralFormat: `Une case par action, p. ex. {example} · couleurs${NB}: {colors}`,
+    stagesFormat: `Un vote par étape${NB}: {stages} · égalité${NB}: la première option l’emporte`,
+    quizFormat: `Une réponse par question · résolue ensemble à {percent}${NB}% de bonnes réponses`,
+    formatGoal: 'Tout le monde crée ensemble, sans classement',
   },
   es: {
     burst:
@@ -283,6 +292,11 @@ export const MECHANICS_COPY: Record<ParticipationLanguage, Record<MechanicsKey, 
       other: 'Activa {label} {target} veces para ganar',
     },
     eliminationOutcome: 'Último equipo en pie',
+    muralFormat: 'Una casilla por acción, p. ej. {example} · colores: {colors}',
+    stagesFormat: 'Un voto por etapa: {stages} · en empate gana la primera opción',
+    quizFormat:
+      'Una respuesta por pregunta · se resuelve entre todos con un {percent} % de aciertos',
+    formatGoal: 'Lo crean todos juntos, sin clasificación',
   },
   de: {
     burst:
@@ -312,6 +326,10 @@ export const MECHANICS_COPY: Record<ParticipationLanguage, Record<MechanicsKey, 
       other: 'Löse {label} {target}-mal aus, um zu gewinnen',
     },
     eliminationOutcome: 'Letztes Team im Spiel',
+    muralFormat: 'Ein Feld pro Aktion, z. B. {example} · Farben: {colors}',
+    stagesFormat: 'Eine Stimme pro Etappe: {stages} · bei Gleichstand gewinnt die erste Option',
+    quizFormat: 'Eine Antwort pro Frage · gemeinsam gelöst ab {percent} % richtigen Antworten',
+    formatGoal: 'Alle gestalten gemeinsam, ohne Rangliste',
   },
 };
 
@@ -425,7 +443,9 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
     );
   }
   const contribution = [
-    e.teams.length ? c.then(e.contribution.command) : c.type(who, e.contribution.command),
+    e.teams.length
+      ? c.then(e.contribution.command)
+      : c.type(who, formatUsage(e) ?? e.contribution.command),
     c.perRound(number(e.resource.perParticipant), e.resource.name),
     ...(e.maxParticipants < SESSION_LIMITS.maxParticipants
       ? [c.upTo(e.maxParticipants, number(e.maxParticipants))]
@@ -434,7 +454,7 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
   instructions.push(contribution);
   // Version 2 rules are whole reviewed phrases packed into lines without splitting one.
   let line = '';
-  for (const part of mechanicsParts(e, language, window)) {
+  for (const part of [...mechanicsParts(e, language, window), ...formatParts(e, language)]) {
     if (line && line.length + 3 + part.length > MAX_LINE) {
       instructions.push(line);
       line = '';
@@ -443,8 +463,9 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
   }
   if (line) instructions.push(line);
   const target = e.objective.target ?? 0;
-  const objective =
-    e.objective.kind === 'collective-goal' && e.objective.target !== null
+  const objective = e.format
+    ? mechanicsCopy(language, 'formatGoal')
+    : e.objective.kind === 'collective-goal' && e.objective.target !== null
       ? c.goal(e.objective.target, number(e.objective.target))
       : e.objective.kind === 'burst'
         ? mechanicsCopy(
@@ -459,6 +480,28 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
             ? c.highestTeam
             : c.together;
   return { instructions: bounded(instructions), objective };
+}
+/** Reviewed phrases for a version 3 format (mural, staged vote, quiz). */
+function formatParts(
+  e: NonNullable<PermissionManifest['experience']>,
+  language: ParticipationLanguage,
+): string[] {
+  const f = e.format;
+  if (!f) return [];
+  if (f.kind === 'mural')
+    return [
+      mechanicsCopy(language, 'muralFormat', {
+        example: `${e.contribution.command} b3 ${f.palette[0] ?? ''}`,
+        colors: f.palette.join(', '),
+      }),
+    ];
+  if (f.kind === 'composition')
+    return [
+      mechanicsCopy(language, 'stagesFormat', {
+        stages: f.stages.map((stage) => stage.label).join(' → '),
+      }),
+    ];
+  return [mechanicsCopy(language, 'quizFormat', { percent: f.passPercent })];
 }
 /** Reviewed late-arrival phrases for a version 2 definition, most actionable first. */
 function mechanicsParts(

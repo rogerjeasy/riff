@@ -416,6 +416,15 @@ export const scenarioStepSchema = z
               .strict(),
           )
           .optional(),
+        format: z
+          .object({
+            slot: z.number().int().nonnegative().max(8).optional(),
+            painted: z.number().int().nonnegative().max(256).optional(),
+            tally: z.array(z.number().int().nonnegative()).max(4).optional(),
+            solved: z.number().int().nonnegative().max(5).optional(),
+          })
+          .strict()
+          .optional(),
         participants: z
           .record(
             z.string(),

@@ -3,6 +3,8 @@ import type { Evidence } from '../automations/views.js';
 import {
   advanceSession,
   applySessionCommand,
+  currentSlot,
+  formatSampleText,
   classifySessionTransition,
   createSessionSnapshot,
   manifestSchema,
@@ -64,6 +66,17 @@ export async function verifyAuthoredCandidate(
     const populated = structuredClone(empty);
     const key = oldDefinition.teams[0]?.id ?? 'community';
     const fill = (snapshot: SessionSnapshot, contributions: number) => {
+      // Version 3 choices (cells, votes, answers) are staged by the host rules themselves.
+      if (oldDefinition.format) {
+        let state = snapshot;
+        for (let i = 0; i < contributions && state.phase === 'running'; i++)
+          state = applySessionCommand(oldDefinition, state, {
+            viewerId: 'alice',
+            at: state.updatedAt,
+            text: formatSampleText(oldDefinition, currentSlot(oldDefinition, state), i),
+          }).snapshot;
+        return state;
+      }
       // Version 2 ledgers (pools, bursts, unlocks) are derived by the host rules themselves.
       if (oldDefinition.mechanics) {
         const team = oldDefinition.teams[0];

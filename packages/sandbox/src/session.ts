@@ -17,6 +17,16 @@ import {
   mechanicsStateSchema,
   validateMechanicsState,
 } from './mechanics.js';
+import {
+  createFormatState,
+  currentSlot,
+  formatActionFor,
+  formatProblems,
+  stageFormatAction,
+  formatSchema,
+  formatStateSchema,
+  validateFormatState,
+} from './formats.js';
 
 const timestamp = z
   .number()
@@ -34,7 +44,7 @@ const teamId = z
 /** Validate generated rules before starting a session. Example: sessionDefinitionSchema.parse(value). */
 export const sessionDefinitionSchema = z
   .object({
-    version: z.union([z.literal(1), z.literal(2)]),
+    version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
     title: z.string().trim().min(1).max(SESSION_LIMITS.titleLength).refine(cleanText),
     durationMs: z
       .number()
@@ -64,6 +74,7 @@ export const sessionDefinitionSchema = z
       })
       .strict(),
     mechanics: mechanicsSchema.optional(),
+    format: formatSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -84,6 +95,7 @@ export const sessionDefinitionSchema = z
         message: 'Collective and burst goals require a target; highest-score uses null',
       });
     for (const message of mechanicsProblems(value)) ctx.addIssue({ code: 'custom', message });
+    for (const message of formatProblems(value)) ctx.addIssue({ code: 'custom', message });
     if (value.objective.kind === 'collective-goal' && value.teams.length)
       ctx.addIssue({
         code: 'custom',
@@ -144,6 +156,7 @@ export const sessionSnapshotSchema = z
     winner: z.string().max(32).nullable(),
     outcome: z.enum(['deadline', 'goal', 'elimination']).nullable(),
     mechanics: mechanicsStateSchema.optional(),
+    format: formatStateSchema.optional(),
   })
   .strict()
   .superRefine((s, ctx) => {
@@ -195,6 +208,10 @@ export function validateSessionSnapshot(
     validateMechanicsState(d, s);
     return s;
   }
+  // Version 3 formats keep the version 1 ledger (one resource and contribution.points per
+  // accepted action) and add their own bounded choice state.
+  if (!d.format && s.format !== undefined) throw new Error('Unexpected format state');
+  if (d.format) validateFormatState(d, s);
   const totals: Record<string, number> = Object.create(null);
   for (const key of keys) totals[key] = 0;
   for (const participant of Object.values(s.participants)) {
@@ -247,6 +264,7 @@ export function createSessionSnapshot(
     winner: null,
     outcome: null,
     ...(d.mechanics ? { mechanics: createMechanicsState(d) } : {}),
+    ...(d.format ? { format: createFormatState(d) } : {}),
   });
 }
 function winner(scores: Record<string, number>): string {
@@ -288,7 +306,7 @@ export function advanceSession(
   return next;
 }
 /**
- * Apply one version 2 gameplay command with host rules only (no guest handler), e.g. to
+ * Apply one version 2 or version 3 gameplay command with host rules only (no guest handler), e.g. to
  * build realistic populated snapshots for migration checks. Example:
  * applySessionCommand(definition, snapshot, { viewerId: 'ada', at: 5, text: '!attack' }).
  */
@@ -298,13 +316,20 @@ export function applySessionCommand(
   event: { viewerId: string; at: number; text: string },
 ): { code: string; snapshot: SessionSnapshot } {
   const d = sessionDefinitionSchema.parse(definition);
-  if (!d.mechanics) throw new Error('Host-only commands require version 2 mechanics');
+  if (!d.mechanics && !d.format)
+    throw new Error('Host-only commands require version 2 mechanics or a version 3 format');
   const next = advanceSession(validateSessionSnapshot(d, snapshot), event.at, d);
   if (next.phase !== 'running')
     return {
       code: next.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
       snapshot: next,
     };
+  if (d.format) {
+    const choice = formatActionFor(d, event.text, currentSlot(d, next));
+    if (!choice) return { code: 'UNRELATED', snapshot: next };
+    const staged = stageFormatAction(d, next, event, choice);
+    return { code: staged.code, snapshot: validateSessionSnapshot(d, next) };
+  }
   const action = mechanicsActionFor(
     d,
     (text, command) => text.trim().toLowerCase() === command.toLowerCase(),

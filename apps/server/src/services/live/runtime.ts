@@ -16,6 +16,7 @@ import {
   artifactIdentity,
   advanceSession,
   definitionCommands,
+  formatUsage,
   runSessionMigration,
   sessionDefinitionHash,
   migrationSourceHash,
@@ -244,6 +245,9 @@ export function createLiveRuntime(deps: {
       // rolling window or let a late viewer type a command that is rejected.
       const { teams, contribution, resource, objective } = experience;
       const each = `${resource.perParticipant} ${resource.name} each this round`;
+      // Version 3 formats take bounded arguments (cell and color, option, answer letter).
+      const usage = formatUsage(experience);
+      if (usage) return `Type ${usage}${who} · ${each}`;
       // Version 2 rules add heal, burst and unlock commands; name them on stream too.
       const more = definitionCommands(experience).filter(
         (command) =>

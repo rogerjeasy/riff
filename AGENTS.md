@@ -570,6 +570,32 @@ routes, env vars, dependencies or bridge capabilities were added. Collaboration 
 accepts only version 1 teamless cooperative rounds. Participation copy (F40) explains
 these mechanics in en/fr/es/de and names elimination as its own outcome.
 
+Experience definition version 3 (same SDK 0.4.0 bridge, additive) carries exactly one
+declarative `format` (teamless, `objective {highest-score, null}`, no mechanics) for the §6.5
+non-game formats. Bounds are `FORMAT_LIMITS`/`MURAL_COLORS`/`QUIZ_ANSWER_COMMANDS` in the
+SDK; `packages/sandbox/src/formats.ts` owns pure parsing/staging/validation. Each stage or
+question gets an equal window `floor(durationMs / slots)` derived from frozen remaining time
+(pause-safe, replayable) and must leave 5 s to act. `mural`: `<command> <cell> <color>`
+(2–16 grid, 2–8 host colors, per-viewer paint allowance, optional final cells, live or end
+reveal). `composition`: `<command> <option id|number>` once per stage, `first-listed`
+tie-break, rendered as a visual composition card (no audio). `quiz`: `!a`–`!d`, one final
+answer per question, reveal window with creator explanation, collective `passPercent`,
+participation-only scores and no per-viewer ranking. Viewers can only pick from these
+bounded sets, so no viewer text is stored or shown. Snapshots gain `format {canvas,
+choices}`; validation re-derives ledgers and slot bounds. New decision codes:
+`INVALID_CHOICE` (nothing spent), `ALREADY_CHOSEN`, `CELL_TAKEN`, `ANSWER_CLOSED`.
+Version 1/2 definitions never carry the key (identities unchanged); strict model output sends
+`format:null`, which the compiler contract strips. `formats-suite.ts` is the independent host
+suite; rehearsal adds `paint`, `stages` and `answers` presets (`formatPresetsFor`), and the
+generic presets use bounded sample arguments. Compatible edits: wording, mural reveal mode,
+appended palette colors, more paints or a longer mural; anything that moves slot windows or
+changes what a stored cell/vote/answer means is reset-required. Recipe exports and recorded
+rehearsal imports keep only canonical bounded arguments (`canonicalFormatText`). Prompt pack
+`riff-compiler/13` documents the formats; `fixtures/stateful-formats.json` records the three
+offline intents. HUD/scoreboard copy (`sessions/formats-hud.ts`) and server participation
+copy are reviewed in en/fr/es/de. Collaboration still accepts only version 1 rounds. No
+tables, routes, env vars, dependencies or bridge capabilities were added.
+
 F32 adds tenant-scoped `session_transitions`: immutable migration source, host-computed
 plan and evidence identities, source session/version/revision, and durable review,
 pending, applied or cancelled status. `channel_state.transition_epoch` fences panic

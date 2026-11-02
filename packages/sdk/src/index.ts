@@ -164,8 +164,8 @@ export const SESSION_LIMITS = Object.freeze({
   maxScore: 2_560_000,
 });
 export interface ExperienceDefinition {
-  /** 1 = score rounds only; 2 adds the declarative `mechanics` block. */
-  version: 1 | 2;
+  /** 1 = score rounds only; 2 adds the declarative `mechanics` block; 3 adds a non-game `format`. */
+  version: 1 | 2 | 3;
   title: string;
   durationMs: number;
   maxParticipants: number;
@@ -176,6 +176,80 @@ export interface ExperienceDefinition {
   objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
   /** Present exactly when version is 2. */
   mechanics?: ExperienceMechanics | undefined;
+  /** Present exactly when version is 3: a declarative non-game format (teamless). */
+  format?: ExperienceFormat | undefined;
+}
+/** Host palette for murals: the only colors a viewer can name (no free text). */
+export const MURAL_COLORS = Object.freeze({
+  red: '#e5484d',
+  orange: '#f76b15',
+  yellow: '#ffc53d',
+  green: '#30a46c',
+  teal: '#12a594',
+  blue: '#0090ff',
+  purple: '#8e4ec6',
+  pink: '#d6409f',
+  white: '#ffffff',
+  black: '#1c2024',
+} as const);
+export type MuralColor = keyof typeof MURAL_COLORS;
+/** Fixed quiz answer commands, by option index. */
+export const QUIZ_ANSWER_COMMANDS = ['!a', '!b', '!c', '!d'] as const;
+/** Bounds for definition version 3 formats; validators import these values. */
+export const FORMAT_LIMITS = Object.freeze({
+  muralSize: { min: 2, max: 16 },
+  palette: { min: 2, max: 8 },
+  stages: { min: 2, max: 4 },
+  options: { min: 2, max: 4 },
+  questions: { min: 1, max: 5 },
+  promptLength: 140,
+  optionLength: 60,
+  explanationLength: 200,
+  passPercent: { min: 1, max: 100 },
+  revealMs: { min: 0, max: 30_000 },
+  /** Every stage/question window must leave at least this long to act. */
+  minActionMs: 5000,
+});
+/**
+ * Host-owned non-game formats (definition version 3). Each slot (stage or question) gets
+ * an equal share of durationMs: slot i spans [i, i+1) × floor(durationMs / slots).
+ * Example: { kind: 'mural', width: 8, height: 8, palette: ['red','blue'], overwrite: true, reveal: 'live' }.
+ */
+export type ExperienceFormat =
+  | {
+      /** `!paint <cell> <color>`, cell = column letter + row number (A1 is top-left). */
+      kind: 'mural';
+      width: number;
+      height: number;
+      palette: MuralColor[];
+      /** false: a painted cell is final (CELL_TAKEN). */
+      overwrite: boolean;
+      /** 'end' keeps the canvas hidden on the overlay until the session finishes. */
+      reveal: 'live' | 'end';
+    }
+  | {
+      /** `<contribution.command> <option id | 1-based number>`, one vote per viewer per stage. */
+      kind: 'composition';
+      /** Ties (and stages without votes) resolve to the first listed option. */
+      tieBreak: 'first-listed';
+      stages: { id: string; label: string; options: { id: string; label: string }[] }[];
+    }
+  | {
+      /** Answer with !a..!d, one final answer per viewer per question. */
+      kind: 'quiz';
+      /** A question is solved when at least this share of answers is correct. */
+      passPercent: number;
+      /** The last revealMs of each question window closes answers and shows the explanation. */
+      revealMs: number;
+      questions: { prompt: string; options: string[]; answer: number; explanation: string }[];
+    };
+/**
+ * Version 3 format state. Mural `canvas` holds palette indexes (-1 = empty, row-major);
+ * composition/quiz `choices` hold each viewer's option index per slot (-1 = none).
+ */
+export interface SessionFormatState {
+  canvas: number[];
+  choices: Record<string, number[]>;
 }
 /** Bounds for definition version 2 mechanics; validators import these values. */
 export const MECHANIC_LIMITS = Object.freeze({
@@ -263,6 +337,8 @@ export interface SessionMechanicsState {
 export interface SessionSnapshot {
   /** Present exactly when the definition is version 2. */
   mechanics?: SessionMechanicsState | undefined;
+  /** Present exactly when the definition is version 3. */
+  format?: SessionFormatState | undefined;
   id: string;
   phase: 'running' | 'paused' | 'finished';
   startedAt: number;
@@ -293,6 +369,15 @@ export interface SessionAssertion {
       >
     | undefined;
   scores?: Record<string, number> | undefined;
+  /** Version 3 format subset: current slot, painted cells, current-slot tally, solved questions. */
+  format?:
+    | {
+        slot?: number | undefined;
+        painted?: number | undefined;
+        tally?: number[] | undefined;
+        solved?: number | undefined;
+      }
+    | undefined;
   remainingMs?: number | undefined;
   participants?:
     | Record<
@@ -375,6 +460,10 @@ export type DecisionCode =
   | 'BURST_ACTIVE'
   | 'BURST_LIMIT'
   | 'ROUND_INTERMISSION'
+  | 'INVALID_CHOICE'
+  | 'ALREADY_CHOSEN'
+  | 'CELL_TAKEN'
+  | 'ANSWER_CLOSED'
   | 'BELOW_MINIMUM';
 export const DECISION_CODES: readonly DecisionCode[] = [
   'ACCEPTED',
@@ -401,6 +490,10 @@ export const DECISION_CODES: readonly DecisionCode[] = [
   'BURST_ACTIVE',
   'BURST_LIMIT',
   'ROUND_INTERMISSION',
+  'INVALID_CHOICE',
+  'ALREADY_CHOSEN',
+  'CELL_TAKEN',
+  'ANSWER_CLOSED',
   'BELOW_MINIMUM',
 ];
 /** Viewer allowance after admission, for explanations. */

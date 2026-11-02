@@ -36,6 +36,18 @@ export const PRESET_TEXT: Record<Preset, { title: string; detail: string }> = {
     title: 'Unlock',
     detail: 'A locked command opens once the milestone score is reached.',
   },
+  paint: {
+    title: 'Paint',
+    detail: 'Viewers paint cells; an invalid color and a repainted cell are checked.',
+  },
+  stages: {
+    title: 'Stages',
+    detail: 'Two viewers vote in every stage; a second vote in a stage is refused.',
+  },
+  answers: {
+    title: 'Answers',
+    detail: 'Right and wrong answers per question; late answers hit the reveal window.',
+  },
 };
 
 /** Mechanic presets appear only when the exact definition has that rule. */
@@ -53,6 +65,12 @@ export function presetApplies(
       return Boolean(m?.match);
     case 'unlock':
       return Boolean(m?.milestones.some((x) => x.unlock));
+    case 'paint':
+      return definition?.format?.kind === 'mural';
+    case 'stages':
+      return definition?.format?.kind === 'composition';
+    case 'answers':
+      return definition?.format?.kind === 'quiz';
     default:
       return true;
   }

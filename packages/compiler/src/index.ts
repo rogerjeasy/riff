@@ -38,6 +38,8 @@ export type {
 export { buildPrompt, buildRepairPrompt, buildWorkspace, PROMPT_VERSION } from './workspace.js';
 
 export { PRESERVING_MIGRATION_SOURCE } from './experience-output.js';
+export { compileFormatOffline, describeFormat } from './format-output.js';
+export { formatKindOf } from './format-hints.js';
 export {
   extractExperienceHints,
   type ExperienceHints,

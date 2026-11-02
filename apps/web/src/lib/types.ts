@@ -30,6 +30,10 @@ export type DecisionCode =
   | 'BURST_ACTIVE'
   | 'BURST_LIMIT'
   | 'ROUND_INTERMISSION'
+  | 'INVALID_CHOICE'
+  | 'ALREADY_CHOSEN'
+  | 'CELL_TAKEN'
+  | 'ANSWER_CLOSED'
   | 'BELOW_MINIMUM';
 /** Definition version 2 rules; each block is null/[] when unused. */
 export interface ExperienceMechanics {
@@ -78,8 +82,33 @@ export interface SessionMechanicsState {
   }[];
   standings: Record<string, SessionStanding>;
 }
+/** Definition version 3 non-game formats (teamless; see SDK ExperienceFormat). */
+export type ExperienceFormat =
+  | {
+      kind: 'mural';
+      width: number;
+      height: number;
+      palette: string[];
+      overwrite: boolean;
+      reveal: 'live' | 'end';
+    }
+  | {
+      kind: 'composition';
+      tieBreak: 'first-listed';
+      stages: { id: string; label: string; options: { id: string; label: string }[] }[];
+    }
+  | {
+      kind: 'quiz';
+      passPercent: number;
+      revealMs: number;
+      questions: { prompt: string; options: string[]; answer: number; explanation: string }[];
+    };
+export interface SessionFormatState {
+  canvas: number[];
+  choices: Record<string, number[]>;
+}
 export interface ExperienceDefinition {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   title: string;
   durationMs: number;
   maxParticipants: number;
@@ -88,6 +117,7 @@ export interface ExperienceDefinition {
   contribution: { command: string; points: number };
   objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
   mechanics?: ExperienceMechanics | undefined;
+  format?: ExperienceFormat | undefined;
 }
 export interface SessionParticipant {
   teamId: string | null;
@@ -107,6 +137,7 @@ export interface SessionSnapshot {
   winner: string | null;
   outcome: 'deadline' | 'goal' | 'elimination' | null;
   mechanics?: SessionMechanicsState | undefined;
+  format?: SessionFormatState | undefined;
 }
 export interface Effect {
   kind: 'projectile';

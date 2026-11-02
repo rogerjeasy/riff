@@ -355,6 +355,7 @@ describe('stateful experience compilation', () => {
       'contribution',
       'objective',
       'mechanics',
+      'format',
     ]);
   });
 });

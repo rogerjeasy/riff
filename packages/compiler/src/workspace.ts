@@ -5,15 +5,26 @@ import { compileEventOffline } from './event-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/12';
+export const PROMPT_VERSION = 'riff-compiler/13';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
   'Community Goal: everyone uses !grow to contribute hearts, with 3 contributions per participant in a 120 second round. Work together toward a collective goal of 5 points.',
   'Shield Wall: when 5 different viewers type !shield within 10 seconds, the shield goes up.',
   'Castle Siege: viewers join Red with !red or Blue with !blue. Each !attack deals 10 damage to the other castle; castles have 100 health and !heal restores 5 health. A castle at 0 health is eliminated.',
+  'Let chat paint a 8x8 pixel mural with !paint',
+  'Let chat compose a song in three stages: tempo, instrument, mood',
+  'Run a 3-question quiz about the solar system with !a !b !c',
 ];
-const EXPERIENCE_NAMES = ['tomato-battle', 'community-goal', 'shield-wall', 'castle-siege'];
+const EXPERIENCE_NAMES = [
+  'tomato-battle',
+  'community-goal',
+  'shield-wall',
+  'castle-siege',
+  'pixel-mural',
+  'song-stages',
+  'solar-quiz',
+];
 const EXPERIENCE_EXAMPLES = EXPERIENCE_INTENTS.map((intent, index) => {
   const output = compileExperienceOffline({ intent, base: null });
   if (!output || output.kind !== 'candidate')
@@ -53,7 +64,7 @@ Decide the kind:
   no safe, conventional default exists. Ask ONE precise question with 2-4 choices.
   manifest/source null, tests [].
 - "unsupported": it needs a capability the SDK does not have (sending ordinary chat
-  messages or replies, sounds, follows, bans, external sites, timers inside a session
+  messages or replies, sounds or audio playback, follows, bans, external sites, timers inside a session
   round, opening/settling predictions directly, Channel Points rewards for anything but
   triggering, shoutouts to a channel named in chat, or automatic shoutouts on any event
 other than an incoming raid). Named host timers ("every 10
@@ -113,9 +124,11 @@ Rules for candidates:
   are declarative: guest code cannot mutate scores, resources or participant membership.
 - manifest.experience is null for ordinary projectile interactions. For rounds/sessions,
   supply the full canonical ExperienceDefinition (version, title, durationMs,
-  maxParticipants, teams, resource, contribution, objective, mechanics). sdkVersion is
-  0.4.0. Use version 1 with mechanics:null for plain score rounds; use version 2 with a
-  mechanics object only when the request states a burst, health, match or milestone rule.
+  maxParticipants, teams, resource, contribution, objective, mechanics, format). sdkVersion
+  is 0.4.0. Use version 1 with mechanics:null and format:null for plain score rounds; use
+  version 2 with a mechanics object (format:null) only when the request states a burst,
+  health, match or milestone rule; use version 3 with a format (mechanics:null) for a
+  mural, staged composition vote or quiz.
   trigger.command MUST equal experience.contribution.command. Teams have unique ids
   and join commands distinct from contribution.command. No teams for collective-goal;
   target must be a positive integer. Highest-score uses target:null.
@@ -152,6 +165,33 @@ Rules for candidates:
   Every command (joins, contribution, heal, burst, unlocks) must be unique. Inventories,
   trades, bets, lives/respawns, cooldowns, brackets/tournaments or random scoring remain
   outside these primitives: mark unsupported instead of reducing their rules.
+- Version 3 formats (non-game, teamless, host-owned; see "Version 3 formats" in SDK.md):
+  set version 3, mechanics:null, teams [], objective {kind:'highest-score', target:null}
+  and exactly one format; for every other version format is null. Each stage or question
+  gets an equal window floor(durationMs / slots) and must leave at least 5000 ms to act.
+  * Audience mural ("let chat paint", "pixel art", "mural"): format {kind:'mural', width
+    and height 2..16, palette 2..8 distinct names from red, orange, yellow, green, teal,
+    blue, purple, pink, white, black, overwrite, reveal 'live'|'end'}; contribution.command
+    is the paint command; viewers type \`!paint b3 red\` (column letter, 1-based row).
+    resource.perParticipant is paints per viewer. Viewers never place free text.
+  * Staged music-composition vote ("compose a song in stages"): format {kind:'composition',
+    tieBreak:'first-listed', stages 2..4 [{id, label, options 2..4 [{id, label}]}]};
+    viewers type \`!vote <option id>\` or \`!vote <number>\` during that stage only;
+    resource.perParticipant = number of stages. The result is a visual composition card;
+    no sound is played, so never promise audio.
+  * Educational group challenge ("quiz", "trivia"): format {kind:'quiz', passPercent
+    1..100, revealMs 0..30000, questions 1..5 [{prompt <=140, options 2..4 strings <=60,
+    answer (0-based index of the correct option), explanation <=200}]}; answers are !a..!d,
+    contribution.command is '!a', resource.perParticipant = number of questions. Write
+    factual questions yourself from the creator's topic, keep explanations short and
+    neutral, and state in assumptions that the creator should review them. There is no
+    per-viewer ranking; scores count participation and solved questions are collective.
+  Rejection codes: INVALID_CHOICE (unknown cell, color, option or letter; nothing spent),
+  ALREADY_CHOSEN (one vote/answer per viewer per stage/question), CELL_TAKEN (mural with
+  overwrite:false), ANSWER_CLOSED (quiz reveal window), RESOURCE_LIMIT (mural paints spent),
+  SESSION_FINISHED at the deadline. Scenario text must use these exact argument forms;
+  a bare "!paint" or "!vote" is INVALID_CHOICE. Handlers may read snapshot.format but never
+  decide choices.
 - Every scenario step includes session:null or a strict phase assertion {phase}, or
   {phase,remainingMs}. Include RESOURCE_LIMIT and deadline/goal scenarios for sessions.
   The independent host suite checks scores/resources from the canonical definition.

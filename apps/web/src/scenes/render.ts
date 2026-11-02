@@ -2,6 +2,7 @@ import { assetMarkup, clearStage, launch, type LaunchOptions } from '../effects/
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import { sceneSchema, sceneShapeSchema, type Scene, type SceneNode, type Rect } from './schema.js';
 import { mechanicsLines } from '../sessions/mechanics-hud.js';
+import { formatLines } from '../sessions/formats-hud.js';
 import { sessionText, type SessionLanguage } from '../sessions/mechanics-copy.js';
 import './scene.css';
 
@@ -190,7 +191,10 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
         const teams = d.teams.length
           ? d.teams
           : [{ id: 'community', label: sessionText(language, 'community') }];
-        const extra = mechanicsLines(d, s, frame.now, language);
+        const extra = [
+          ...mechanicsLines(d, s, frame.now, language),
+          ...formatLines(d, s, frame.now, language),
+        ];
         fullText = [
           status,
           ...teams.map((t) => `${t.label}: ${s.scores[t.id] ?? 0}`),

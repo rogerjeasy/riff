@@ -17,7 +17,7 @@ import {
   type createCompileQueue,
   type CompilerTransport,
 } from '@riff/compiler';
-import { artifactIdentity, definitionCommands } from '@riff/sandbox';
+import { artifactIdentity, definitionCommands, formatUsage } from '@riff/sandbox';
 import type { DatabaseConnection } from '../../db/client.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import { sceneRepository } from '../../db/repositories/scenes.js';
@@ -46,6 +46,11 @@ function instructionsFor(version: VersionRow): string[] {
         0,
         200,
       ),
+    ];
+  const usage = formatUsage(e);
+  if (usage)
+    return [
+      `${who}: ${usage} · ${e.resource.perParticipant} ${e.resource.name} each`.slice(0, 200),
     ];
   const commands = e.teams.map((team) => team.joinCommand);
   const lines: string[] = [];

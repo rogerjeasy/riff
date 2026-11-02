@@ -92,6 +92,7 @@ export function assessSessionTransition(
     );
   if (b.durationMs < a.durationMs) reasons.push('The round gets shorter.');
   reasons.push(...mechanicsResetReasons(a, b));
+  reasons.push(...formatResetReasons(a, b));
   if (b.maxParticipants < a.maxParticipants)
     reasons.push(
       `Fewer players are allowed (${a.maxParticipants} → ${b.maxParticipants}), which could remove someone already playing.`,
@@ -132,6 +133,44 @@ function mechanicsResetReasons(a: ExperienceDefinition, b: ExperienceDefinition)
   const milestones = (list: typeof x.milestones) => list.map((item) => ({ ...item, label: '' }));
   if (!same(milestones(x.milestones), milestones(y.milestones)))
     reasons.push('Milestones or unlocked commands change, so reached tiers would not fit.');
+  return reasons;
+}
+/**
+ * Version 3 compatibility: wording (labels, prompts, explanations), the mural reveal mode,
+ * appended palette colors and a longer mural all keep progress. Anything that moves slot
+ * windows or changes what a stored cell, vote or answer index means requires a reset.
+ */
+function formatResetReasons(a: ExperienceDefinition, b: ExperienceDefinition): string[] {
+  const x = a.format,
+    y = b.format;
+  if (!x && !y) return [];
+  if (!x || !y || x.kind !== y.kind)
+    return ['The activity format changes, so current choices cannot carry over.'];
+  const reasons: string[] = [];
+  if (x.kind !== 'mural' && a.durationMs !== b.durationMs)
+    reasons.push('Stage or question timing changes, so the current window would move.');
+  if (x.kind === 'mural' && y.kind === 'mural') {
+    if (x.width !== y.width || x.height !== y.height || x.overwrite !== y.overwrite)
+      reasons.push('The mural grid or overwrite rule changes, so painted cells would not fit.');
+    if (x.palette.some((color, i) => y.palette[i] !== color))
+      reasons.push('Palette colors are removed or reordered, so painted cells would change color.');
+  }
+  if (x.kind === 'composition' && y.kind === 'composition') {
+    const ids = (f: typeof x) => f.stages.map((st) => [st.id, st.options.map((o) => o.id)]);
+    if (canonical(ids(x)) !== canonical(ids(y)))
+      reasons.push('Stages or options change, so recorded votes would not fit.');
+  }
+  if (x.kind === 'quiz' && y.kind === 'quiz') {
+    const shape = (f: typeof x) => ({
+      passPercent: f.passPercent,
+      revealMs: f.revealMs,
+      questions: f.questions.map((q) => [q.options.length, q.answer]),
+    });
+    if (canonical(shape(x)) !== canonical(shape(y)))
+      reasons.push(
+        'Questions, answers, the pass mark or reveal time change, so answers would not fit.',
+      );
+  }
   return reasons;
 }
 /** Conservatively classify supported rule changes. Example: classifySessionTransition(oldRules, newRules). */

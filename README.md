@@ -132,6 +132,27 @@ explicit reset. The offline compiler supports the four example intents in
 `packages/compiler/fixtures/stateful-mechanics.json`; inventories, trades, lives,
 cooldowns, tournaments and random scoring remain unsupported.
 
+### Non-game formats (definition version 3)
+
+Version 3 definitions carry one declarative `format` shared by the whole community. Viewers
+only pick from bounded sets in the definition, so no viewer text reaches the overlay:
+
+- **Audience mural** — _“Let chat paint a 8x8 pixel mural with !paint”_. `!paint b3 red`
+  paints one cell from the host palette; each viewer has a paint allowance, cells can be
+  final (`CELL_TAKEN`) and the canvas can stay hidden until the end.
+- **Staged music-composition vote** — _“Let chat compose a song in three stages: tempo,
+  instrument, mood”_. Each stage has its own window; `!vote fast` or `!vote 2` counts once
+  per viewer per stage (`ALREADY_CHOSEN`), ties go to the first listed option and the
+  overlay shows the resulting composition card (no audio is played).
+- **Educational group challenge** — _“Run a 3-question quiz about the solar system with !a
+  !b !c”_. One final answer per question, answers close for a reveal window with the
+  explanation (`ANSWER_CLOSED`), and a question is solved together at the pass mark; there
+  is no per-viewer ranking.
+
+Unknown cells, colors, options or letters are `INVALID_CHOICE` and spend nothing. Rehearsal
+adds `paint`, `stages` and `answers` presets; the offline compiler records the three intents
+in `packages/compiler/fixtures/stateful-formats.json`.
+
 ## Named timers — F18
 
 Describe a delay or a cadence and Riff schedules it on the host:

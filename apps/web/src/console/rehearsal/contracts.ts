@@ -33,6 +33,10 @@ export const decisionCodes = [
   'BURST_ACTIVE',
   'BURST_LIMIT',
   'ROUND_INTERMISSION',
+  'INVALID_CHOICE',
+  'ALREADY_CHOSEN',
+  'CELL_TAKEN',
+  'ANSWER_CLOSED',
   'BELOW_MINIMUM',
 ] as const;
 export const presets = [
@@ -46,6 +50,9 @@ export const presets = [
   'elimination',
   'match',
   'unlock',
+  'paint',
+  'stages',
+  'answers',
 ] as const;
 export const provenanceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('synthetic') }).strict(),

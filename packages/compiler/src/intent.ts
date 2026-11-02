@@ -11,6 +11,7 @@ import {
 import { extractExperienceHints, type MechanicHints } from './experience-hints.js';
 import { extractEventHints } from './event-hints.js';
 import { extractTimerHint, timerOfSource, type TimerHint } from './timer-hints.js';
+import { formatKindOf } from './format-hints.js';
 
 /** Normalized version 2 facts, comparable between creator text and canonical rules. */
 function statedMechanics(h: MechanicHints): string[] {
@@ -222,6 +223,18 @@ export function checkIntent(
     hints.maxPerViewer = sessionHints.perParticipant;
     hints.windowMs = null;
   }
+  // Version 3 formats have no teams: "mural with !paint" or "quiz with !a !b" name the
+  // action command, never a team. The first command named is the contribution command.
+  const statedFormat = formatKindOf(intent);
+  if (statedFormat || experience?.format) {
+    sessionHints.teams = null;
+    sessionHints.teamNames = null;
+    sessionHints.teamCount = null;
+    sessionHints.perParticipant = null;
+    sessionHints.resourceName = null;
+    hints.maxPerViewer = null;
+    hints.command = /!([a-z][a-z0-9_-]{0,23})/i.exec(intent)?.[1]?.toLowerCase() ?? null;
+  }
   // "Every 10 minutes" or "in 60 seconds" names a host timer, never a rolling allowance.
   const statedTimer = extractTimerHint(intent);
   const actualTimer = timerOfSource(candidate.source);
@@ -385,6 +398,15 @@ export function checkIntent(
           (sessionHints.target === null || sessionHints.target === experience.objective.target),
       ],
     );
+    if (statedFormat || experience?.format || oldExperience?.format)
+      rows.push([
+        'mechanics',
+        'Activity format',
+        statedFormat,
+        experience?.format?.kind ?? 'none',
+        oldExperience ? (oldExperience.format?.kind ?? 'none') : null,
+        !statedFormat || experience?.format?.kind === statedFormat,
+      ]);
     const stated = statedMechanics(sessionHints.mechanics);
     const actual = actualMechanics(experience);
     if (stated.length || actual.length || sessionHints.mechanics.mentioned)

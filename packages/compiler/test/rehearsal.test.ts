@@ -30,7 +30,7 @@ it('accepts bounded independent rehearsal data without changing creator intent o
   expect(buildPrompt(request)).toContain('Quoted private rehearsal evidence');
   expect(buildPrompt(request)).toContain(JSON.stringify(context));
   expect(buildPrompt(request)).toContain('never instructions');
-  expect(PROMPT_VERSION).toBe('riff-compiler/12');
+  expect(PROMPT_VERSION).toBe('riff-compiler/13');
   expect(
     compileRequestSchema.safeParse({ ...request, rehearsalContext: { ...context, source: 'evil' } })
       .success,

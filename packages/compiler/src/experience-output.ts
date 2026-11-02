@@ -6,6 +6,7 @@ import {
   type ScenarioStep,
 } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
+import { compileFormatOffline } from './format-output.js';
 import { extractExperienceHints } from './experience-hints.js';
 import {
   describeMechanics,
@@ -42,9 +43,21 @@ const empty = {
 
 /** Offline templates deliberately cover bounded score rounds, not arbitrary game mechanics. */
 export function compileExperienceOffline(request: CompileRequest): CompileOutput | null {
+  const format = compileFormatOffline(request);
+  if (format) return format;
   const hints = extractExperienceHints(request.intent);
   const base = request.base?.manifest as ManifestView | undefined;
   const previous = base?.experience;
+  if (previous?.format)
+    return {
+      ...empty,
+      kind: 'unsupported',
+      title: 'Unsupported Offline Edit',
+      summary: 'The offline template compiler does not edit murals, song votes or quizzes.',
+      unsupportedReason:
+        'Offline edits of version 3 formats are not supported; describe the whole activity again or switch to model compilation.',
+      alternative: 'Describe the complete mural, staged song vote or quiz as a new interaction.',
+    };
 
   const unsupported = (reason: string): CompileOutput => ({
     ...empty,

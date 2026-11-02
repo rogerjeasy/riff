@@ -22,6 +22,14 @@ export const MECHANICS_REASONS = [
   'ROUND_INTERMISSION',
 ] as const;
 export type MechanicsReason = (typeof MECHANICS_REASONS)[number];
+/** Engine rejection codes a viewer can meet through version 3 formats. */
+export const FORMAT_REASONS = [
+  'INVALID_CHOICE',
+  'ALREADY_CHOSEN',
+  'CELL_TAKEN',
+  'ANSWER_CLOSED',
+] as const;
+export type FormatReason = (typeof FORMAT_REASONS)[number];
 
 const NB = ' ';
 
@@ -119,6 +127,37 @@ const en = {
   BURST_ACTIVE: '{label} is already active',
   BURST_LIMIT: '{label} is used up for this round',
   ROUND_INTERMISSION: 'Between rounds: wait for the next round',
+  INVALID_CHOICE: 'Pick one of the listed choices',
+  ALREADY_CHOSEN: 'You already chose for this stage',
+  CELL_TAKEN: 'That cell is already painted',
+  ANSWER_CLOSED: 'Answers are closed during the reveal',
+  muralRule: 'Paint with {command} cell color, e.g. {example}. Colors: {colors}.',
+  muralFinalRule: 'Painted cells are final.',
+  muralCanvas: 'Mural, {width} by {height}: {painted} of {cells} cells painted',
+  muralHidden: 'Mural hidden until the reveal · {painted} of {cells} cells painted',
+  muralReveal: 'Reveal! {painted} of {cells} cells painted together',
+  stageRule:
+    'Vote with {command} and an option name or number, once per stage. Ties go to the first listed option.',
+  stageStatus: 'Stage {stage} of {stages}: {label}',
+  stageOption: {
+    one: '{number}. {label} · {votes} vote',
+    other: '{number}. {label} · {votes} votes',
+  },
+  compositionTitle: 'Our composition (shown, not played)',
+  compositionPart: '{stage}: {option}',
+  compositionPending: '{stage}: voting…',
+  quizRule:
+    'Answer with {commands}, once per question. A question is solved together when {percent}% answer correctly.',
+  questionStatus: 'Question {question} of {questions}',
+  answerOption: '{command} {label} · {count}',
+  answersClose: 'Answers close in {time}',
+  revealAnswer: 'Answer: {command} {label}',
+  revealSolved: 'Solved together · {percent}% correct',
+  revealMissed: 'Not solved this time · {percent}% correct',
+  quizSummary: 'Solved together: {solved} of {questions}',
+  linePainted: '{painted}/{cells} painted',
+  lineStage: 'Stage {stage}/{stages}',
+  lineQuestion: 'Q {question}/{questions}',
 } satisfies Record<string, Phrase>;
 export type SessionCopyKey = Exclude<keyof typeof en, 'locale'>;
 type Copy = { locale: string } & Record<SessionCopyKey, Phrase>;
@@ -221,6 +260,36 @@ const fr: Copy = {
   BURST_ACTIVE: '{label} est déjà actif',
   BURST_LIMIT: '{label} est épuisé pour cette manche',
   ROUND_INTERMISSION: `Entre deux manches${NB}: attendez la suivante`,
+  INVALID_CHOICE: 'Choisissez une des options proposées',
+  ALREADY_CHOSEN: 'Vous avez déjà choisi pour cette étape',
+  CELL_TAKEN: 'Cette case est déjà peinte',
+  ANSWER_CLOSED: 'Les réponses sont fermées pendant la révélation',
+  muralRule: `Peignez avec {command} case couleur, p. ex. {example}. Couleurs${NB}: {colors}.`,
+  muralFinalRule: 'Une case peinte est définitive.',
+  muralCanvas: `Fresque de {width} sur {height}${NB}: {painted} cases peintes sur {cells}`,
+  muralHidden: 'Fresque cachée jusqu’à la révélation · {painted} cases peintes sur {cells}',
+  muralReveal: `Révélation${NB}! {painted} cases peintes ensemble sur {cells}`,
+  stageRule:
+    'Votez avec {command} et le nom ou le numéro d’une option, une fois par étape. En cas d’égalité, la première option listée l’emporte.',
+  stageStatus: `Étape {stage} sur {stages}${NB}: {label}`,
+  stageOption: {
+    one: '{number}. {label} · {votes} vote',
+    other: '{number}. {label} · {votes} votes',
+  },
+  compositionTitle: 'Notre composition (affichée, non jouée)',
+  compositionPart: `{stage}${NB}: {option}`,
+  compositionPending: `{stage}${NB}: vote en cours…`,
+  quizRule: `Répondez avec {commands}, une fois par question. Une question est résolue ensemble quand {percent}${NB}% des réponses sont justes.`,
+  questionStatus: 'Question {question} sur {questions}',
+  answerOption: '{command} {label} · {count}',
+  answersClose: 'Fin des réponses dans {time}',
+  revealAnswer: `Réponse${NB}: {command} {label}`,
+  revealSolved: `Résolue ensemble · {percent}${NB}% de bonnes réponses`,
+  revealMissed: `Pas résolue cette fois · {percent}${NB}% de bonnes réponses`,
+  quizSummary: `Résolues ensemble${NB}: {solved} sur {questions}`,
+  linePainted: '{painted}/{cells} peintes',
+  lineStage: 'Étape {stage}/{stages}',
+  lineQuestion: 'Q {question}/{questions}',
 };
 
 const es: Copy = {
@@ -320,6 +389,37 @@ const es: Copy = {
   BURST_ACTIVE: '{label} ya está activo',
   BURST_LIMIT: '{label} está agotado en esta ronda',
   ROUND_INTERMISSION: 'Entre rondas: espera a la siguiente',
+  INVALID_CHOICE: 'Elige una de las opciones indicadas',
+  ALREADY_CHOSEN: 'Ya elegiste en esta etapa',
+  CELL_TAKEN: 'Esa casilla ya está pintada',
+  ANSWER_CLOSED: 'Las respuestas están cerradas durante la revelación',
+  muralRule: 'Pinta con {command} casilla color, p. ej. {example}. Colores: {colors}.',
+  muralFinalRule: 'Las casillas pintadas son definitivas.',
+  muralCanvas: 'Mural de {width} por {height}: {painted} de {cells} casillas pintadas',
+  muralHidden: 'Mural oculto hasta la revelación · {painted} de {cells} casillas pintadas',
+  muralReveal: '¡Revelación! {painted} de {cells} casillas pintadas entre todos',
+  stageRule:
+    'Vota con {command} y el nombre o número de una opción, una vez por etapa. Los empates se los lleva la primera opción de la lista.',
+  stageStatus: 'Etapa {stage} de {stages}: {label}',
+  stageOption: {
+    one: '{number}. {label} · {votes} voto',
+    other: '{number}. {label} · {votes} votos',
+  },
+  compositionTitle: 'Nuestra composición (se muestra, no suena)',
+  compositionPart: '{stage}: {option}',
+  compositionPending: '{stage}: votando…',
+  quizRule:
+    'Responde con {commands}, una vez por pregunta. Una pregunta se resuelve entre todos cuando el {percent} % acierta.',
+  questionStatus: 'Pregunta {question} de {questions}',
+  answerOption: '{command} {label} · {count}',
+  answersClose: 'Las respuestas se cierran en {time}',
+  revealAnswer: 'Respuesta: {command} {label}',
+  revealSolved: 'Resuelta entre todos · {percent} % de aciertos',
+  revealMissed: 'No resuelta esta vez · {percent} % de aciertos',
+  quizSummary: 'Resueltas entre todos: {solved} de {questions}',
+  linePainted: '{painted}/{cells} pintadas',
+  lineStage: 'Etapa {stage}/{stages}',
+  lineQuestion: 'P {question}/{questions}',
 };
 
 const de: Copy = {
@@ -420,6 +520,37 @@ const de: Copy = {
   BURST_ACTIVE: '{label} ist schon aktiv',
   BURST_LIMIT: '{label} ist für diese Runde aufgebraucht',
   ROUND_INTERMISSION: 'Zwischen den Runden: Warte auf die nächste Runde',
+  INVALID_CHOICE: 'Wähle eine der angezeigten Optionen',
+  ALREADY_CHOSEN: 'Du hast für diese Etappe schon gewählt',
+  CELL_TAKEN: 'Dieses Feld ist schon bemalt',
+  ANSWER_CLOSED: 'Während der Auflösung sind Antworten geschlossen',
+  muralRule: 'Male mit {command} Feld Farbe, z. B. {example}. Farben: {colors}.',
+  muralFinalRule: 'Bemalte Felder bleiben endgültig.',
+  muralCanvas: 'Wandbild, {width} mal {height}: {painted} von {cells} Feldern bemalt',
+  muralHidden: 'Wandbild bis zur Enthüllung verborgen · {painted} von {cells} Feldern bemalt',
+  muralReveal: 'Enthüllung! {painted} von {cells} Feldern gemeinsam bemalt',
+  stageRule:
+    'Stimme mit {command} und dem Namen oder der Nummer einer Option ab, einmal pro Etappe. Bei Gleichstand gewinnt die zuerst genannte Option.',
+  stageStatus: 'Etappe {stage} von {stages}: {label}',
+  stageOption: {
+    one: '{number}. {label} · {votes} Stimme',
+    other: '{number}. {label} · {votes} Stimmen',
+  },
+  compositionTitle: 'Unsere Komposition (angezeigt, nicht abgespielt)',
+  compositionPart: '{stage}: {option}',
+  compositionPending: '{stage}: Abstimmung läuft…',
+  quizRule:
+    'Antworte mit {commands}, einmal pro Frage. Eine Frage gilt gemeinsam als gelöst, wenn {percent} % richtig antworten.',
+  questionStatus: 'Frage {question} von {questions}',
+  answerOption: '{command} {label} · {count}',
+  answersClose: 'Antworten schließen in {time}',
+  revealAnswer: 'Antwort: {command} {label}',
+  revealSolved: 'Gemeinsam gelöst · {percent} % richtig',
+  revealMissed: 'Diesmal nicht gelöst · {percent} % richtig',
+  quizSummary: 'Gemeinsam gelöst: {solved} von {questions}',
+  linePainted: '{painted}/{cells} bemalt',
+  lineStage: 'Etappe {stage}/{stages}',
+  lineQuestion: 'F {question}/{questions}',
 };
 
 export const SESSION_COPY: Record<SessionLanguage, Copy> = { en, fr, es, de };

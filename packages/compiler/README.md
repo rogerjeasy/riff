@@ -54,3 +54,11 @@ section and the offline event compiler emits `kind: 'twitch.event'`. The same pa
 host-owned raider shoutout rule (`riff.shoutout.raider()` from a raid trigger only); the
 offline compiler handles "when we get raided, shout out the raider" and refuses automatic
 shoutouts on any other event.
+
+Prompt pack `riff-compiler/13` adds the F31 definition version 3 formats (audience mural,
+staged composition vote, educational group challenge): the strict schema requires a nullable
+`experience.format` (stripped when null, like `mechanics`), TASK_RULES documents the bounded
+argument forms and rejection codes, and the curated examples add `pixel-mural`,
+`song-stages` and `solar-quiz`. `format-output.ts` is the deterministic offline template
+(built-in stage option sets and a sample solar-system question bank; anything else is
+`unsupported`).

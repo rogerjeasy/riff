@@ -11,6 +11,7 @@ import {
   type SessionSnapshot,
   type SessionStanding,
 } from '@riff/sdk';
+import { formatCommands } from './formats.js';
 
 /*
  * Definition version 2 mechanics: best-of-N matches, team health pools with elimination,
@@ -90,6 +91,7 @@ export function definitionCommands(d: ExperienceDefinition): string[] {
     ...(m?.health?.heal ? [m.health.heal.command] : []),
     ...(m?.burst?.command ? [m.burst.command] : []),
     ...(m?.milestones.flatMap((x) => (x.unlock ? [x.unlock.command] : [])) ?? []),
+    ...formatCommands(d),
   ];
 }
 
@@ -97,7 +99,7 @@ export function definitionCommands(d: ExperienceDefinition): string[] {
 export function mechanicsProblems(d: ExperienceDefinition): string[] {
   const m = d.mechanics;
   const problems: string[] = [];
-  if (d.version === 1) {
+  if (d.version !== 2) {
     if (m !== undefined) problems.push('Only version 2 definitions carry mechanics');
     if (d.objective.kind === 'burst') problems.push('Burst objectives require version 2');
     return problems;

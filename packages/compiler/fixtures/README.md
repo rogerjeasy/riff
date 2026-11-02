@@ -53,4 +53,13 @@ call.
 
 `riff-compiler/12`: unifies the trigger model under one discriminated `trigger.kind` (`chat.command`, `points.redeem`, `twitch.event`). `event-triggers.json` was regenerated so each event trigger carries `kind: "twitch.event"`; every other fixture was re-labelled with no content change (chat and Channel Points identities are unchanged).
 
+`riff-compiler/13`: adds the F31 version 3 formats. Every fixture labelled for pack 12 was re-labelled with no content change.
+
+`stateful-formats.json` records the deterministic offline outputs for prompt pack
+`riff-compiler/13`: "Let chat paint a 8x8 pixel mural with !paint", "Let chat compose a song
+in three stages: tempo, instrument, mood" and "Run a 3-question quiz about the solar system
+with !a !b !c". Template responses, not model output; compiler tests replay them byte for
+byte and `apps/server/test/formats-pipeline.test.ts` runs each through the full verifier
+including the independent version 3 host suite.
+
 `raid-shoutout.json` records the deterministic offline F23 raider-shoutout outputs for prompt pack `riff-compiler/12`: "When we get raided, shout out the raider and show a welcome burst", a 20+ viewer raid variant (both `riff.shoutout.raider()` with a host-bound target) and the refusal of a shoutout on a cheer. No live model call.
