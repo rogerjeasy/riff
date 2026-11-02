@@ -126,8 +126,12 @@ describe('F20 viewer language preferences', () => {
       }),
     );
     expect(app.riff.participation.viewerLanguage('700001')).toBe('fr');
-    await app.riff.runtime.handleChat(chat('700001', 'u-viewer', '!riff help'));
-    expect(sent.length).toBeGreaterThanOrEqual(1);
+    // The confirmation replies to Twitch's message id, never to Riff's internal event id.
+    expect(sent.at(-1)?.replyTo).toBe('twitch-msg-1');
+    await app.riff.runtime.handleChat(
+      chat('700001', 'u-viewer', '!riff help', { sourceMessageId: 'twitch-msg-2' }),
+    );
+    expect(sent.at(-1)?.replyTo).toBe('twitch-msg-2');
     // Another channel's id is still refused.
     await app.riff.runtime.handleChat(chat('999999', 'u-2', '!riff language de'));
     expect(app.riff.participation.viewerLanguage('u-2')).toBe('en');
@@ -193,10 +197,10 @@ describe('F20 viewer language preferences', () => {
     await app.riff.runtime.handleChat(chat(channel, 'u-fr', '!riff language fr'));
     expect(sent.at(-1)?.text).toContain('français');
     clock.t += 1000;
-    const help = chat(channel, 'u-fr', '!riff help');
+    const help = chat(channel, 'u-fr', '!riff help', { sourceMessageId: 'twitch-help-1' });
     await app.riff.runtime.handleChat(help);
     const reply = sent.at(-1)!;
-    expect(reply.replyTo).toBe(help.id);
+    expect(reply.replyTo).toBe('twitch-help-1');
     expect(reply.text).toMatch(/^Riff · Tomato Toss: Tout le monde/);
     expect(p.presentation(v.id, null)?.language).toBe('en');
     expect(p.presentation(v.id, null)?.instructions.join(' ')).toContain('Everyone');

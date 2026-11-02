@@ -102,7 +102,8 @@ export function createParticipationService(deps: {
     if (!deps.reply) return false;
     const at = now();
     if (within(viewerReplies, 60_000, at) >= VIEWER_LANGUAGE.repliesPerMinute) return false;
-    if (!deps.reply(text, message.id)) return false;
+    // Reply to Twitch's own message id; Riff's event id is not a Twitch message.
+    if (!deps.reply(text, message.sourceMessageId)) return false;
     viewerReplies.push(at);
     return true;
   }
