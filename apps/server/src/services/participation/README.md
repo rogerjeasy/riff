@@ -30,6 +30,16 @@ any 60 seconds"), team join line before the contribution line, round resource, a
 participant cap below the platform maximum of 256 ("Up to 20 players") and the objective:
 "Goal: 50 points together", "Highest team score wins" only with teams, and a shared-score
 objective for teamless rounds (the engine scores them as one community total).
+Version 2 definitions add reviewed `MECHANICS_COPY` phrases (placeholders such as `{label}`,
+`{command}`, plural `one`/`other` forms): the burst rule ("5 different viewers typing !shield
+within 10 seconds trigger Shield"), shield/points/limit, team health, heal and elimination,
+unlocks ("Unlocks !boost at 20 points"), milestones and best-of-N. They are packed as whole
+phrases into at most five rule lines; the on-stream phase line adds "Round 2 of 3" and the
+objective ("Last team standing wins", "Trigger Shield 3 times to win"). Elimination is its own
+outcome ("Last team standing"), never a generic finished round. The scene projection carries
+the selected `language`, so the overlay scoreboard and celebration use the web's matching
+reviewed copy (`apps/web/src/sessions/mechanics-copy.ts`, which also translates HUD meter
+labels and viewer rejection reasons).
 Creator-authored titles and team labels remain their original text. Restricted audiences
 are described truthfully; settings never expand authority or imply a paid audience is free.
 

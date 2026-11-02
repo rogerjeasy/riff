@@ -1,6 +1,13 @@
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import './presentation.css';
-import { appendMechanics, mechanicsOutcome, mechanicsRules } from './mechanics-hud.js';
+import {
+  appendMechanics,
+  mechanicsOutcome,
+  mechanicsRules,
+  objectiveRule,
+  viewerReasons,
+} from './mechanics-hud.js';
+import { sessionText, type SessionCopyKey, type SessionLanguage } from './mechanics-copy.js';
 
 export function sameDefinition(
   a: ExperienceDefinition | null | undefined,
@@ -40,7 +47,11 @@ function mechanicsKey(value: ExperienceDefinition['mechanics']): string | null {
         : input;
   return value ? JSON.stringify(sorted(value)) : null;
 }
-function element(tag: 'section' | 'h3' | 'p' | 'span' | 'div', className: string, text?: string) {
+function element(
+  tag: 'section' | 'h3' | 'p' | 'span' | 'div' | 'ul' | 'li',
+  className: string,
+  text?: string,
+) {
   const node = document.createElement(tag);
   node.className = className;
   if (text !== undefined) node.textContent = text;
@@ -50,19 +61,37 @@ function element(tag: 'section' | 'h3' | 'p' | 'span' | 'div', className: string
 export function createSessionHud(
   definition: ExperienceDefinition,
   snapshot: SessionSnapshot,
-  options: { now?: number; viewerId?: string; label?: string } = {},
+  options: {
+    now?: number;
+    viewerId?: string;
+    label?: string;
+    /** Reviewed viewer language (F40); creator-authored labels stay unchanged. */
+    language?: SessionLanguage;
+    /** Broadcast reduced motion; the CSS media query applies regardless. */
+    reducedMotion?: boolean;
+  } = {},
 ): HTMLElement {
+  const language = options.language ?? 'en',
+    now = options.now ?? snapshot.updatedAt;
+  const t = (key: SessionCopyKey, values: Record<string, string | number> = {}, count?: number) =>
+    sessionText(language, key, values, count);
   const hud = element('section', 'session-hud');
   // Distinct names keep landmarks unique when a rehearsal and a live round are both shown.
-  hud.setAttribute('aria-label', options.label ?? `${definition.title} session`);
+  hud.setAttribute('aria-label', options.label ?? t('sessionLabel', { title: definition.title }));
+  hud.lang = language;
   hud.dataset.phase = snapshot.phase;
+  if (options.reducedMotion) hud.dataset.reducedMotion = 'true';
   const remaining =
     snapshot.phase === 'running' && snapshot.deadlineAt !== null
-      ? Math.max(0, snapshot.deadlineAt - (options.now ?? snapshot.updatedAt))
+      ? Math.max(0, snapshot.deadlineAt - now)
       : snapshot.remainingMs;
   const seconds = Math.ceil(remaining / 1000);
   const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const phase = { running: 'Running', paused: 'Paused', finished: 'Finished' }[snapshot.phase];
+  const phase = t(
+    ({ running: 'phaseRunning', paused: 'phasePaused', finished: 'phaseFinished' } as const)[
+      snapshot.phase
+    ],
+  );
   const header = element('div', 'session-heading');
   header.append(
     element('h3', 'session-title', definition.title),
@@ -72,7 +101,7 @@ export function createSessionHud(
   const scores = element('div', 'session-scores');
   const entries = definition.teams.length
     ? definition.teams
-    : [{ id: 'community', label: 'Community' }];
+    : [{ id: 'community', label: t('community') }];
   for (const team of entries)
     scores.append(
       element(
@@ -82,13 +111,20 @@ export function createSessionHud(
       ),
     );
   hud.append(scores);
-  appendMechanics(hud, definition, snapshot, options.now ?? snapshot.updatedAt);
-  const count = Object.keys(snapshot.participants).length;
+  appendMechanics(hud, definition, snapshot, now, language);
+  const resource = {
+    per: definition.resource.perParticipant,
+    resource: definition.resource.name,
+  };
   hud.append(
     element(
       'p',
       'session-context',
-      `${count} / ${definition.maxParticipants} participants · ${definition.resource.perParticipant} ${definition.resource.name} each per round`,
+      t('participants', {
+        count: Object.keys(snapshot.participants).length,
+        max: definition.maxParticipants,
+        ...resource,
+      }),
     ),
   );
   if (options.viewerId && Object.hasOwn(snapshot.participants, options.viewerId)) {
@@ -98,32 +134,55 @@ export function createSessionHud(
         element(
           'p',
           'session-resource',
-          `${participant.remaining} of ${definition.resource.perParticipant} ${definition.resource.name} left · ${participant.contributions} contributions`,
+          t(
+            'viewerResource',
+            { left: participant.remaining, contributions: participant.contributions, ...resource },
+            participant.contributions,
+          ),
         ),
       );
+    const reasons = viewerReasons(definition, snapshot, options.viewerId, now, language);
+    if (reasons.length) {
+      const status = element('ul', 'session-viewer-status');
+      status.setAttribute('role', 'status');
+      status.setAttribute('aria-label', t('viewerStatus'));
+      for (const reason of reasons) status.append(element('li', 'session-viewer-reason', reason));
+      hud.append(status);
+    }
   }
   const joins = definition.teams
-    .map((team) => `${team.joinCommand} joins ${team.label}`)
+    .map((team) => t('join', { command: team.joinCommand, team: team.label }))
     .join(' · ');
+  const points = definition.contribution.points;
+  const command = definition.contribution.command;
   hud.append(
     element(
       'p',
       'session-rules',
-      `${joins ? `${joins}. Then ` : 'Join in with '}${definition.contribution.command} · ${definition.contribution.points} point${definition.contribution.points === 1 ? '' : 's'} per contribution. ${definition.objective.kind === 'collective-goal' ? `Reach ${definition.objective.target} points together.` : definition.objective.kind === 'burst' ? `Trigger ${definition.mechanics?.burst?.label ?? 'the burst'} ${definition.objective.target === 1 ? 'once' : `${definition.objective.target} times`} to win.` : definition.mechanics?.health ? 'Last team standing wins.' : 'Highest team score wins.'} ${joins ? 'Teams stay fixed for this round.' : ''} ${mechanicsRules(definition)}`.trim(),
+      [
+        joins
+          ? t('rulesTeams', { joins, command, points }, points)
+          : t('rulesTeamless', { command, points }, points),
+        objectiveRule(definition, language),
+        joins ? t('teamsFixed') : '',
+        mechanicsRules(definition, language),
+      ]
+        .filter(Boolean)
+        .join(' '),
     ),
   );
-  const v2Outcome = mechanicsOutcome(definition, snapshot);
+  const v2Outcome = mechanicsOutcome(definition, snapshot, language);
   if (v2Outcome) hud.append(element('p', 'session-outcome', v2Outcome));
   else if (snapshot.phase === 'finished') {
     const winner = definition.teams.find((team) => team.id === snapshot.winner)?.label;
     const outcome =
       snapshot.outcome === 'goal'
-        ? 'Goal reached · Community wins!'
+        ? `${t('outcomeGoal')} · ${t('communityWins')}`
         : snapshot.winner === 'tie'
-          ? 'Time is up · Tie'
+          ? t('outcomeTie', { outcome: t('outcomeTimeUp') })
           : winner
-            ? `Time is up · ${winner} wins!`
-            : 'Time is up · Round finished';
+            ? t('outcomeWinner', { outcome: t('outcomeTimeUp'), team: winner })
+            : t('outcomeFinished', { outcome: t('outcomeTimeUp') });
     hud.append(element('p', 'session-outcome', outcome));
   }
   return hud;

@@ -28,7 +28,7 @@ export const guidanceSchema = z
             title: z.string().max(120),
             phase: z.enum(['running', 'paused', 'finished']),
             free: z.boolean(),
-            instructions: z.array(z.string().max(200)).max(4),
+            instructions: z.array(z.string().max(200)).max(6),
             objective: z.string().max(200),
             remainingMs: z.number().nonnegative().nullable(),
             scores: z

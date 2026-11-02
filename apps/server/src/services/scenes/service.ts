@@ -4,6 +4,7 @@ import {
   describeTrigger,
   type SceneDocument,
   type PermissionManifest,
+  type ParticipationLanguage,
 } from '@riff/sdk';
 import {
   canonicalScene,
@@ -78,6 +79,7 @@ export function createSceneService(deps: {
   queue: ReturnType<typeof createCompileQueue>;
   presentation?: (versionId: string) => {
     instructions: string[];
+    language?: ParticipationLanguage;
     reducedMotion: boolean;
     highContrast?: boolean;
     effectLabels?: boolean;
@@ -265,6 +267,7 @@ export function createSceneService(deps: {
                       ? { effectLabels: presentation.effectLabels }
                       : {}),
                     ...(presentation.help ? { help: true as const } : {}),
+                    ...(presentation.language ? { language: presentation.language } : {}),
                   }
                 : {}),
               automationId: a.id,

@@ -40,6 +40,8 @@ export interface SceneProjection {
   reducedMotion?: boolean;
   /** Present only while an accepted `!riff help` asks the renderer to emphasize guidance. */
   help?: true;
+  /** Reviewed viewer language for scoreboard text (F40); absent means English. */
+  language?: 'en' | 'fr' | 'es' | 'de';
   automationId: string;
   versionId: string;
   revision: number;

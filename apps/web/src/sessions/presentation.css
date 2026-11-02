@@ -173,6 +173,22 @@
 .overlay-sessions .session-meter-track {
   height: 12px;
 }
+/* Why this viewer's commands would be refused right now (translated engine reasons). */
+.session-viewer-status {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  color: #ffe1ba;
+  font-size: 0.86em;
+}
+/* Broadcast reduced-motion preference, independent of the viewer's OS setting. */
+.session-hud[data-reduced-motion='true'],
+.session-hud[data-reduced-motion='true'] .session-meter-fill {
+  transition: none;
+  animation: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .session-hud {
     transition: none;

@@ -205,7 +205,7 @@ export const sceneStateSchema = z
     digest,
     scene: sceneSchema,
     classification,
-    instructions: z.array(z.string().max(200)).max(4).optional(),
+    instructions: z.array(z.string().max(200)).max(6).optional(),
     appliedRevision: revision.nullable(),
     history: z.array(sceneHistorySchema).max(100),
     checks: z.array(z.string().max(500)).max(30),
@@ -223,7 +223,9 @@ export const sceneProjectionSchema = z
     reducedMotion: z.boolean().optional(),
     highContrast: z.boolean().optional(),
     effectLabels: z.boolean().optional(),
-    instructions: z.array(z.string().max(200)).max(4).optional(),
+    /** Reviewed viewer language chosen by the host (F40); absent means English. */
+    language: z.enum(['en', 'fr', 'es', 'de']).optional(),
+    instructions: z.array(z.string().max(200)).max(6).optional(),
     /** Present for a short window after an accepted `!riff help`. */
     help: z.literal(true).optional(),
   })

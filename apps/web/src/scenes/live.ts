@@ -168,6 +168,7 @@ export function createSceneOverlay(
         definition: session?.definition,
         snapshot: session?.snapshot,
         instructions: [...(p.instructions ?? []), ...(extra ?? [])],
+        ...(p.language ? { language: p.language } : {}),
       });
       for (const n of scene.nodes) {
         const element = [...layer.querySelectorAll<HTMLElement>('[data-scene-node]')].find(
@@ -281,6 +282,7 @@ export function createSceneOverlay(
         const layer = layers.get(p.automationId);
         if (layer) {
           layer.dataset.highContrast = String(p.highContrast === true);
+          layer.lang = p.language ?? 'en';
           // A viewer asked `!riff help`: emphasise the instruction panel for the help window.
           layer.dataset.reducedMotion = String(p.reducedMotion === true);
           if (p.help) layer.dataset.help = 'true';

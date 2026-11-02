@@ -2,6 +2,7 @@ import { assetMarkup, clearStage, launch, type LaunchOptions } from '../effects/
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import { sceneSchema, sceneShapeSchema, type Scene, type SceneNode, type Rect } from './schema.js';
 import { mechanicsLines } from '../sessions/mechanics-hud.js';
+import { sessionText, type SessionLanguage } from '../sessions/mechanics-copy.js';
 import './scene.css';
 
 export interface SceneFrame {
@@ -10,6 +11,8 @@ export interface SceneFrame {
   snapshot?: SessionSnapshot | null | undefined;
   instructions?: string[];
   guides?: boolean;
+  /** Reviewed viewer language for scoreboard and celebration text (F40). */
+  language?: SessionLanguage;
 }
 export function timingVisible(
   timing: SceneNode['timing'],
@@ -88,15 +91,21 @@ function linePages(lines: string[], cols: number, rows: number): string[][] {
   return out;
 }
 /** Plain-language round status, e.g. "1:32 left", "Paused · 0:40 left", "Round over". */
-export function roundStatus(snapshot: SessionSnapshot, now: number): string {
-  if (snapshot.phase === 'finished') return 'Round over';
+export function roundStatus(
+  snapshot: SessionSnapshot,
+  now: number,
+  language: SessionLanguage = 'en',
+): string {
+  if (snapshot.phase === 'finished') return sessionText(language, 'roundOver');
   const remaining =
     snapshot.phase === 'running' && snapshot.deadlineAt !== null
       ? Math.max(0, snapshot.deadlineAt - now)
       : snapshot.remainingMs;
   const seconds = Math.ceil(remaining / 1000);
-  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} left`;
-  return snapshot.phase === 'paused' ? `Paused · ${clock}` : clock;
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+  return sessionText(language, snapshot.phase === 'paused' ? 'pausedClock' : 'clockLeft', {
+    clock,
+  });
 }
 /** Both private and live views call this renderer with host-validated logical state. */
 export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
@@ -175,10 +184,13 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
     if (n.kind === 'scoreboard') {
       const { definition: d, snapshot: s } = frame;
       if (d && s) {
-        const status = roundStatus(s, frame.now);
+        const language = frame.language ?? 'en';
+        const status = roundStatus(s, frame.now, language);
         children.push(label('scene-clock', status));
-        const teams = d.teams.length ? d.teams : [{ id: 'community', label: 'Community' }];
-        const extra = mechanicsLines(d, s, frame.now);
+        const teams = d.teams.length
+          ? d.teams
+          : [{ id: 'community', label: sessionText(language, 'community') }];
+        const extra = mechanicsLines(d, s, frame.now, language);
         fullText = [
           status,
           ...teams.map((t) => `${t.label}: ${s.scores[t.id] ?? 0}`),
@@ -216,14 +228,20 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
       const s = frame.snapshot,
         d = frame.definition;
       const winner = d?.teams.find((t) => t.id === s?.winner)?.label;
+      const language = frame.language ?? 'en';
+      // Elimination keeps its own outcome text rather than a generic finished round.
       const text =
         s?.winner === 'tie'
-          ? 'Round complete · tie'
+          ? sessionText(language, 'celebrationTie')
           : winner
-            ? `${winner} wins!`
+            ? sessionText(
+                language,
+                s?.outcome === 'elimination' ? 'celebrationEliminated' : 'celebrationWinner',
+                { team: winner },
+              )
             : s?.outcome === 'goal' || s?.winner === 'community'
-              ? 'Community wins!'
-              : 'Round complete';
+              ? sessionText(language, 'communityWins')
+              : sessionText(language, 'celebrationDone');
       fullText = text;
       if (n.asset) {
         const sprite = document.createElement('span');
@@ -233,7 +251,9 @@ export function renderScene(root: HTMLElement, raw: Scene, frame: SceneFrame) {
       }
       const p = label(
         'scene-winner',
-        compact && winner && winner.length > 10 ? `${winner.slice(0, 9)}… wins!` : text,
+        compact && winner && winner.length > 10
+          ? sessionText(language, 'celebrationWinner', { team: `${winner.slice(0, 9)}…` })
+          : text,
       );
       if (compact) p.style.fontSize = '12px';
       children.push(p);

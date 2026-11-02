@@ -13,7 +13,7 @@ import type { DatabaseConnection } from '../../db/client.js';
 import { participationState } from '../../db/schema.js';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { LiveChatMessage } from '../live/runtime.js';
-import { copy, phaseCopy, ruleCopy } from './copy.js';
+import { copy, mechanicsCopy, phaseCopy, ruleCopy } from './copy.js';
 export const languageSchema = z.enum(['en', 'fr', 'es', 'de']);
 export const settingsSchema = z
   .object({
@@ -173,10 +173,8 @@ export function createParticipationService(deps: {
                       score,
                     }))
                 : [],
-            // Elimination has no reviewed translation yet; it is shown as a finished round.
-            outcome: snapshot?.outcome
-              ? phaseCopy(lang, snapshot.outcome === 'elimination' ? 'finished' : snapshot.outcome)
-              : null,
+            // Elimination keeps its own reviewed outcome text.
+            outcome: snapshot?.outcome ? phaseCopy(lang, snapshot.outcome) : null,
           });
           if (interactions.length >= 20) break;
         }
@@ -218,14 +216,32 @@ export function createParticipationService(deps: {
       const s = settings(),
         language = selectedLanguage(recipe),
         facts = ruleCopy(parsed.data, language);
-      const phase = repo.session(v.automationId)?.snapshot.phase;
+      const snapshot = repo.session(v.automationId)?.snapshot,
+        phase = snapshot?.phase,
+        match = parsed.data.experience?.mechanics?.match;
       const prefix = recipe?.displayName;
       const instructions = [...facts.instructions];
       if (prefix) instructions[0] = `${prefix} · ${instructions[0]}`.slice(0, 200);
-      if (phase)
-        instructions.push(`${phaseCopy(language, phase)} · ${facts.objective}`.slice(0, 200));
+      if (phase) {
+        // A finished elimination round shows its own outcome; best-of-N adds "Round 2 of 3".
+        const status = phaseCopy(
+          language,
+          phase === 'finished' && snapshot.outcome === 'elimination' ? 'elimination' : phase,
+        );
+        const round =
+          match && snapshot.mechanics
+            ? mechanicsCopy(language, 'round', {
+                round: snapshot.mechanics.round,
+                rounds: match.rounds,
+              })
+            : null;
+        instructions.push(
+          [status, round, facts.objective].filter(Boolean).join(' · ').slice(0, 200),
+        );
+      }
       return {
-        instructions: instructions.slice(0, 4),
+        instructions: instructions.slice(0, 6),
+        language,
         reducedMotion: s.reducedMotion || recipe?.reducedMotion === true,
         highContrast: s.highContrast || recipe?.highContrast === true,
         effectLabels: s.effectLabels || recipe?.effectLabels === true,

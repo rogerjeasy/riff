@@ -563,8 +563,8 @@ mechanics change except labels or a longer break is reset-required. Prompt pack
 `riff-compiler/7` documents the primitives and adds Shield Wall/Castle Siege examples;
 `fixtures/stateful-mechanics.json` records the four offline intents. No tables,
 routes, env vars, dependencies or bridge capabilities were added. Collaboration still
-accepts only version 1 teamless cooperative rounds; participation copy shows
-elimination as a finished round.
+accepts only version 1 teamless cooperative rounds. Participation copy (F40) explains
+these mechanics in en/fr/es/de and names elimination as its own outcome.
 
 F32 adds tenant-scoped `session_transitions`: immutable migration source, host-computed
 plan and evidence identities, source session/version/revision, and durable review,
@@ -893,7 +893,13 @@ phase, objectives and aggregates. Per-device explicit choices are separate from 
 broadcast settings. `!riff help [language]` highlights protected on-stream guidance for 15 s (`help` flag on
 the scene projection; an explicit channel language is never overridden by viewers),
 limited to one/viewer/30 seconds and six/channel/60 seconds, with durable deduplication;
-it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/text labels
+it sends no Twitch chat and changes no gameplay permissions. Version 2 mechanics have
+reviewed en/fr/es/de copy on both sides: server `participation/copy.ts` (`MECHANICS_COPY`:
+help/rule lines such as "Unlocks !boost at 20 points", "Round 2 of 3" on the phase line,
+elimination outcome) and web `sessions/mechanics-copy.ts` (HUD, meter aria text, scoreboard
+lines, celebration, viewer rejection reasons for `ELIMINATED`…`ROUND_INTERMISSION`). Scene
+projections carry the host-selected `language`; rule panels hold up to six lines. Completeness
+tests require every key in every language with identical placeholders. Motion/contrast/text labels
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
