@@ -52,3 +52,5 @@ call.
 `riff-compiler/11`: merges the F19 Twitch event-trigger rules and curated cheer/raid examples into the same pack; `event-triggers.json` and every fixture re-labelled for pack 10 were re-labelled again with no content change.
 
 `riff-compiler/12`: unifies the trigger model under one discriminated `trigger.kind` (`chat.command`, `points.redeem`, `twitch.event`). `event-triggers.json` was regenerated so each event trigger carries `kind: "twitch.event"`; every other fixture was re-labelled with no content change (chat and Channel Points identities are unchanged).
+
+`raid-shoutout.json` records the deterministic offline F23 raider-shoutout outputs for prompt pack `riff-compiler/12`: "When we get raided, shout out the raider and show a welcome burst", a 20+ viewer raid variant (both `riff.shoutout.raider()` with a host-bound target) and the refusal of a shoutout on a cheer. No live model call.

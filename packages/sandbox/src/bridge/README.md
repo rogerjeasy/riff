@@ -18,3 +18,7 @@ settlement are creator actions in the host console.
 `riff.polls.start/end`, `riff.chat.announce` and `riff.shoutout.send` stage strict,
 bounded native Twitch actions (capabilities `polls`, `chat.announce`, `shoutout`). They are
 never executed in the isolate: the decision carries them and only the live host sends them.
+`riff.shoutout.raider()` takes no argument: for a `raid` `twitch.event` trigger handling a
+raid event, the bridge binds the target to the event's raiding broadcaster
+(`{kind:'shoutout.raider', raiderId}`); anywhere else it faults, and raid-triggered
+handlers may not call `riff.shoutout.send()`.

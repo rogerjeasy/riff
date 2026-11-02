@@ -111,6 +111,8 @@ export function describeAction(action: NonNullable<Decision['actions']>[number])
       return `would announce “${action.message}”`;
     case 'shoutout':
       return `would shout out @${action.login} (if your shoutout policy approves it)`;
+    case 'shoutout.raider':
+      return 'would shout out the channel that raided (if automatic raid shoutouts are on)';
   }
 }
 

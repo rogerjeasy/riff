@@ -144,7 +144,7 @@ export function compileOffline(request: CompileRequest): CompileOutput {
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements, approved shoutouts and sub, gift, resub, cheer and raid triggers.',
+        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements, approved shoutouts, automatic raider shoutouts and sub, gift, resub, cheer and raid triggers.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;

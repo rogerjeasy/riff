@@ -50,4 +50,7 @@ and the validator rejects a trigger that sets both `points.redeem` and `event`.
 Prompt pack `riff-compiler/12` unifies the trigger model: `trigger.kind` is the single
 discriminator (`chat.command` | `points.redeem` | `twitch.event`); `reward` belongs only
 to `points.redeem` and `event` only to `twitch.event`. TASK_RULES has one "Trigger kinds"
-section and the offline event compiler emits `kind: 'twitch.event'`.
+section and the offline event compiler emits `kind: 'twitch.event'`. The same pack adds the
+host-owned raider shoutout rule (`riff.shoutout.raider()` from a raid trigger only); the
+offline compiler handles "when we get raided, shout out the raider" and refuses automatic
+shoutouts on any other event.

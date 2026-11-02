@@ -1,5 +1,8 @@
 import { EVENT_TRIGGER_LIMITS, type TwitchEventKind } from '@riff/sdk';
 
+/** "Shout out", "shoutout" or "shout them out": a request for a Twitch shoutout card. */
+export const SHOUTOUT_WORDS = /\bshout ?-?outs?\b|\bshout\s+(?:them|him|her|the\s+[a-z]+)\s+out\b/i;
+
 /** Explicit Twitch event facts in the creator's words (F19). Absent facts stay null. */
 export interface EventHints {
   kind: TwitchEventKind;

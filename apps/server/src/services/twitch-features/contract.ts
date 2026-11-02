@@ -77,6 +77,8 @@ export const storedSchema = z
       .object({
         mode: z.enum(['off', 'allowlist', 'raiders']),
         allowlist: z.array(channel).max(SHOUTOUT_POLICY_LIMITS.allowlist),
+        /** F23 consent: raid-triggered automations may shout out the raider. Default off. */
+        autoRaid: z.boolean().default(false),
       })
       .strict(),
     raiders: z
@@ -102,7 +104,7 @@ export function emptyState(): StoredTwitchFeatures {
     disabled: [],
     broadcasterType: null,
     eligibilityCheckedAt: null,
-    shoutout: { mode: 'off', allowlist: [] },
+    shoutout: { mode: 'off', allowlist: [], autoRaid: false },
     raiders: [],
     poll: null,
     windows: { announcements: [], polls: [], shoutouts: [], shoutoutTargets: {} },
@@ -145,6 +147,8 @@ export const policyBody = z
   .object({
     mode: z.enum(['off', 'allowlist', 'raiders']),
     logins: z.array(login).max(SHOUTOUT_POLICY_LIMITS.allowlist),
+    /** Omitted keeps the current consent; mode 'off' always clears it. */
+    autoRaid: z.boolean().optional(),
   })
   .strict();
 export const featureToggleBody = z

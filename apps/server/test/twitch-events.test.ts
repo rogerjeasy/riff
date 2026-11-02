@@ -23,6 +23,7 @@ const headers = { 'x-riff-request': '1' };
 const BROADCASTER = '1337';
 const CONFETTI = 'When someone cheers 100+ bits, rain confetti';
 const RAID = 'When we get raided, show a welcome banner';
+const RAID_SHOUTOUT = 'When we get raided, shout out the raider and show a welcome burst';
 
 let app: RiffApp | undefined;
 let server: WebSocketServer | undefined;
@@ -49,7 +50,13 @@ async function boot(scopes: string[]) {
   await new Promise((resolve) => server!.once('listening', resolve));
   const port = (server.address() as AddressInfo).port;
   const subscriptions: { type: string; condition: Record<string, string> }[] = [];
+  const shoutouts: URLSearchParams[] = [];
   const fakeFetch = async (url: string, init?: RequestInit) => {
+    // Send a Shoutout answers 204 No Content (https://dev.twitch.tv/docs/api/reference/#send-a-shoutout).
+    if (url.includes('/chat/shoutouts') && init?.method === 'POST') {
+      shoutouts.push(new URL(url).searchParams);
+      return new Response(null, { status: 204 });
+    }
     if (url.endsWith('/eventsub/subscriptions') && init?.method === 'POST') {
       subscriptions.push(JSON.parse(String(init.body)));
       const body = fixture('helix.create-eventsub-subscription.json');
@@ -93,7 +100,7 @@ async function boot(scopes: string[]) {
     },
     'home',
   );
-  return { sockets, subscriptions, effects };
+  return { sockets, subscriptions, effects, shoutouts };
 }
 
 async function approve(intent: string) {
@@ -259,6 +266,90 @@ describe('F19 live routing', () => {
     app!.riff.runtime.panic('test');
     expect(await app!.riff.runtime.handleTwitchEvent({ ...base, id: 'evt-2' })).toEqual([]);
     expect(effects).toHaveLength(0);
+  }, 180_000);
+});
+
+describe('F23 automatic raider shoutout end to end', () => {
+  const SCOPES = ['user:read:chat', 'moderator:manage:shoutouts'];
+
+  it('a raid notification shouts out the raiding broadcaster through Helix, once per cooldown', async () => {
+    const { sockets, subscriptions, effects, shoutouts } = await boot(SCOPES);
+    await approve(RAID_SHOUTOUT);
+    await app!.riff.twitchFeatures.setShoutoutPolicy('raiders', [], true);
+    await app!.ready();
+    await wait(() => subscriptions.some((s) => s.type === 'channel.raid'));
+    notify(sockets[0]!, 'raid', 'raid-so-1');
+    await wait(() => shoutouts.length > 0 && effects.length >= 5, 30_000);
+    expect(effects).toHaveLength(5);
+    expect(shoutouts.map((p) => Object.fromEntries(p))).toEqual([
+      { from_broadcaster_id: BROADCASTER, to_broadcaster_id: '1234', moderator_id: BROADCASTER },
+    ]);
+    // A second raid inside Twitch's 2-minute cooldown still welcomes, but never calls Helix.
+    notify(sockets[0]!, 'raid', 'raid-so-2', {
+      from_broadcaster_user_id: '5678',
+      from_broadcaster_user_login: 'second_user',
+      from_broadcaster_user_name: 'Second_User',
+    });
+    await wait(() => effects.length >= 10, 30_000);
+    await wait(
+      () => app!.riff.twitchFeatures.snapshot().history.some((h) => h.code === 'COOLDOWN'),
+      30_000,
+    );
+    expect(shoutouts).toHaveLength(1);
+  }, 180_000);
+
+  it('without the creator’s consent the welcome plays and no shoutout is sent', async () => {
+    const { sockets, effects, shoutouts } = await boot(SCOPES);
+    await approve(RAID_SHOUTOUT);
+    await app!.riff.twitchFeatures.setShoutoutPolicy('raiders', []);
+    await app!.ready();
+    notify(sockets[0]!, 'raid', 'raid-so-off');
+    await wait(() => effects.length >= 5, 30_000);
+    await wait(
+      () => app!.riff.twitchFeatures.snapshot().history.some((h) => h.code === 'POLICY_DENIED'),
+      30_000,
+    );
+    expect(app!.riff.twitchFeatures.snapshot().history[0]?.message).toMatch(
+      /Automatic raid shoutouts are off/,
+    );
+    expect(shoutouts).toEqual([]);
+  }, 180_000);
+
+  it('rehearses a raid shoutout through the simulated sink without calling Helix', async () => {
+    const { shoutouts } = await boot(SCOPES);
+    const version = await approve(RAID_SHOUTOUT);
+    await app!.riff.twitchFeatures.setShoutoutPolicy('raiders', [], true);
+    const response = await app!.inject({
+      method: 'POST',
+      url: `/api/versions/${version.id}/preview`,
+      headers,
+      payload: {
+        seed: 7,
+        events: [
+          {
+            id: 'r1',
+            channelId: 'rehearsal',
+            viewerId: 'raider-1',
+            roles: ['viewer'],
+            text: '',
+            at: 0,
+            twitch: { kind: 'raid', amount: 30, tier: null, anonymous: false, gift: false },
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const decisions = response.json<{
+      decisions: { code: string; mode: string; actions?: unknown[] }[];
+    }>().decisions;
+    expect(decisions[0]).toMatchObject({
+      code: 'ACCEPTED',
+      mode: 'preview',
+      actions: [{ kind: 'shoutout.raider', raiderId: 'raider-1' }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(shoutouts).toEqual([]);
+    expect(app!.riff.twitchFeatures.snapshot().history).toEqual([]);
   }, 180_000);
 });
 

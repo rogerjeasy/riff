@@ -286,7 +286,10 @@ export function TwitchFeaturesPanel({ panic }: { panic: boolean }) {
               </li>
               <li>
                 Polls and shoutouts can only be triggered by you or your moderators. Shoutouts go
-                only to channels your policy approves.
+                only to channels your policy approves. The one exception: with “Shout out raiders
+                automatically” on, a raid interaction (
+                <q>When we get raided, shout out the raider</q>) may use{' '}
+                <code>riff.shoutout.raider()</code> for the channel that raided.
               </li>
               <li>
                 Rehearsals and tests use a simulated Twitch: nothing is posted until you approve and
@@ -708,16 +711,18 @@ function ShoutoutTab({
   data: TwitchFeatures;
   status: FeatureStatus | undefined;
   busy: string | null;
-  onPolicy: (body: { mode: string; logins: string[] }) => Promise<boolean>;
+  onPolicy: (body: { mode: string; logins: string[]; autoRaid: boolean }) => Promise<boolean>;
   onSend: (login: string) => void;
 }) {
   const policy = data.shoutout;
   const [mode, setMode] = useState(policy.mode);
   const [logins, setLogins] = useState(policy.allowlist.map((c) => c.login).join(', '));
-  const saved = `${policy.mode}|${policy.allowlist.map((c) => c.login).join(',')}`;
+  const [autoRaid, setAutoRaid] = useState(policy.autoRaid);
+  const saved = `${policy.mode}|${policy.allowlist.map((c) => c.login).join(',')}|${policy.autoRaid}`;
   useEffect(() => {
     setMode(policy.mode);
     setLogins(policy.allowlist.map((c) => c.login).join(', '));
+    setAutoRaid(policy.autoRaid);
     // Only re-seed the editor when the saved policy itself changes.
   }, [saved]);
   const parsed = logins
@@ -725,7 +730,9 @@ function ShoutoutTab({
     .map((l) => l.replace(/^@/, '').trim().toLowerCase())
     .filter(Boolean);
   const invalid = parsed.filter((l) => !LIMITS.login.test(l));
-  const dirty = `${mode}|${parsed.join(',')}` !== saved;
+  // Turning shoutouts off also withdraws the automatic raid consent (the server enforces it).
+  const automatic = mode !== 'off' && autoRaid;
+  const dirty = `${mode}|${parsed.join(',')}|${automatic}` !== saved;
   const targets =
     policy.mode === 'allowlist'
       ? policy.allowlist.map((c) => ({ login: c.login, label: c.displayName }))
@@ -745,7 +752,7 @@ function ShoutoutTab({
         onSubmit={(e) => {
           e.preventDefault();
           if (invalid.length || !dirty) return;
-          void onPolicy({ mode, logins: mode === 'allowlist' ? parsed : [] });
+          void onPolicy({ mode, logins: mode === 'allowlist' ? parsed : [], autoRaid: automatic });
         }}
       >
         <fieldset disabled={busy !== null || !data.connected}>
@@ -784,6 +791,20 @@ function ShoutoutTab({
               : mode === 'allowlist'
                 ? 'Riff checks each login with Twitch and stores the channel id. Automations cannot shout out anyone else.'
                 : 'Nobody can receive a shoutout from Riff, manually or from an automation.'}
+          </p>
+          <label className="tf-auto-raid">
+            <input
+              type="checkbox"
+              checked={automatic}
+              disabled={mode === 'off'}
+              onChange={(e) => setAutoRaid(e.target.checked)}
+            />{' '}
+            Shout out raiders automatically
+          </label>
+          <p className="panel-hint" id="tf-auto-raid-hint">
+            {mode === 'off'
+              ? 'Choose who may receive a shoutout first; automatic raid shoutouts stay off while shoutouts are off.'
+              : 'When on, an approved interaction triggered by an incoming raid may shout out the channel that just raided you, and only that channel. Riff takes the target from Twitch’s raid notification, never from chat or generated code. Twitch’s limits still apply (one shoutout every 2 minutes, the same channel once an hour), as do Riff’s 10 shoutouts an hour and Stop everything. Off by default.'}
           </p>
           <div className="panel-actions">
             <button className="button" disabled={!dirty || invalid.length > 0}>

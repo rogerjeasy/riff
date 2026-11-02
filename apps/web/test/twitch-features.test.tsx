@@ -213,8 +213,88 @@ it('requires an approved shoutout list before any shoutout can be sent', async (
   fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
   await screen.findByText('Shoutout policy saved.');
   const call = fetcher.mock.calls.find(([, init]) => init?.method === 'POST');
-  expect(JSON.parse(String(call?.[1]?.body))).toEqual({ mode: 'allowlist', logins: ['twitchdev'] });
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+    mode: 'allowlist',
+    logins: ['twitchdev'],
+    autoRaid: false,
+  });
   expect(screen.getByRole('combobox', { name: 'Channel' })).toBeTruthy();
+});
+
+it('offers automatic raid shoutouts as an explicit opt-in, off by default and off with shoutouts', async () => {
+  const fetcher = stub(
+    base,
+    (_url, body) =>
+      new Response(
+        JSON.stringify({
+          features: {
+            ...base,
+            shoutout: {
+              mode: (body as { mode: string }).mode,
+              autoRaid: (body as { autoRaid: boolean }).autoRaid,
+              allowlist: [],
+              raiders: [],
+              availableAt: null,
+            },
+          },
+        }),
+        { status: 200 },
+      ),
+  );
+  render(<TwitchFeaturesPanel panic={false} />);
+  await open();
+  fireEvent.click(screen.getByRole('tab', { name: 'Shoutout' }));
+  const toggle = screen.getByRole('checkbox', { name: 'Shout out raiders automatically' });
+  expect(toggle).toHaveProperty('checked', false);
+  expect(toggle).toHaveProperty('disabled', true);
+  expect(
+    screen.getByText(/automatic raid shoutouts stay off while shoutouts are off/),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Raiders only' }));
+  expect(toggle).toHaveProperty('disabled', false);
+  expect(screen.getByText(/only that channel/)).toBeTruthy();
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole('button', { name: 'Save policy' }));
+  await screen.findByText('Shoutout policy saved.');
+  const call = fetcher.mock.calls.find(([, init]) => init?.method === 'POST');
+  expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+    mode: 'raiders',
+    logins: [],
+    autoRaid: true,
+  });
+});
+
+it('explains a rehearsed raider shoutout as simulated', () => {
+  const text = explain(
+    {
+      eventId: 'e',
+      artifactId: 'a',
+      code: 'ACCEPTED',
+      reason: '',
+      effects: [],
+      actions: [{ kind: 'shoutout.raider', raiderId: '1234' }],
+      mode: 'preview',
+      viewerId: '1234',
+      at: 0,
+      allowance: null,
+    },
+    '',
+    'Cool_User',
+    {
+      sdkVersion: '0.4.0',
+      capabilities: ['shoutout'],
+      trigger: {
+        command: '@raid',
+        audience: ['viewer'],
+        maxPerViewer: 5,
+        windowMs: 60_000,
+        kind: 'twitch.event',
+        event: { kind: 'raid', minimum: 1 },
+      },
+      limits: { effectsPerEvent: 1, effectsPerMinute: 10 },
+    } as never,
+  );
+  expect(text).toMatch(/simulated Twitch, nothing sent: would shout out the channel that raided/);
 });
 
 it('says when everything is stopped', async () => {

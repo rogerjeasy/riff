@@ -43,6 +43,8 @@ export const snapshotSchema = z.object({
   poll: pollSchema.nullable(),
   shoutout: z.object({
     mode: z.enum(['off', 'allowlist', 'raiders']),
+    /** F23: raid-triggered interactions may shout out the raider. */
+    autoRaid: z.boolean().default(false),
     allowlist: z.array(channelSchema).max(25),
     raiders: z.array(z.object({ login: z.string(), displayName: z.string(), at: z.number() })),
     availableAt: z.number().nullable(),

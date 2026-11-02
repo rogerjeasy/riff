@@ -82,6 +82,8 @@ export function registerTwitchFeatureRoutes(app: FastifyInstance, service: Twitc
   app.post('/api/twitch/shoutouts/policy', async (req, reply) => {
     const body = policyBody.safeParse(req.body);
     if (!body.success) return invalid(reply, body.error);
-    return run(reply, () => service.setShoutoutPolicy(body.data.mode, body.data.logins));
+    return run(reply, () =>
+      service.setShoutoutPolicy(body.data.mode, body.data.logins, body.data.autoRaid),
+    );
   });
 }

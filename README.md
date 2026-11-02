@@ -395,6 +395,9 @@ change an approved live layout.
    Polls need an Affiliate or Partner channel; shoutouts go only to channels your policy
    approves. Automations request them through `riff.polls`, `riff.chat.announce` and
    `riff.shoutout`; rehearsals simulate them and Stop everything ends Riff's poll.
+   "When we get raided, shout out the raider" works once you turn on **Shout out raiders
+   automatically** (off by default): a raid-triggered interaction can then shout out only
+   the channel that just raided, under the same Twitch cooldowns and channel budget.
 
    Event-triggered interactions (F19) add consent only when you choose it in the
    **Twitch event triggers** panel: `channel:read:subscriptions` for new subs, gifted

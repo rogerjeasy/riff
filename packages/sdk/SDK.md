@@ -172,8 +172,17 @@ which channels are allowed (an approved list, or recent raiders only); anything 
 refused by the host. Twitch allows one shoutout every 2 minutes and the same channel
 once an hour. Example: `await riff.shoutout.send({ login: 'twitchdev' })`
 
+`riff.shoutout.raider(): Promise<void>` (capability `shoutout`) shouts out the
+broadcaster who raided in THIS event. It takes no argument: the host binds the target
+from the raid event, so it works only for trigger.kind 'twitch.event' with event.kind
+'raid' (any other trigger faults). Raid-triggered handlers may not call
+riff.shoutout.send. The creator must turn on automatic raid shoutouts in Twitch
+features; the same Twitch cooldowns, channel budget and consent apply. Example:
+`await riff.shoutout.raider()`
+
 Manifests declaring `polls` or `shoutout` must restrict trigger.audience to moderator
-and/or broadcaster. `chat.announce` may use any audience; keep effectsPerMinute low
+and/or broadcaster; the one exception is a 'raid' twitch.event trigger (audience
+['viewer']) using `shoutout` for riff.shoutout.raider(). `chat.announce` may use any audience; keep effectsPerMinute low
 (the host channel budget is 6 announcements per minute across all interactions).
 
 ## Twitch event triggers (subs, gifts, resubs, cheers, raids)

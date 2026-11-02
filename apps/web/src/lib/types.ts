@@ -131,6 +131,8 @@ export interface Decision {
     | { kind: 'poll.end' }
     | { kind: 'announce'; message: string; color: string }
     | { kind: 'shoutout'; login: string }
+    /** F23: the host bound the raiding broadcaster; guest code never picks it. */
+    | { kind: 'shoutout.raider'; raiderId: string }
   )[];
   mode: 'preview' | 'live';
   viewerId: string | null;

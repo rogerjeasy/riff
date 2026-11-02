@@ -17,6 +17,7 @@ import {
   ANNOUNCEMENT_COLORS,
   TWITCH_ACTION_CAPABILITIES,
   TWITCH_ACTION_LIMITS,
+  RAID_SHOUTOUT_EVENT,
   EVENT_COMMAND_PATTERN,
   EVENT_TRIGGER_LIMITS,
   SUBSCRIPTION_TIERS,
@@ -220,8 +221,19 @@ export const manifestSchema = z
         message: `Native Twitch capabilities require sdkVersion ${SDK_VERSION}`,
       });
     const privileged: readonly string[] = TWITCH_ACTION_LIMITS.privilegedAudience;
-    if (
-      (manifest.capabilities.includes('polls') || manifest.capabilities.includes('shoutout')) &&
+    // F23 host-owned rule: a raid event trigger may shout out its raider (riff.shoutout.raider)
+    // with the viewer audience; the bridge binds the target, so no guest login is trusted.
+    const raidShoutout =
+      trigger.kind === 'twitch.event' && trigger.event.kind === RAID_SHOUTOUT_EVENT;
+    if (manifest.capabilities.includes('shoutout') && platform && !raidShoutout)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['capabilities'],
+        message: 'Only a raid event trigger may shout out, and only the raiding broadcaster',
+      });
+    else if (
+      (manifest.capabilities.includes('polls') ||
+        (manifest.capabilities.includes('shoutout') && !raidShoutout)) &&
       trigger.audience.some((role) => !privileged.includes(role))
     )
       ctx.addIssue({
@@ -349,6 +361,13 @@ export const actionSchema = z.discriminatedUnion('kind', [
         .trim()
         .toLowerCase()
         .regex(new RegExp(TWITCH_ACTION_LIMITS.shoutout.loginPattern)),
+    })
+    .strict(),
+  // Host-bound only: the bridge fills raiderId from the raid event; guests never supply it.
+  z
+    .object({
+      kind: z.literal('shoutout.raider'),
+      raiderId: z.string().min(1).max(100),
     })
     .strict(),
 ]);

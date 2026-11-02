@@ -358,6 +358,100 @@ describe('shoutouts', () => {
   });
 });
 
+describe('automatic raider shoutouts (F23 host-owned raid rule)', () => {
+  const raider = { id: '777', login: 'raiderchan', displayName: 'RaiderChan' };
+  const raidShoutout = (raid: typeof raider | undefined = raider, raiderId = raider.id) =>
+    ({
+      actions: [{ kind: 'shoutout.raider', raiderId }] as const,
+      context: { automationId: 'auto-raid', viewer: raid?.displayName ?? 'x', raid },
+    }) as const;
+  const send = (
+    service: ReturnType<typeof setup>['service'],
+    { actions, context }: ReturnType<typeof raidShoutout>,
+  ) => service.dispatch(actions, context);
+  const shoutouts = (calls: { method: string; input: unknown }[]) =>
+    calls.filter((c) => c.method === 'sendShoutout');
+
+  it('is off by default and refused with a reason until the creator opts in', async () => {
+    const { service, calls, activity } = setup();
+    expect(service.snapshot().shoutout.autoRaid).toBe(false);
+    await send(service, raidShoutout());
+    expect(activity.at(-1)).toMatchObject({ code: 'POLICY_DENIED' });
+    // Opting in without any shoutout policy is impossible: mode off clears the consent.
+    await service.setShoutoutPolicy('off', [], true);
+    expect(service.snapshot().shoutout.autoRaid).toBe(false);
+    await send(service, raidShoutout());
+    expect(activity.at(-1)).toMatchObject({ code: 'POLICY_DENIED' });
+    await service.setShoutoutPolicy('raiders', [], false);
+    await send(service, raidShoutout());
+    expect(service.snapshot().history[0]?.message).toMatch(/Automatic raid shoutouts are off/);
+    expect(shoutouts(calls)).toEqual([]);
+  });
+
+  it('shouts out exactly the raiding broadcaster once consent is on', async () => {
+    const { service, calls } = setup();
+    await service.setShoutoutPolicy('raiders', [], true);
+    // Changing the list later keeps the consent unless it is set explicitly.
+    await service.setShoutoutPolicy('raiders', []);
+    expect(service.snapshot().shoutout.autoRaid).toBe(true);
+    await send(service, raidShoutout());
+    expect(shoutouts(calls).map((c) => c.input)).toEqual([
+      { fromBroadcasterId: BROADCASTER, toBroadcasterId: '777', moderatorId: BROADCASTER },
+    ]);
+    expect(service.snapshot().history[0]).toMatchObject({
+      kind: 'shoutout',
+      origin: 'automation',
+      outcome: 'sent',
+      message: 'Shoutout sent to @raiderchan.',
+    });
+  });
+
+  it('rejects a target that is not the raider of the current event', async () => {
+    const { service, calls, activity } = setup();
+    await service.setShoutoutPolicy('raiders', [], true);
+    await send(service, raidShoutout(raider, '999'));
+    // A decision without a raid context (chat, timer, redemption) cannot shout out a raider.
+    await service.dispatch([{ kind: 'shoutout.raider', raiderId: raider.id }], {
+      automationId: 'auto-raid',
+      viewer: 'ada',
+    });
+    expect(activity.slice(-2).map((a) => a.code)).toEqual(['POLICY_DENIED', 'POLICY_DENIED']);
+    expect(shoutouts(calls)).toEqual([]);
+  });
+
+  it('keeps Twitch cooldowns, the channel budget and scope consent', async () => {
+    const { service, calls, activity } = setup();
+    await service.setShoutoutPolicy('raiders', [], true);
+    await send(service, raidShoutout());
+    clock.now += 60_000;
+    await send(service, raidShoutout({ ...raider, id: '778', login: 'other' }, '778'));
+    expect(activity.at(-1)).toMatchObject({ code: 'COOLDOWN' });
+    clock.now += 61_000;
+    await send(service, raidShoutout());
+    expect(activity.at(-1)).toMatchObject({ code: 'COOLDOWN' });
+    // Ten shoutouts an hour across the channel, then the automation is disabled.
+    for (let i = 0; i < 10; i++) {
+      clock.now += 121_000;
+      await send(service, raidShoutout({ ...raider, id: `8${i}` }, `8${i}`));
+    }
+    expect(activity.at(-1)).toMatchObject({ kind: 'incident', code: 'LIMIT_EXCEEDED' });
+    expect(shoutouts(calls)).toHaveLength(10);
+    const ungranted = setup({ scopes: ['user:read:chat'] });
+    await ungranted.service.setShoutoutPolicy('raiders', [], true);
+    await send(ungranted.service, raidShoutout());
+    expect(ungranted.activity.at(-1)).toMatchObject({ code: 'SCOPE_MISSING' });
+  });
+
+  it('drops queued raider shoutouts after panic', async () => {
+    let stopped = false;
+    const { service, calls } = setup({ blocked: () => stopped });
+    await service.setShoutoutPolicy('raiders', [], true);
+    stopped = true;
+    await send(service, raidShoutout());
+    expect(shoutouts(calls)).toEqual([]);
+  });
+});
+
 describe('automation dispatch and panic', () => {
   it('executes staged actions in order and disables the automation that overruns a budget', async () => {
     const { service, activity, disabled } = setup();

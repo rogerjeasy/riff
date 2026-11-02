@@ -9,7 +9,7 @@ import {
   type TwitchEventKind,
 } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
-import { extractEventHints } from './event-hints.js';
+import { extractEventHints, SHOUTOUT_WORDS } from './event-hints.js';
 import { extractIntentHints } from './intent.js';
 
 interface EventPlan {
@@ -190,6 +190,20 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
   assumptions.push(`Up to ${PER_VIEWER} reactions per account in any 60 seconds.`);
   if (kind === 'cheer' || kind === 'gift')
     assumptions.push('Anonymous cheers and gifts share one allowance.');
+  // F23: only raids may shout out, and only the raiding channel the host binds.
+  const shoutout = kind === 'raid' && SHOUTOUT_WORDS.test(request.intent);
+  if (shoutout) {
+    p.title = 'Raid Shoutout';
+    p.source = p.source.replace('{\n', '{\n  await riff.shoutout.raider();\n');
+    const effects = p.effects;
+    p.effects = (amount) => effects(amount) + 1;
+    p.what = `Twitch shows a shoutout card for the raiding channel, and ${p.what.charAt(0).toLowerCase()}${p.what.slice(1)}`;
+    p.scale = `one shoutout and ${p.scale}`;
+    assumptions.push(
+      'Turn on “Shout out raiders automatically” in Twitch features; until then the welcome burst still plays and the shoutout is refused.',
+      'Twitch allows one shoutout every 2 minutes and the same channel once an hour.',
+    );
+  }
   const trigger: EventTrigger = { kind, minimum };
   const when = describeTrigger({
     kind: 'twitch.event',
@@ -200,7 +214,8 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
   return {
     kind: 'candidate',
     title: request.base?.title ?? p.title,
-    summary: `${when}: ${p.what.toLowerCase()}.`,
+    // "Twitch" stays capitalized; other plans start with an ordinary word.
+    summary: `${when}: ${shoutout ? p.what : p.what.toLowerCase()}.`,
     question: null,
     choices: [],
     unsupportedReason: null,
@@ -210,7 +225,7 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
     manifest: {
       sdkVersion: SDK_VERSION,
       experience: null,
-      capabilities: ['overlay'],
+      capabilities: shoutout ? ['overlay', 'shoutout'] : ['overlay'],
       trigger: {
         command: eventTriggerCommand(kind),
         audience: ['viewer'],
@@ -220,7 +235,8 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
         event: trigger,
       },
       limits: {
-        effectsPerEvent: kind === 'subscribe' || kind === 'resub' ? 3 : perEvent,
+        effectsPerEvent:
+          kind === 'subscribe' || kind === 'resub' ? 3 : perEvent + (shoutout ? 1 : 0),
         effectsPerMinute: 60,
       },
     },

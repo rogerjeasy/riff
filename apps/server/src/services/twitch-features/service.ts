@@ -23,6 +23,13 @@ export type HelixPort = Pick<
   'createPoll' | 'getPolls' | 'endPoll' | 'sendChatAnnouncement' | 'sendShoutout' | 'getUsers'
 >;
 export type Origin = 'manual' | 'automation';
+/** The raid that produced a decision, from the authenticated, normalized EventSub event. */
+export interface RaidContext {
+  /** `from_broadcaster_user_id`: the only channel a raid-triggered shoutout may target. */
+  id: string;
+  login: string | null;
+  displayName: string;
+}
 export type FeatureState =
   'not-connected' | 'needs-grant' | 'disabled' | 'checking' | 'ineligible' | 'ready';
 export interface FeatureStatus {
@@ -399,56 +406,96 @@ export function createTwitchFeatureService(deps: {
             ? `@${target} is not on your approved shoutout list.`
             : `@${target} has not raided this channel in the last hour.`,
         );
-      if (
-        state.windows.shoutouts.filter((t) => t > at - HOUR).length >=
-        TWITCH_ACTION_LIMITS.channel.shoutoutsPerHour
-      )
-        throw new RiffError(
-          'LIMIT_EXCEEDED',
-          `This channel already sent ${TWITCH_ACTION_LIMITS.channel.shoutoutsPerHour} shoutouts in the last hour.`,
+      return deliverShoutout(state, approved, at);
+    });
+  }
+
+  /**
+   * Shared tail for every shoutout, chosen manually, by policy or by the raid rule: channel
+   * budget, then Twitch's 2 min global and 60 min same-target cooldowns, then one Helix call.
+   */
+  async function deliverShoutout(
+    state: StoredTwitchFeatures,
+    approved: { id: string; login: string },
+    at: number,
+  ) {
+    const self = identity();
+    if (
+      state.windows.shoutouts.filter((t) => t > at - HOUR).length >=
+      TWITCH_ACTION_LIMITS.channel.shoutoutsPerHour
+    )
+      throw new RiffError(
+        'LIMIT_EXCEEDED',
+        `This channel already sent ${TWITCH_ACTION_LIMITS.channel.shoutoutsPerHour} shoutouts in the last hour.`,
+      );
+    const last = state.windows.shoutouts.at(-1);
+    if (last !== undefined && at - last < TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs)
+      throw new RiffError(
+        'COOLDOWN',
+        `Twitch allows one shoutout every 2 minutes. Next one at ${new Date(last + TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs).toISOString()}.`,
+        { availableAt: last + TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs },
+      );
+    const same = state.windows.shoutoutTargets[approved.id];
+    if (same !== undefined && at - same < TWITCH_ACTION_LIMITS.shoutout.sameTargetCooldownMs)
+      throw new RiffError(
+        'COOLDOWN',
+        `@${approved.login} already got a shoutout in the last hour (Twitch limit).`,
+        { availableAt: same + TWITCH_ACTION_LIMITS.shoutout.sameTargetCooldownMs },
+      );
+    state.windows.shoutouts.push(at);
+    state.windows.shoutoutTargets[approved.id] = at;
+    try {
+      await helix().sendShoutout({
+        fromBroadcasterId: self.userId,
+        toBroadcasterId: approved.id,
+        moderatorId: self.userId,
+      });
+    } catch (error) {
+      const refused = fromTwitch(error);
+      // A definite refusal did not consume Twitch's cooldown; an ambiguous one might have.
+      if (refused.code !== 'TWITCH_UNAVAILABLE') {
+        state.windows.shoutouts.pop();
+        state.windows.shoutoutTargets = Object.fromEntries(
+          Object.entries(state.windows.shoutoutTargets).filter(([id]) => id !== approved.id),
         );
-      const last = state.windows.shoutouts.at(-1);
-      if (last !== undefined && at - last < TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs)
-        throw new RiffError(
-          'COOLDOWN',
-          `Twitch allows one shoutout every 2 minutes. Next one at ${new Date(last + TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs).toISOString()}.`,
-          { availableAt: last + TWITCH_ACTION_LIMITS.shoutout.globalCooldownMs },
-        );
-      const same = state.windows.shoutoutTargets[approved.id];
-      if (same !== undefined && at - same < TWITCH_ACTION_LIMITS.shoutout.sameTargetCooldownMs)
-        throw new RiffError(
-          'COOLDOWN',
-          `@${target} already got a shoutout in the last hour (Twitch limit).`,
-          { availableAt: same + TWITCH_ACTION_LIMITS.shoutout.sameTargetCooldownMs },
-        );
-      state.windows.shoutouts.push(at);
-      state.windows.shoutoutTargets[approved.id] = at;
-      try {
-        await helix().sendShoutout({
-          fromBroadcasterId: self.userId,
-          toBroadcasterId: approved.id,
-          moderatorId: self.userId,
-        });
-      } catch (error) {
-        const refused = fromTwitch(error);
-        // A definite refusal did not consume Twitch's cooldown; an ambiguous one might have.
-        if (refused.code !== 'TWITCH_UNAVAILABLE') {
-          state.windows.shoutouts.pop();
-          state.windows.shoutoutTargets = Object.fromEntries(
-            Object.entries(state.windows.shoutoutTargets).filter(([id]) => id !== approved.id),
-          );
-        }
-        save(state);
-        throw refused;
       }
-      return { value: undefined, message: `Shoutout sent to @${approved.login}.` };
+      save(state);
+      throw refused;
+    }
+    return { value: undefined, message: `Shoutout sent to @${approved.login}.` };
+  }
+  /**
+   * F23 host-owned raid rule: shout out the broadcaster of the raid that triggered this
+   * automation. The target comes from the normalized raid event only; it needs the
+   * creator's explicit "shout out raiders automatically" consent on top of the policy.
+   */
+  async function raiderShoutout(raider: RaidContext, automationId: string) {
+    const started = generation;
+    return perform('shoutout', 'automation', automationId, async (state) => {
+      fence('automation', started);
+      await requireReady(state, 'shoutouts');
+      if (state.shoutout.mode === 'off')
+        throw new RiffError(
+          'POLICY_DENIED',
+          'Shoutouts are off. Choose an approved list or “raiders only” in Twitch features.',
+        );
+      if (!state.shoutout.autoRaid)
+        throw new RiffError(
+          'POLICY_DENIED',
+          'Automatic raid shoutouts are off. Turn on “Shout out raiders automatically” in Twitch features.',
+        );
+      const self = identity();
+      if (self.userId === raider.id)
+        throw new RiffError('INVALID_REQUEST', 'A channel cannot shout itself out.');
+      const login = (raider.login ?? raider.displayName).toLowerCase();
+      return deliverShoutout(state, { id: raider.id, login }, now());
     });
   }
 
   /** Execute staged automation actions in order; refusals never affect the handler. */
   function dispatch(
     actions: readonly TwitchAction[],
-    context: { automationId: string; viewer: string },
+    context: { automationId: string; viewer: string; raid?: RaidContext | undefined },
   ): Promise<void> {
     const started = generation;
     const next = queue.then(async () => {
@@ -472,7 +519,15 @@ export function createTwitchFeatureService(deps: {
               'automation',
               context.automationId,
             );
-          else await shoutout(action.login, 'automation', context.automationId);
+          else if (action.kind === 'shoutout.raider') {
+            // Defense in depth: the sandbox bound raiderId from this same raid event.
+            if (!context.raid || context.raid.id !== action.raiderId)
+              throw new RiffError(
+                'POLICY_DENIED',
+                'Automatic shoutouts may only target the channel that just raided.',
+              );
+            await raiderShoutout(context.raid, context.automationId);
+          } else await shoutout(action.login, 'automation', context.automationId);
         } catch (cause) {
           const error = fromTwitch(cause);
           deps.record({
@@ -518,6 +573,7 @@ export function createTwitchFeatureService(deps: {
       poll: state.poll,
       shoutout: {
         mode: state.shoutout.mode,
+        autoRaid: state.shoutout.autoRaid,
         allowlist: state.shoutout.allowlist,
         raiders: state.raiders
           .filter((r) => r.at > at - SHOUTOUT_POLICY_LIMITS.raiderWindowMs)
@@ -588,7 +644,11 @@ export function createTwitchFeatureService(deps: {
       return snapshot();
     },
     /** Resolve logins with Get Users so the policy stores stable ids, not display text. */
-    async setShoutoutPolicy(mode: 'off' | 'allowlist' | 'raiders', logins: readonly string[]) {
+    async setShoutoutPolicy(
+      mode: 'off' | 'allowlist' | 'raiders',
+      logins: readonly string[],
+      autoRaid?: boolean,
+    ) {
       const unique = [...new Set(logins.map((l) => l.trim().toLowerCase()))];
       if (unique.length > SHOUTOUT_POLICY_LIMITS.allowlist)
         throw new RiffError(
@@ -618,9 +678,13 @@ export function createTwitchFeatureService(deps: {
           return u ? [{ id: u.id, login: l, displayName: u.displayName.slice(0, 60) }] : [];
         });
       }
+      let automatic = false;
       await exclusive(() => {
         const state = load();
-        state.shoutout = { mode, allowlist };
+        // Turning shoutouts off also withdraws the automatic raid consent; otherwise an
+        // omitted autoRaid keeps the creator's earlier choice.
+        automatic = mode !== 'off' && (autoRaid ?? state.shoutout.autoRaid);
+        state.shoutout = { mode, allowlist, autoRaid: automatic };
         save(state);
       });
       deps.record({
@@ -628,11 +692,12 @@ export function createTwitchFeatureService(deps: {
         automationId: null,
         code: 'SHOUTOUT_POLICY',
         message:
-          mode === 'off'
+          (mode === 'off'
             ? 'Shoutouts turned off.'
             : mode === 'raiders'
               ? 'Shoutouts limited to channels that raided in the last hour.'
-              : `Shoutouts limited to ${allowlist.length} approved channel${allowlist.length === 1 ? '' : 's'}.`,
+              : `Shoutouts limited to ${allowlist.length} approved channel${allowlist.length === 1 ? '' : 's'}.`) +
+          (automatic ? ' Raiders are shouted out automatically when an interaction asks.' : ''),
       });
       deps.changed();
       return snapshot();

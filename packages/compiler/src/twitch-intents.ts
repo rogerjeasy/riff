@@ -8,12 +8,13 @@ import {
 } from '@riff/sdk';
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
+import { extractEventHints, SHOUTOUT_WORDS } from './event-hints.js';
 
 /** Which native Twitch action an intent asks for, if any. Predictions stay unsupported. */
 export function nativeActionIntent(intent: string): 'poll' | 'announce' | 'shoutout' | null {
   if (/\bpredictions?\b/i.test(intent)) return null;
   if (/\b(?:twitch )?polls?\b/i.test(intent)) return 'poll';
-  if (/\bshout ?-?outs?\b|\bshout\s+out\b/i.test(intent)) return 'shoutout';
+  if (SHOUTOUT_WORDS.test(intent)) return 'shoutout';
   if (/\bannounce(?:ment|s)?\b/i.test(intent)) return 'announce';
   return null;
 }
@@ -116,6 +117,19 @@ export function compileTwitchActionOffline(request: CompileRequest): CompileOutp
       alternative: 'Describe the full interaction as a new one, including its command.',
     };
   if (!kind) return null;
+  // F23: a shoutout on a Twitch event is the host-owned raid rule (event compiler) or
+  // nothing: only the raiding channel can be shouted out automatically.
+  const event = kind === 'shoutout' ? extractEventHints(request.intent) : null;
+  if (event?.kind === 'raid') return null;
+  if (event)
+    return {
+      ...empty(),
+      kind: 'unsupported',
+      title: 'Raids only',
+      summary: 'Automatic shoutouts are only for the channel that raids you.',
+      unsupportedReason: `Riff can shout out a channel automatically only when it raids you; a ${event.kind} has no channel to shout out.`,
+      alternative: `Show a burst of stars on the overlay when it happens, or shout out raiders automatically.`,
+    };
   const hints = extractIntentHints(request.intent);
   const text = request.intent.replace(/\s+/g, ' ');
   const assumptions: string[] = [];

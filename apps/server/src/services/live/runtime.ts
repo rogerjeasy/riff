@@ -79,6 +79,8 @@ export interface LiveTwitchEvent {
   channelId: string;
   viewerId: string;
   viewerName: string;
+  /** Acting account login when Twitch reports one (raids: the raiding broadcaster). */
+  viewerLogin?: string | null;
   text: string;
   twitch: TwitchEventDetail;
   source: 'twitch';
@@ -121,7 +123,12 @@ export function createLiveRuntime(deps: {
   /** Host-side queue for staged polls, announcements and shoutouts (F21/F23). */
   onTwitchActions?: (
     actions: readonly TwitchAction[],
-    context: { automationId: string; viewer: string },
+    context: {
+      automationId: string;
+      viewer: string;
+      /** F23: the raid this decision handled; the only target a raider shoutout may use. */
+      raid?: { id: string; login: string | null; displayName: string };
+    },
   ) => Promise<void>;
 }) {
   const { repo, hub, overlay } = deps;
@@ -338,6 +345,7 @@ export function createLiveRuntime(deps: {
     data: ChatEvent,
     viewerName: string,
     messageId: string,
+    raid?: { id: string; login: string | null; displayName: string },
   ): Promise<ExecutionDecision[]> {
     const event = { data };
     const fence = generation;
@@ -455,7 +463,8 @@ export function createLiveRuntime(deps: {
             ? `${viewerName} ${data.twitch ? twitchActivity(data.twitch) : `used ${(version.manifest as PermissionManifest).trigger.command}`} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
-      if (fence === generation && !panic) queueTwitchActions(decision, automationId, viewerName);
+      if (fence === generation && !panic)
+        queueTwitchActions(decision, automationId, viewerName, raid);
     }
     await applyPending();
     return results;
@@ -466,7 +475,12 @@ export function createLiveRuntime(deps: {
    * decision (chat, timer fire or redemption). They are queued, never awaited, so the
    * serialized pipeline keeps moving. Callers check their own fence first.
    */
-  function queueTwitchActions(decision: ExecutionDecision, automationId: string, viewer: string) {
+  function queueTwitchActions(
+    decision: ExecutionDecision,
+    automationId: string,
+    viewer: string,
+    raid?: { id: string; login: string | null; displayName: string },
+  ) {
     if (
       decision.code !== 'ACCEPTED' ||
       !decision.actions?.length ||
@@ -475,7 +489,9 @@ export function createLiveRuntime(deps: {
       decision.mode !== 'live'
     )
       return;
-    void deps.onTwitchActions?.(decision.actions, { automationId, viewer })?.catch(() => undefined);
+    void deps
+      .onTwitchActions?.(decision.actions, { automationId, viewer, ...(raid ? { raid } : {}) })
+      ?.catch(() => undefined);
   }
 
   /** Deliver due timers through the same engine, budgets and overlay fences as chat. */
@@ -995,7 +1011,16 @@ export function createLiveRuntime(deps: {
             twitch: input.twitch,
           });
           if (!event.success) return [];
-          return admit(event.data, input.viewerName, input.id);
+          // The normalized raid binds the only target a raider shoutout may use.
+          const raid =
+            input.twitch.kind === 'raid'
+              ? {
+                  id: input.viewerId,
+                  login: input.viewerLogin ?? null,
+                  displayName: input.viewerName,
+                }
+              : undefined;
+          return admit(event.data, input.viewerName, input.id, raid);
         })
         .finally(() => {
           pendingChat--;

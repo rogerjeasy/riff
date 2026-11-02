@@ -12,6 +12,7 @@ import {
   PREDICTION_LIMITS,
   TIMER_LIMITS,
   TWITCH_ACTION_LIMITS,
+  RAID_SHOUTOUT_EVENT,
   type PredictionProposal,
   type TimerOp,
 } from '@riff/sdk';
@@ -46,7 +47,37 @@ const job = z
 type Effect = z.infer<typeof effectSchema>;
 type Action = z.infer<typeof actionSchema>;
 
+/** A structured refusal of a raider shoutout; its message becomes the incident fault. */
+class RaidShoutoutRefusal extends Error {}
+
 function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
+  /**
+   * The host, never the guest, chooses a raider shoutout's target: it must be a raid
+   * trigger handling a raid event, the staged request carries no fields, and the target
+   * is the normalized event's acting broadcaster.
+   */
+  const bindRaider = (staged: unknown): unknown => {
+    if (
+      !staged ||
+      typeof staged !== 'object' ||
+      (staged as { kind?: unknown }).kind !== 'shoutout.raider'
+    )
+      return staged;
+    const trigger = init.artifact.manifest.trigger;
+    const event = input.event;
+    if (Object.keys(staged).length !== 1)
+      throw new RaidShoutoutRefusal('Raid shoutouts take no target; the host binds the raider');
+    if (
+      trigger.kind !== 'twitch.event' ||
+      trigger.event.kind !== RAID_SHOUTOUT_EVENT ||
+      !('twitch' in event) ||
+      event.twitch?.kind !== RAID_SHOUTOUT_EVENT
+    )
+      throw new RaidShoutoutRefusal(
+        'riff.shoutout.raider() is only available while handling a raid event trigger',
+      );
+    return { kind: 'shoutout.raider', raiderId: event.viewerId };
+  };
   const runtime = engine.newRuntime();
   runtime.setMemoryLimit(HOST_LIMITS.memoryBytes);
   runtime.setMaxStackSize(256 * 1024);
@@ -152,10 +183,20 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
       let action: Action;
       try {
         if (serialized.length > 2048) throw new Error('Payload too large');
-        action = actionSchema.parse(JSON.parse(serialized));
-      } catch {
-        fault ??= 'Native Twitch action failed validation';
+        action = actionSchema.parse(bindRaider(JSON.parse(serialized)));
+      } catch (cause) {
+        fault ??=
+          cause instanceof RaidShoutoutRefusal
+            ? cause.message
+            : 'Native Twitch action failed validation';
         throw new Error('Invalid action');
+      }
+      // F23: a raid-triggered handler may only shout out the raider the host bound above.
+      const trigger = init.artifact.manifest.trigger;
+      if (action.kind === 'shoutout' && trigger.kind === 'twitch.event') {
+        fault ??=
+          'Raid shoutouts may only target the raiding broadcaster; use riff.shoutout.raider()';
+        throw new Error('Capability or resource limit rejected');
       }
       const capability = ACTION_CAPABILITY[action.kind];
       if (calls > HOST_LIMITS.bridgeCallsPerEvent) {
@@ -245,6 +286,7 @@ function execute(engine: QuickJSWASMModule, input: z.infer<typeof job>) {
         });
         const shoutout = Object.freeze({
           send: async target => stage({...(target && typeof target === 'object' ? target : {}), kind: 'shoutout'}),
+          raider: async () => stage({kind: 'shoutout.raider'}),
         });
         const snapshot = __sessionSnapshot;
         delete globalThis.__sessionSnapshot;

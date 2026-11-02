@@ -50,13 +50,23 @@ export interface ShoutoutRequest {
   /** Lowercase Twitch login; must be approved by the creator's shoutout policy. */
   login: string;
 }
+/**
+ * Host-owned raider shoutout rule (F23). Only a `twitch.event` trigger of event kind
+ * `raid` may call `riff.shoutout.raider()`, and it takes no target: the host binds the
+ * raiding broadcaster from the normalized raid event. Raid-triggered handlers may never
+ * call `riff.shoutout.send()` with a guest-chosen login. The creator must also turn on
+ * automatic raid shoutouts; every Twitch cooldown, budget, scope and panic still applies.
+ */
+export const RAID_SHOUTOUT_EVENT = 'raid' as const;
 
 /** One staged native Twitch action, recorded on the decision that produced it. */
 export type TwitchAction =
   | ({ kind: 'poll.start' } & PollRequest)
   | { kind: 'poll.end' }
   | { kind: 'announce'; message: string; color: AnnouncementColor }
-  | { kind: 'shoutout'; login: string };
+  | { kind: 'shoutout'; login: string }
+  /** Raider shoutout: `raiderId` is bound by the host from the raid event, never by guest code. */
+  | { kind: 'shoutout.raider'; raiderId: string };
 
 /** Capability that authorizes an action kind. */
 export const ACTION_CAPABILITY: Readonly<Record<TwitchAction['kind'], TwitchActionCapability>> =
@@ -65,4 +75,5 @@ export const ACTION_CAPABILITY: Readonly<Record<TwitchAction['kind'], TwitchActi
     'poll.end': 'polls',
     announce: 'chat.announce',
     shoutout: 'shoutout',
+    'shoutout.raider': 'shoutout',
   });

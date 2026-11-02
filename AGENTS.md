@@ -1056,6 +1056,26 @@ selected the connection subscribes to raids even with no raid interaction live. 
 no overlay poll card (Twitch shows polls natively). One `// UNVERIFIED:` marker: the 403
 response for polls on non-Affiliate channels is not documented.
 
+**Automatic raider shoutout (host-owned rule).** A manifest whose trigger is
+`twitch.event` with event kind `raid` may declare `shoutout` with audience `['viewer']`;
+every other event kind is rejected, and polls stay moderator/broadcaster-only. The guest
+calls `riff.shoutout.raider()` (no argument, in the d.ts, bridge and guide); the bridge
+stages `{kind:'shoutout.raider', raiderId}` with `raiderId` bound from the normalized
+raid event's acting broadcaster. Calling `raider()` outside a raid event, or
+`riff.shoutout.send()` from an event trigger, faults with a structured reason (incident).
+The live runtime passes the raid (`id`, `login`, `displayName`) as `context.raid`;
+`services/twitch-features` cross-checks `raiderId === context.raid.id`, requires the
+creator's `shoutout.autoRaid` consent (stored in `twitch_feature_state`, default false,
+cleared when the policy mode is `off`, set via `POST /api/twitch/shoutouts/policy`
+`{mode, logins, autoRaid?}`) and then applies the same scope, channel budget, 2 min/60 min
+cooldowns, panic fence and single Helix call as every shoutout. Previews and rehearsals
+show the staged action in the simulated sink and never reach the service. The console
+Twitch features panel has an explicit "Shout out raiders automatically" toggle.
+`event.minimum` sets a minimum raid size. Prompt pack `riff-compiler/12` documents the
+rule; the offline compiler turns "when we get raided, shout out the raider and show a
+welcome burst" into it (`fixtures/raid-shoutout.json`) and refuses shoutouts on other
+events.
+
 ## Sub, gift, resub, cheer and raid triggers — F19
 
 `triggers.ts` maps the platform trigger names `subscribe`, `gift`, `resub`, `cheer` and

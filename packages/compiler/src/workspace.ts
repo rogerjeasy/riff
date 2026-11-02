@@ -55,7 +55,8 @@ Decide the kind:
 - "unsupported": it needs a capability the SDK does not have (sending ordinary chat
   messages or replies, sounds, follows, bans, external sites, timers inside a session
   round, opening/settling predictions directly, Channel Points rewards for anything but
-  triggering, or shoutouts to a channel named in chat). Named host timers ("every 10
+  triggering, shoutouts to a channel named in chat, or automatic shoutouts on any event
+other than an incoming raid). Named host timers ("every 10
   minutes", "60 seconds after !start") ARE supported via capability timer; a session
   round deadline/countdown is separate and host-owned. Twitch polls, chat announcements
   and fixed-target shoutouts ARE supported (see below). New subscriptions, gifted subs,
@@ -176,8 +177,8 @@ Rules for candidates:
   Incompatible score/team/objective changes require explicit full reset, never rewrite scores.
 - Twitch event triggers (subs, gifts, resubs, cheers, raids): trigger.kind
   "twitch.event" (see Trigger kinds); capabilities ['overlay'] (add
-  "chat.announce" only when an announcement is asked for; polls and shoutouts need a
-  moderator/broadcaster chat trigger, so they cannot be event-triggered). minimum is the stated threshold (bits, gifted subs, resub
+  "chat.announce" only when an announcement is asked for; polls cannot be
+  event-triggered). minimum is the stated threshold (bits, gifted subs, resub
   months, raid viewers) or 1 when unstated; subscribe always uses 1. Pick a
   conventional maxPerViewer (5 per 60000 ms) and list it in assumptions. Read the
   amount from event.twitch.amount and cap any scaled burst at effectsPerEvent.
@@ -186,6 +187,16 @@ Rules for candidates:
   twitch {kind, amount, tier, anonymous, gift}; chat steps carry twitch:null. Include
   BELOW_MINIMUM when minimum > 1 and an ordinary chat message expecting UNRELATED.
   behavior.when is plain language, e.g. "Someone cheers 100+ bits".
+- Raider shoutouts (host-owned rule): "when we get raided, shout out the raider" uses
+  trigger.kind "twitch.event" with event.kind "raid" (minimum = stated raid size or 1),
+  capabilities ["overlay","shoutout"] (or ["shoutout"] alone) and
+  \`await riff.shoutout.raider()\` with NO argument: the host binds the raiding
+  broadcaster. Never call riff.shoutout.send from an event trigger and never guess a
+  login. Only raids may shout out; a shoutout on subs, gifts, resubs or cheers is
+  unsupported. The shoutout counts as one effect (effectsPerEvent = projectiles + 1;
+  raid steps expect that total). State in assumptions that the creator must turn on
+  "Shout out raiders automatically" in Twitch features and that Twitch allows one
+  shoutout every 2 minutes and the same channel once an hour.
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {

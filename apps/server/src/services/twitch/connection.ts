@@ -251,6 +251,7 @@ export function createTwitchConnection(deps: {
             channelId: event.channelId,
             viewerId: event.viewerId,
             viewerName: event.viewerName,
+            viewerLogin: event.viewerLogin,
             text: event.text,
             twitch: {
               kind: event.kind,
