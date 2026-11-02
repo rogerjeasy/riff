@@ -138,6 +138,26 @@ describe('format HUD', () => {
     expect(hud.textContent).not.toContain('Highest');
     expect(formatLines(mural, s, 0, 'de')).toEqual(['1/4 bemalt']);
   });
+  it('shows the question, options with live counts, then the answer and explanation on stream', () => {
+    // Production finding (2026-11-02): the stream scoreboard showed only "Q 1/3".
+    const s = snapshot({
+      deadlineAt: 60_000,
+      remainingMs: 60_000,
+      format: { canvas: [], choices: { v1: [0, -1], v2: [1, -1] } },
+    });
+    const asking = formatLines(quiz, s, 5_000, 'en');
+    expect(asking[0]).toBe('Q 1/2');
+    expect(asking[1]).toBe('Which planet is largest?');
+    expect(asking[2]).toContain('Jupiter');
+    expect(asking[2]).toContain('Mars');
+    expect(asking[2]).toContain('!a');
+    const revealing = formatLines(quiz, s, 25_000, 'en');
+    expect(revealing).toContain('Jupiter is the largest planet.');
+    expect(revealing.join(' ')).toContain('Jupiter');
+    expect(revealing.join(' ')).not.toContain('Mars');
+    const stage = formatLines(song, snapshot({ format: { canvas: [], choices: {} } }), 1_000, 'fr');
+    expect(stage.length).toBe(3);
+  });
   it('hides an end-reveal mural until the session finishes', () => {
     const hidden = { ...mural, format: { ...mural.format!, reveal: 'end' as const } };
     const s = snapshot({ format: { canvas: [0, 1, -1, -1], choices: {} } });

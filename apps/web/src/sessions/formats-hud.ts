@@ -333,10 +333,48 @@ export function formatLines(
         cells: f.width * f.height,
       }),
     ];
-  const { slot, count } = formatSlot(d, s, now);
-  return [
-    f.kind === 'composition'
-      ? sessionText(language, 'lineStage', { stage: slot + 1, stages: count })
-      : sessionText(language, 'lineQuestion', { question: slot + 1, questions: count }),
-  ];
+  const { slot, count, reveal } = formatSlot(d, s, now);
+  const t = (
+    key: Parameters<typeof sessionText>[1],
+    values: Record<string, string | number> = {},
+    plural?: number,
+  ) => sessionText(language, key, values, plural);
+  const tally = formatTally(d, s, slot);
+  // On stream viewers must see what they are answering, not only "Q 1/3".
+  if (f.kind === 'composition') {
+    const stage = f.stages[slot];
+    const lines = [t('lineStage', { stage: slot + 1, stages: count })];
+    if (stage && s.phase !== 'finished')
+      lines.push(
+        stage.label,
+        stage.options
+          .map((option, i) =>
+            t(
+              'stageOption',
+              { number: i + 1, label: option.label, votes: tally[i] ?? 0 },
+              tally[i] ?? 0,
+            ),
+          )
+          .join(' · '),
+      );
+    return lines;
+  }
+  const q = f.questions[slot];
+  const lines = [t('lineQuestion', { question: slot + 1, questions: count })];
+  if (!q) return lines;
+  lines.push(q.prompt);
+  if (reveal)
+    lines.push(
+      t('revealAnswer', { command: LETTERS[q.answer] ?? '', label: q.options[q.answer] ?? '' }),
+      q.explanation,
+    );
+  else
+    lines.push(
+      q.options
+        .map((option, i) =>
+          t('answerOption', { command: LETTERS[i] ?? '', label: option, count: tally[i] ?? 0 }),
+        )
+        .join(' · '),
+    );
+  return lines;
 }
