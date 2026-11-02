@@ -75,6 +75,7 @@ import {
 } from './services/twitch-features/service.js';
 import { twitchFeaturesRepository } from './db/repositories/twitch-features.js';
 import { registerTwitchFeatureRoutes } from './routes/twitch-features.js';
+import { createEchoLedger } from './services/twitch/echo-ledger.js';
 
 /** The studio is operator-local: one home channel per server process. */
 export const HOME_CHANNEL = 'home';
@@ -316,6 +317,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     hub,
     runtime,
     sealer,
+    echoes: createEchoLedger(dependencies.now ? { now: dependencies.now } : {}),
     ...(dependencies.fetch ? { fetch: dependencies.fetch } : {}),
     log: (message) => app.log.warn(message),
     onStatus: (status) => {

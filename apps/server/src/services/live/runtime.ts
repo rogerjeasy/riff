@@ -52,8 +52,21 @@ export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
   source: 'twitch';
   sourceChannelId?: string;
   sourceMessageId?: string;
+  /**
+   * Causal metadata (AGENTS §2.7 loop prevention). Set by the Twitch connection when the
+   * line is Riff's own output echoed back (host reply or announcement): hop 1.
+   */
+  causal?: { hop: number; origin: 'chat-message' | 'announcement' };
 }
 const PANIC_COMMAND = '!riff panic';
+/**
+ * F11: chat caused by Riff output (hop ≥ 1) never reaches dispatch, authoring, help,
+ * proposals or shared sessions. Only the fail-safe panic command is exempt.
+ */
+export const MAX_CHAT_HOPS = 0;
+/** One activity note per minute about suppressed echoes; the rest are counted into it. */
+export const ECHO_ACTIVITY_INTERVAL_MS = 60_000;
+const ECHO_LABEL = { 'chat-message': 'chat reply', announcement: 'announcement' } as const;
 /** A Channel Points redemption the host already matched to one linked automation. */
 export interface LiveRedemption {
   /** Twitch redemption id; also the durable admission identity. */
@@ -178,6 +191,29 @@ export function createLiveRuntime(deps: {
     }
     hub.publish('activity', row);
   }
+  let echoNotedAt = Number.NEGATIVE_INFINITY;
+  let echoesUnnoted = 0;
+  /** Rate-limited activity so the creator can see why Riff ignored its own echoed line. */
+  function noteEcho(message: LiveChatMessage) {
+    const at = now();
+    if (at - echoNotedAt < ECHO_ACTIVITY_INTERVAL_MS) {
+      echoesUnnoted++;
+      return;
+    }
+    const more = echoesUnnoted > 0 ? ` (${echoesUnnoted} more since the last note)` : '';
+    echoNotedAt = at;
+    echoesUnnoted = 0;
+    publishActivity({
+      at,
+      kind: 'system',
+      automationId: null,
+      versionId: null,
+      eventId: message.id,
+      viewer: message.viewerName,
+      code: 'ECHO_SUPPRESSED',
+      message: `Ignored Riff’s own ${ECHO_LABEL[message.causal?.origin ?? 'chat-message']} coming back from chat${more}, so it cannot trigger interactions or commands.`,
+    });
+  }
   function refreshInstructions() {
     const lines = [...engines.values()].map(({ version }) => {
       const t = (version.manifest as PermissionManifest).trigger;
@@ -292,6 +328,7 @@ export function createLiveRuntime(deps: {
 
   async function processChat(message: LiveChatMessage): Promise<ExecutionDecision[]> {
     if (message.sourceChannelId && message.sourceChannelId !== message.channelId) return [];
+    if ((message.causal?.hop ?? 0) > MAX_CHAT_HOPS) return [];
     const text = message.text.trim().toLowerCase();
     if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
       if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
@@ -921,6 +958,10 @@ export function createLiveRuntime(deps: {
       if (text === PANIC_COMMAND || text.startsWith(`${PANIC_COMMAND} `)) {
         if (message.roles.includes('broadcaster') || message.roles.includes('moderator'))
           this.panic(`!riff panic by ${message.viewerName}`);
+        return Promise.resolve([]);
+      }
+      if ((message.causal?.hop ?? 0) > MAX_CHAT_HOPS) {
+        noteEcho(message);
         return Promise.resolve([]);
       }
       if (closed || panic) return Promise.resolve([]);

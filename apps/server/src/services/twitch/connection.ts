@@ -32,6 +32,7 @@ import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { LiveRuntime } from '../live/runtime.js';
 import type { Sealer } from '../auth/secrets.js';
+import { createEchoLedger, type EchoLedger } from './echo-ledger.js';
 
 const tokenSchema = z.object({
   accessToken: z.string(),
@@ -113,8 +114,29 @@ export function createTwitchConnection(deps: {
   onRaid?: (raider: { id: string; login: string; displayName: string }) => void;
   /** Event families host features need even without a live interaction (raids for F23). */
   hostTriggers?: () => readonly EventTriggerName[];
+  /** F11: Riff output sent as the broadcaster, remembered to drop its EventSub echo. */
+  echoes?: EchoLedger;
 }) {
   const { config, repo, hub, runtime, sealer } = deps;
+  const echoes = deps.echoes ?? createEchoLedger();
+  /**
+   * Every Helix client handed out records chat output before sending, so the
+   * `channel.chat.message` echo of a host reply or announcement is recognised (F11).
+   */
+  const recording = (client: HelixClient): HelixClient => ({
+    ...client,
+    async sendChatMessage(input) {
+      const pending = echoes.sending(input.broadcasterId, input.message, 'chat-message');
+      const result = await client.sendChatMessage(input);
+      if (result.isSent) pending.sent(result.messageId);
+      else pending.cancel();
+      return result;
+    },
+    async sendChatAnnouncement(input) {
+      echoes.sending(input.broadcasterId, input.message, 'announcement');
+      return client.sendChatAnnouncement(input);
+    },
+  });
   /** Families to subscribe: those live interactions use plus those host features need. */
   const wantedTriggers = () => [
     ...new Set([...runtime.eventTriggers(), ...(deps.hostTriggers?.() ?? [])]),
@@ -182,7 +204,7 @@ export function createTwitchConnection(deps: {
       fetch: doFetch,
       ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
     });
-    helix = helixClient;
+    helix = recording(helixClient);
     redemptions = 'unrequested';
     setStatus({ state: 'connecting', login: login() });
     client = createEventSubClient({
@@ -270,6 +292,12 @@ export function createTwitchConnection(deps: {
           receivedAt: notification.receivedAt,
         });
         if (!message || message.channelId !== broadcasterId) return;
+        const echo = echoes.match({
+          channelId: message.channelId,
+          chatterId: message.viewerId,
+          messageId: message.sourceMessageId,
+          text: message.text,
+        });
         void runtime.handleChat({
           id: message.id,
           channelId: message.channelId,
@@ -280,6 +308,7 @@ export function createTwitchConnection(deps: {
           roles: [...message.roles],
           text: message.text,
           source: 'twitch',
+          ...(echo ? { causal: { hop: 1, origin: echo.origin } } : {}),
         });
       },
       onRevocation(revocation) {
@@ -483,12 +512,14 @@ export function createTwitchConnection(deps: {
     /** A Helix client on the broadcaster's token, or null when not connected. */
     helix(): HelixClient | null {
       if (!config || !sealer || !readTokens()) return null;
-      return createHelixClient({
-        clientId: config.clientId,
-        getAccessToken: accessToken,
-        fetch: doFetch,
-        ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
-      });
+      return recording(
+        createHelixClient({
+          clientId: config.clientId,
+          getAccessToken: accessToken,
+          fetch: doFetch,
+          ...(config.helixBaseUrl ? { baseUrl: config.helixBaseUrl } : {}),
+        }),
+      );
     },
     async completeAuthorization(code: string, state: string) {
       if (!config || !sealer) throw new Error('Twitch is not configured');

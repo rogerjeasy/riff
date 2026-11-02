@@ -194,6 +194,17 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
   URL). Hand-written payloads are not allowed.
 - Roles for `!riff` commands come from the EventSub badge set on the message, never
   from message text or display name.
+- F11 bot loops: Riff writes chat as the broadcaster (host replies, announcements), and
+  Twitch can deliver that output back as broadcaster-badged `channel.chat.message`. Every
+  Helix client from the connection records output in `services/twitch/echo-ledger.ts`
+  *before* sending: Send Chat Message by its returned `message_id`, and Send Chat
+  Announcement (204, no body; no announcement `message_type` exists) by a normalized
+  text fingerprint. Entries live 30 s, at most 64 per channel, match only the broadcaster
+  as chatter in the same channel, and are consumed once. A matched line enters the
+  runtime with `causal: {hop: 1}`; `handleChat` drops any hop above `MAX_CHAT_HOPS` (0)
+  before authoring, help, proposals, shared sessions and dispatch, and records at most
+  one `ECHO_SUPPRESSED` system activity a minute. Only `!riff panic` (fail-safe) is
+  exempt. Shoutouts post no chat text and are not ledgered.
 - Tokens are encrypted at rest (AES-256-GCM, key from `RIFF_SECRET`) and refreshed
   proactively; refresh failures surface as an incident and pause the channel.
 
