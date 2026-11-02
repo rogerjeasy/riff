@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Run, Version } from '../../lib/types.js';
+import { VoiceInput } from './voice.js';
 
 const EXAMPLES = [
   {
@@ -113,6 +114,15 @@ export function Composer(props: {
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void submit();
           }}
           disabled={busy}
+        />
+        <VoiceInput
+          disabled={busy}
+          onUse={(text, how) => {
+            setDraft(
+              how === 'append' && draft.trim() ? `${draft.trim()} ${text}`.slice(0, 1200) : text,
+            );
+            document.getElementById('intent')?.focus();
+          }}
         />
         <div className="chips" aria-label={base ? 'Suggested changes' : 'Examples'}>
           {(base ? EDITS.map((text) => ({ label: text, text })) : EXAMPLES).map((example) => (

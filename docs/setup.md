@@ -28,20 +28,23 @@ Do not hand-edit the lockfile. Its two YAML documents are pnpm's actual output, 
 
 Defaults work without an `.env` file. To override them, copy `.env.example` to `.env`; never commit credentials.
 
-| Variable             | Default / purpose                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `NODE_ENV`           | `development`; validated development/test/production mode                                        |
-| `RIFF_HOST`          | `127.0.0.1`; loopback by default                                                                 |
-| `RIFF_ALLOW_REMOTE`  | `false`; must explicitly be true before binding `0.0.0.0`                                        |
-| `RIFF_PORT`          | `8787`; integer in 1–65535                                                                       |
-| `RIFF_PUBLIC_URL`    | `http://localhost:5173`; future public console URL                                               |
-| `RIFF_SERVER_URL`    | `http://localhost:8787`; future server URL                                                       |
-| `RIFF_DB_PATH`       | `./data/riff.db`; relative to the workspace root, including when started from the server package |
-| `RIFF_COMPILER_MODE` | Only `mock` is accepted now; no compiler driver is activated                                     |
-| `LOG_LEVEL`          | `info`; valid Pino level, including `silent` for tests                                           |
-| `RIFF_API_TARGET`    | Vite-only proxy override; defaults to `http://127.0.0.1:8787`                                    |
+| Variable                   | Default / purpose                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                 | `development`; validated development/test/production mode                                               |
+| `RIFF_HOST`                | `127.0.0.1`; loopback by default                                                                        |
+| `RIFF_ALLOW_REMOTE`        | `false`; must explicitly be true before binding `0.0.0.0`                                               |
+| `RIFF_PORT`                | `8787`; integer in 1–65535                                                                              |
+| `RIFF_PUBLIC_URL`          | `http://localhost:5173`; future public console URL                                                      |
+| `RIFF_SERVER_URL`          | `http://localhost:8787`; future server URL                                                              |
+| `RIFF_DB_PATH`             | `./data/riff.db`; relative to the workspace root, including when started from the server package        |
+| `RIFF_COMPILER_MODE`       | Only `mock` is accepted now; no compiler driver is activated                                            |
+| `LOG_LEVEL`                | `info`; valid Pino level, including `silent` for tests                                                  |
+| `RIFF_TRANSCRIPTION_MODE`  | empty → `openai` when `OPENAI_API_KEY` is set, else `off`; `mock` gives deterministic transcripts (F09) |
+| `OPENAI_API_KEY`           | Optional; server-only key for push-to-talk transcription (`/v1/audio/transcriptions`)                   |
+| `RIFF_TRANSCRIPTION_MODEL` | empty → `gpt-transcribe`                                                                                |
+| `RIFF_API_TARGET`          | Vite-only proxy override; defaults to `http://127.0.0.1:8787`                                           |
 
-The Twitch, encryption, model, transcription and OBS fields in `.env.example` reserve future integration configuration. They are not consumed as active credentials in this foundation. Do not enable remote access for a public deployment: authentication, authorization and worker isolation are separate implementation gates.
+The `RIFF_OBS_*` fields at the end of `.env.example` reserve future integration configuration; the transcription fields above enable optional push-to-talk. They are not consumed as active credentials in this foundation. Do not enable remote access for a public deployment: authentication, authorization and worker isolation are separate implementation gates.
 
 Node reads `.env` for the server and migration commands; Drizzle Kit generation explicitly loads it from the repository root. Change `RIFF_API_TARGET` too if you change the host port during UI development. The Playwright configuration uses separate ports 4173/8788 and an ignored test database, without loading `.env`.
 

@@ -6,6 +6,7 @@ export {
   createPreviewEngine,
   DECISION_MESSAGES,
   matchesCommand,
+  matchesTrigger,
   type AdmissionState,
   type ChannelBudget,
   type EngineOptions,
@@ -13,17 +14,24 @@ export {
   type Incident,
 } from './engine.js';
 export {
+  actionSchema,
   artifactSchema,
   effectSchema,
   eventSchema,
   manifestSchema,
   scenarioSchema,
+  scenarioStepSchema,
   scenariosSchema,
+  eventTriggerSchema,
+  triggerSchema,
+  twitchEventDetailSchema,
 } from './contract.js';
 export {
   analyzeSource,
   hostScenarios,
+  outputCount,
   runScenarios,
+  syntheticTwitchEvent,
   verifyCandidate,
   type Finding,
   type ScenarioResult,
@@ -37,12 +45,20 @@ export {
 export {
   createSessionSnapshot,
   advanceSession,
+  applySessionCommand,
   pauseSession,
   resumeSession,
   sessionDefinitionSchema,
   sessionSnapshotSchema,
   validateSessionSnapshot,
 } from './session.js';
+export {
+  mechanicsSchema,
+  mechanicsStateSchema,
+  definitionCommands,
+  inIntermission,
+  roundWinner,
+} from './mechanics.js';
 export {
   AUDIT_MAX_ENTRIES,
   classifyTransition,
@@ -101,6 +117,23 @@ export {
 } from './rehearsal-minimizer.js';
 export {
   createRehearsalPreset,
+  mechanicPresetsFor,
   REHEARSAL_PRESETS,
   type RehearsalPreset,
 } from './rehearsal-presets.js';
+export {
+  applyTimerOps,
+  createVirtualTimers,
+  nextTimerSlot,
+  timerEventSchema,
+  timerLateness,
+  timerNameSchema,
+  timerOpSchema,
+  type TimerEntry,
+  type TimerFireEvent,
+  type TimerLateness,
+  type VirtualAdvance,
+  type VirtualTimerFire,
+  type VirtualTimers,
+} from './timers.js';
+export type { RehearsalTimerFire } from './rehearsal.js';

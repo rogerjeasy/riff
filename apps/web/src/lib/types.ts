@@ -1,6 +1,7 @@
 import type { RegressionEvidence } from '../console/rehearsal/contracts.js';
 import type { ProposalSnapshot } from '../console/proposals/contracts.js';
 import type { Community } from '../community/schema.js';
+import type { TwitchEventKind } from '../console/twitch/contracts.js';
 /** Wire types mirrored from the server. Validated at the boundary in api.ts. */
 export type Role = 'viewer' | 'subscriber' | 'moderator' | 'broadcaster';
 export type Asset = 'tomato' | 'star' | 'heart';
@@ -21,16 +22,72 @@ export type DecisionCode =
   | 'SESSION_PAUSED'
   | 'SESSION_FINISHED'
   | 'ALREADY_JOINED'
-  | 'PARTICIPANT_LIMIT';
+  | 'PARTICIPANT_LIMIT'
+  | 'ELIMINATED'
+  | 'LOCKED'
+  | 'HEALTH_FULL'
+  | 'BURST_COUNTED'
+  | 'BURST_ACTIVE'
+  | 'BURST_LIMIT'
+  | 'ROUND_INTERMISSION'
+  | 'BELOW_MINIMUM';
+/** Definition version 2 rules; each block is null/[] when unused. */
+export interface ExperienceMechanics {
+  match: { rounds: number; intermissionMs: number } | null;
+  health: {
+    label: string;
+    max: number;
+    damage: number;
+    heal: { command: string; amount: number } | null;
+  } | null;
+  burst: {
+    command: string | null;
+    label: string;
+    participants: number;
+    windowMs: number;
+    points: number;
+    limit: number;
+    shieldMs: number;
+  } | null;
+  milestones: {
+    id: string;
+    label: string;
+    score: number;
+    unlock: { command: string; points: number } | null;
+  }[];
+}
+export interface SessionStanding {
+  health: number | null;
+  eliminated: boolean;
+  contributions: number;
+  heals: number;
+  unlocks: Record<string, number>;
+  bursts: number;
+  burstWindow: { viewerId: string; at: number }[];
+  shieldUntil: number | null;
+  unlocked: string[];
+}
+export interface SessionMechanicsState {
+  round: number;
+  wins: Record<string, number>;
+  history: {
+    round: number;
+    winner: string | null;
+    outcome: 'deadline' | 'goal' | 'elimination';
+    scores: Record<string, number>;
+  }[];
+  standings: Record<string, SessionStanding>;
+}
 export interface ExperienceDefinition {
-  version: 1;
+  version: 1 | 2;
   title: string;
   durationMs: number;
   maxParticipants: number;
   teams: { id: string; label: string; joinCommand: string }[];
   resource: { name: string; perParticipant: number };
   contribution: { command: string; points: number };
-  objective: { kind: 'highest-score' | 'collective-goal'; target: number | null };
+  objective: { kind: 'highest-score' | 'collective-goal' | 'burst'; target: number | null };
+  mechanics?: ExperienceMechanics | undefined;
 }
 export interface SessionParticipant {
   teamId: string | null;
@@ -48,7 +105,8 @@ export interface SessionSnapshot {
   participants: Record<string, SessionParticipant>;
   scores: Record<string, number>;
   winner: string | null;
-  outcome: 'deadline' | 'goal' | null;
+  outcome: 'deadline' | 'goal' | 'elimination' | null;
+  mechanics?: SessionMechanicsState | undefined;
 }
 export interface Effect {
   kind: 'projectile';
@@ -67,6 +125,15 @@ export interface Decision {
   code: DecisionCode;
   reason: string;
   effects: Effect[];
+  /** Staged native Twitch actions (F21/F23); previews never send them. */
+  actions?: (
+    | { kind: 'poll.start'; title: string; choices: string[]; durationSeconds: number }
+    | { kind: 'poll.end' }
+    | { kind: 'announce'; message: string; color: string }
+    | { kind: 'shoutout'; login: string }
+    /** F23: the host bound the raiding broadcaster; guest code never picks it. */
+    | { kind: 'shoutout.raider'; raiderId: string }
+  )[];
   mode: 'preview' | 'live';
   viewerId: string | null;
   at: number | null;
@@ -77,9 +144,26 @@ export interface Manifest {
   experience?: ExperienceDefinition | null;
   sdkVersion: string;
   capabilities: string[];
-  trigger: { command: string; audience: Role[]; maxPerViewer: number; windowMs: number };
+  trigger: ManifestTrigger;
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
+interface TriggerPolicy {
+  command: string;
+  audience: Role[];
+  maxPerViewer: number;
+  windowMs: number;
+}
+/** Mirrors the SDK's discriminated trigger: `kind` alone decides the source. */
+export type ManifestTrigger =
+  | (TriggerPolicy & { kind?: 'chat.command'; reward?: null; event?: null })
+  /** F22: runs on linked Channel Points redemptions only. */
+  | (TriggerPolicy & { kind: 'points.redeem'; reward: string; event?: null })
+  /** F19: runs on one Twitch event kind; command is the reserved `@kind` token. */
+  | (TriggerPolicy & {
+      kind: 'twitch.event';
+      reward?: null;
+      event: { kind: TwitchEventKind; minimum: number };
+    });
 export interface Stage {
   id: string;
   label: string;
@@ -194,6 +278,19 @@ export interface Automation {
   canRollback: boolean;
   session: SessionSnapshot | null;
   transitions?: TransitionSummary[];
+  /** Pending host-owned named timers of the live version (F18). */
+  timers?: TimerView[];
+}
+export interface TimerView {
+  id: string;
+  automationId: string;
+  versionId: string;
+  name: string;
+  intervalMs: number;
+  repeat: boolean;
+  scheduledAt: number;
+  createdAt: number;
+  fires: number;
 }
 export interface Activity {
   id: number;

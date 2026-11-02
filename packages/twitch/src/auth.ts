@@ -15,6 +15,36 @@ export const TWITCH_VALIDATE_URL = 'https://id.twitch.tv/oauth2/validate';
  */
 export const CHAT_READ_SCOPES: readonly string[] = TRIGGERS['chat.message'].scopes;
 
+/**
+ * Send Chat Message with a user access token: "A user access token that includes the
+ * user:write:chat scope." https://dev.twitch.tv/docs/api/reference/#send-chat-message
+ * Requested only when the creator opts into in-chat authoring replies.
+ */
+export const CHAT_WRITE_SCOPES: readonly string[] = ['user:write:chat'];
+/**
+ * Feature consent for Riff-managed Channel Points rewards: create/update/delete rewards,
+ * update redemption status and receive `points.redeem` (all "channel:manage:redemptions").
+ */
+export const CHANNEL_POINTS_SCOPES: readonly string[] = TRIGGERS['points.redeem'].scopes;
+/**
+ * Create/End Prediction require "channel:manage:predictions" (Get accepts it too).
+ * https://dev.twitch.tv/docs/api/predictions/: "Running predictions is available to
+ * partners and affiliates only."
+ */
+export const PREDICTION_SCOPES: readonly string[] = ['channel:manage:predictions'];
+/**
+ * Feature-specific scopes, requested separately and only when the creator enables that
+ * feature. Each value is the scope the endpoint documents for a user access token:
+ * Create/End Poll and Get Polls (https://dev.twitch.tv/docs/api/reference/#create-poll),
+ * Send Chat Announcement (#send-chat-announcement), Send a Shoutout (#send-a-shoutout).
+ */
+export const TWITCH_FEATURE_SCOPES = Object.freeze({
+  polls: ['channel:manage:polls'],
+  announcements: ['moderator:manage:announcements'],
+  shoutouts: ['moderator:manage:shoutouts'],
+} as const satisfies Record<string, readonly string[]>);
+export type TwitchFeature = keyof typeof TWITCH_FEATURE_SCOPES;
+
 export interface TwitchTokenSet {
   readonly accessToken: string;
   readonly refreshToken: string;

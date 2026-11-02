@@ -2,10 +2,17 @@ import { SDK_VERSION, type AudienceRole, type ProjectileAsset, type Scenario } f
 import type { CompileOutput, CompileRequest } from './contract.js';
 import { describeAudience, describeWindow, extractIntentHints } from './intent.js';
 import { compileExperienceOffline } from './experience-output.js';
+import { compileTimerOffline } from './timer-output.js';
+import { extractTimerHint } from './timer-hints.js';
+import { compilePointsOffline } from './offline-points.js';
+import { compileTwitchActionOffline } from './twitch-intents.js';
+import { compileEventOffline } from './event-output.js';
 import type { CompilerTransport } from './transport.js';
 
+// Named timers, Channel Points, Predictions, polls, announcements, shoutouts and Twitch
+// event triggers are supported and handled by their own offline compilers, so they are not listed here.
 const UNSUPPORTED =
-  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|poll|prediction|timer|ban|timeout|shoutout|channel points?|redeem|webhook|http|website)\b/i;
+  /\b(?:say|says|reply|replies|message the chat|chat message|send (?:a )?message|sound|audio|music|ban|timeout|webhook|http|website)\b/i;
 
 interface Plan {
   title: string;
@@ -123,18 +130,30 @@ export function compileOffline(request: CompileRequest): CompileOutput {
     behavior: { when: '', what: '', who: '', howMuch: '' },
     assumptions: [],
   };
+  const native = compileTwitchActionOffline(request);
+  if (native) return native;
   const experience = compileExperienceOffline(request);
-  if (UNSUPPORTED.test(request.intent) || (!experience && /\bcountdown\b/i.test(request.intent)))
+  const timed = !experience && extractTimerHint(request.intent) !== null;
+  if (
+    UNSUPPORTED.test(request.intent) ||
+    (!experience && !timed && /\b(?:countdown|timers?)\b/i.test(request.intent))
+  )
     return {
       ...empty,
       kind: 'unsupported',
       title: 'Not available yet',
       summary: 'This needs a capability Riff does not grant in the current SDK.',
       unsupportedReason:
-        'Chat replies, sounds, polls, timers and moderation actions are not available yet. Riff supports overlay projectiles and bounded score sessions.',
+        'Chat replies, sounds and moderation actions are not available yet. Riff supports overlay projectiles, bounded score sessions, named timers stated as “every N minutes” or “in N seconds”, Channel Points triggers, prediction proposals, Twitch polls, chat announcements, approved shoutouts, automatic raider shoutouts and sub, gift, resub, cheer and raid triggers.',
       alternative: 'Show a tomato, star or heart on the overlay when the command is used.',
     };
   if (experience) return experience;
+  const event = compileEventOffline(request);
+  if (event) return event;
+  const points = compilePointsOffline(request);
+  if (points) return points;
+  const timer = compileTimerOffline(request);
+  if (timer) return timer;
   const command = hints.command ? `!${hints.command}` : base?.trigger?.command;
   if (!command)
     return {

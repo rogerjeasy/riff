@@ -627,8 +627,139 @@ export const productionState = sqliteTable('production_state', {
     .references(() => channels.id),
   value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
 });
+/** In-chat authoring opt-in, the pending chat candidate, approval codes and budgets. */
+export const chatAuthoringState = sqliteTable('chat_authoring_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});
 /** Durable broadcast accessibility choices and bounded help receipts. */
 export const participationState = sqliteTable('participation_state', {
+  channelId: text('channel_id')
+    .primaryKey()
+    .references(() => channels.id),
+  value: text('value', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+});
+
+/**
+ * Host-owned named timers (F18). One pending row per automation and name; restart
+ * replaces it. Rows survive restart and are resumed or expired under the shared grace
+ * policy. Pause, panic, version change, rollback and incidents delete them.
+ */
+export const timers = sqliteTable(
+  'timers',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    automationId: text('automation_id')
+      .notNull()
+      .references(() => automations.id),
+    versionId: text('version_id')
+      .notNull()
+      .references(() => versions.id),
+    name: text('name').notNull(),
+    intervalMs: integer('interval_ms').notNull(),
+    repeat: integer('repeat', { mode: 'boolean' }).notNull(),
+    scheduledAt: integer('scheduled_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+    /** The chat or timer event whose accepted handler queued this timer. */
+    createdBy: text('created_by').notNull(),
+    fires: integer('fires').notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex('timers_automation_name').on(table.channelId, table.automationId, table.name),
+    index('timers_channel_due').on(table.channelId, table.scheduledAt),
+  ],
+);
+
+/**
+ * F22: Channel Points rewards Riff created on Twitch (Twitch lets only the creating
+ * client manage them) and their host-owned link to one automation plus refund policy.
+ */
+export const channelPointRewards = sqliteTable(
+  'channel_point_rewards',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    rewardId: text('reward_id').notNull(),
+    broadcasterId: text('broadcaster_id').notNull(),
+    title: text('title').notNull(),
+    cost: integer('cost').notNull(),
+    prompt: text('prompt').notNull().default(''),
+    inputRequired: integer('input_required', { mode: 'boolean' }).notNull().default(false),
+    cooldownSeconds: integer('cooldown_seconds'),
+    enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+    automationId: text('automation_id'),
+    /** `auto`: fulfil accepted, refund refused. `manual`: accepted ones wait for the creator. */
+    policy: text('policy').$type<'auto' | 'manual'>().notNull().default('auto'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('channel_point_reward_identity').on(table.channelId, table.rewardId),
+    uniqueIndex('channel_point_reward_automation').on(table.channelId, table.automationId),
+  ],
+);
+/** Durable redemption ledger: the redemption id is the dedupe identity across redeliveries. */
+export const channelPointRedemptions = sqliteTable(
+  'channel_point_redemptions',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    redemptionId: text('redemption_id').notNull(),
+    rewardId: text('reward_id').notNull(),
+    automationId: text('automation_id'),
+    viewerId: text('viewer_id').notNull(),
+    viewerName: text('viewer_name').notNull(),
+    input: text('input').notNull().default(''),
+    redeemedAt: text('redeemed_at').notNull(),
+    receivedAt: integer('received_at').notNull(),
+    /** queued, then fulfilled or refunded; failed when Twitch refused the status update. */
+    status: text('status').$type<'queued' | 'fulfilled' | 'refunded' | 'failed'>().notNull(),
+    code: text('code'),
+    reason: text('reason').notNull().default(''),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('channel_point_redemption_identity').on(table.channelId, table.redemptionId),
+    index('channel_point_redemptions_recent').on(table.channelId, table.receivedAt),
+  ],
+);
+/** Prediction proposals from automations or the console; settlement stays creator-only. */
+export const predictionRequests = sqliteTable(
+  'prediction_requests',
+  {
+    id: text('id').primaryKey(),
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    source: text('source').$type<'automation' | 'console'>().notNull(),
+    automationId: text('automation_id'),
+    versionId: text('version_id'),
+    eventId: text('event_id'),
+    title: text('title').notNull(),
+    outcomes: text('outcomes', { mode: 'json' }).$type<string[]>().notNull(),
+    windowSeconds: integer('window_seconds').notNull(),
+    status: text('status').$type<'proposed' | 'dismissed' | 'opened' | 'failed'>().notNull(),
+    predictionId: text('prediction_id'),
+    message: text('message').notNull().default(''),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    index('prediction_requests_channel').on(table.channelId, table.createdAt),
+    uniqueIndex('prediction_request_event').on(table.channelId, table.automationId, table.eventId),
+  ],
+);
+
+/** F21/F23 native Twitch feature preferences, shoutout policy, active poll and budgets. */
+export const twitchFeatureState = sqliteTable('twitch_feature_state', {
   channelId: text('channel_id')
     .primaryKey()
     .references(() => channels.id),

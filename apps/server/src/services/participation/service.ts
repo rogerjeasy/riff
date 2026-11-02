@@ -148,7 +148,10 @@ export function createParticipationService(deps: {
             phase,
             free: m.trigger.audience.includes('viewer'),
             ...facts,
-            command: e?.contribution.command ?? m.trigger.command,
+            // Event triggers (F19) have no chat command to copy.
+            ...(m.trigger.kind === 'twitch.event'
+              ? {}
+              : { command: e?.contribution.command ?? m.trigger.command }),
             joinCommands: e?.teams.map((team) => team.joinCommand) ?? [],
             audience: [...m.trigger.audience],
             goal:
@@ -170,7 +173,10 @@ export function createParticipationService(deps: {
                       score,
                     }))
                 : [],
-            outcome: snapshot?.outcome ? phaseCopy(lang, snapshot.outcome) : null,
+            // Elimination has no reviewed translation yet; it is shown as a finished round.
+            outcome: snapshot?.outcome
+              ? phaseCopy(lang, snapshot.outcome === 'elimination' ? 'finished' : snapshot.outcome)
+              : null,
           });
           if (interactions.length >= 20) break;
         }

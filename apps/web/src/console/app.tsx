@@ -1,5 +1,11 @@
+import { ChatAuthoringPanel, useChatAuthoring } from './chat-authoring/panel.js';
 import { ProductionPanel } from './production/panel.js';
+import { ChannelPointsPanel } from './channel-points/channel-points-panel.js';
+import { PredictionsPanel } from './channel-points/predictions-panel.js';
 import { ParticipationPanel } from './participation/panel.js';
+import { InsightsPanel } from './insights/panel.js';
+import { TwitchFeaturesPanel } from './twitch-features/panel.js';
+import { TwitchEventsPanel } from './twitch/event-triggers.js';
 import { RecipeLibrary } from './recipes/library.js';
 import { DirectorPanel } from './director/panel.js';
 import { CollaborationPanel } from './collaboration/panel.js';
@@ -15,6 +21,7 @@ import { Composer } from './authoring/composer.js';
 import { Evidence } from './review/evidence.js';
 import { Rehearsal } from './rehearsal/stage.js';
 import { ActivityFeed, LivePanel } from './live/live-panel.js';
+import { triggerSummary } from './format.js';
 
 interface Toast {
   id: number;
@@ -128,6 +135,7 @@ function Steps({
 
 export function App() {
   const { studio, runs, connection, error, signedOut, refresh, setRuns } = useStudio();
+  const chatAuthoring = useChatAuthoring(studio);
   // Hosted instances require a console session; show "Sign out" only where it means something.
   const [sessionRequired, setSessionRequired] = useState(false);
   useEffect(() => {
@@ -299,10 +307,33 @@ export function App() {
               ?.scrollIntoView({ behavior: 'instant', block: 'start' });
           }}
         />
+        <ChatAuthoringPanel
+          state={chatAuthoring}
+          panic={studio.panic}
+          notify={notify}
+          onReview={(id) => {
+            setSelectedId(id);
+            document
+              .getElementById('describe-heading')
+              ?.scrollIntoView({ behavior: 'instant', block: 'start' });
+          }}
+        />
         <CollaborationPanel versions={allVersions} panic={studio.panic} />
         <DirectorPanel versions={allVersions} panic={studio.panic} />
         <ParticipationPanel />
-        <ProductionPanel versions={allVersions} panic={studio.panic} />
+        <InsightsPanel />
+        <TwitchFeaturesPanel panic={studio.panic} />
+        <TwitchEventsPanel studio={studio} />
+        <ProductionPanel
+          versions={allVersions}
+          panic={studio.panic}
+          onDraftIntent={(text) => {
+            setDraft(text);
+            document.getElementById('intent')?.focus();
+          }}
+        />
+        <ChannelPointsPanel />
+        <PredictionsPanel />
         <RecipeLibrary
           versions={allVersions}
           onReview={(id) => {
@@ -340,6 +371,9 @@ export function App() {
                 automation={automation}
                 panic={studio.panic}
                 previewed={previewed.has(selected.id)}
+                fromChat={
+                  chatAuthoring.data?.candidates.some((c) => c.versionId === selected.id) ?? false
+                }
                 onTransitioned={async (message) => {
                   await refresh();
                   notify(message);
@@ -352,7 +386,12 @@ export function App() {
                       automation?.activeVersionId ?? null,
                       resetSession,
                     );
-                    notify(`Live! Viewers can now type ${version.manifest.trigger.command}.`);
+                    notify(
+                      version.manifest.trigger.kind === 'twitch.event' ||
+                        version.manifest.trigger.kind === 'points.redeem'
+                        ? `Live! ${triggerSummary(version.manifest)} now triggers it.`
+                        : `Live! Viewers can now type ${version.manifest.trigger.command}.`,
+                    );
                     await refresh();
                   } catch (cause) {
                     notify(cause instanceof ApiError ? cause.message : 'Approval failed.', 'bad');

@@ -20,7 +20,27 @@ export interface TwitchErrorDetail {
   readonly twitchMessage?: string;
   readonly retryAfterMs?: number;
   readonly issues?: readonly string[];
+  /** Endpoint-specific refusal, derived only from status and Twitch's documented error text. */
+  readonly reason?: TwitchRefusalReason;
 }
+
+/**
+ * Documented refusal categories for the poll, announcement and shoutout endpoints
+ * (https://dev.twitch.tv/docs/api/reference/#create-poll, #send-chat-announcement,
+ * #send-a-shoutout). Callers map these to user-facing guidance.
+ */
+export type TwitchRefusalReason =
+  | 'missing_scope'
+  | 'poll_active'
+  | 'poll_not_active'
+  | 'not_eligible'
+  | 'cooldown'
+  | 'not_live'
+  | 'self_shoutout'
+  | 'not_moderator'
+  | 'target_refused'
+  | 'content_refused'
+  | 'invalid';
 
 /**
  * Typed error for every Twitch boundary failure. `message` is user-safe;

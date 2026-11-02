@@ -399,6 +399,7 @@ export function CollaborationPanel({
       v.evidence.verification.ok &&
       !['failed', 'discarded', 'quarantined'].includes(v.status) &&
       v.manifest.experience?.objective.kind === 'collective-goal' &&
+      v.manifest.experience.version === 1 &&
       v.manifest.experience.teams.length === 0,
   );
   const versionId = shareable.some((v) => v.id === selected) ? selected : (shareable[0]?.id ?? '');

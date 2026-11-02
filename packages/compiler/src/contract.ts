@@ -3,11 +3,53 @@ import {
   AUDIENCE_ROLES,
   CAPABILITIES,
   DECISION_CODES,
+  MECHANIC_LIMITS,
   PROJECTILE_ASSETS,
   SDK_VERSION,
   SESSION_LIMITS,
   TRIGGER_LIMITS,
+  TRIGGER_KINDS,
+  EVENT_TRIGGER_LIMITS,
+  SUBSCRIPTION_TIERS,
+  TWITCH_EVENT_KINDS,
 } from '@riff/sdk';
+
+/** F19 strict JSON fragments: the event trigger and a synthetic Twitch event step. */
+const EVENT_TRIGGER_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'minimum'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        minimum: {
+          type: 'integer',
+          minimum: EVENT_TRIGGER_LIMITS.minimum.min,
+          maximum: EVENT_TRIGGER_LIMITS.minimum.max,
+        },
+      },
+    },
+  ],
+} as const;
+const TWITCH_STEP_JSON = {
+  anyOf: [
+    { type: 'null' },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'amount', 'tier', 'anonymous', 'gift'],
+      properties: {
+        kind: { type: 'string', enum: [...TWITCH_EVENT_KINDS] },
+        amount: { type: 'integer', minimum: 1, maximum: EVENT_TRIGGER_LIMITS.amountMax },
+        tier: { type: ['string', 'null'], enum: [...SUBSCRIPTION_TIERS, null] },
+        anonymous: { type: 'boolean' },
+        gift: { type: 'boolean' },
+      },
+    },
+  ],
+} as const;
 
 /** Bounded quoted host evidence; never merged into creator-intent extraction. */
 const rehearsalContextSchema = z
@@ -65,6 +107,82 @@ const behaviorSchema = z
   .strict();
 
 /**
+ * Strict model output must send `mechanics: null` for version 1 definitions; the canonical
+ * definition omits the key so version 1 hashes and artifact identities stay unchanged.
+ */
+function withoutNullMechanics(manifest: unknown): unknown {
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return manifest;
+  const experience = (manifest as { experience?: unknown }).experience;
+  if (
+    !experience ||
+    typeof experience !== 'object' ||
+    Array.isArray(experience) ||
+    !Object.hasOwn(experience, 'mechanics') ||
+    (experience as { mechanics?: unknown }).mechanics !== null
+  )
+    return manifest;
+  const rest = Object.fromEntries(
+    Object.entries(experience as Record<string, unknown>).filter(([key]) => key !== 'mechanics'),
+  );
+  return { ...manifest, experience: rest };
+}
+
+const int = (range: { min: number; max: number }) => ({
+  type: 'integer',
+  minimum: range.min,
+  maximum: range.max,
+});
+const command = { type: 'string', pattern: TRIGGER_LIMITS.commandPattern } as const;
+const label = { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.labelLength } as const;
+const strictObject = (properties: Record<string, unknown>) => ({
+  type: 'object',
+  additionalProperties: false,
+  required: Object.keys(properties),
+  properties,
+});
+const nullable = (schema: Record<string, unknown>) => ({ anyOf: [{ type: 'null' }, schema] });
+/** Definition version 2 mechanics for the strict model schema; host zod rules stay authoritative. */
+const MECHANICS_JSON_SCHEMA = nullable(
+  strictObject({
+    match: nullable(
+      strictObject({
+        rounds: int(MECHANIC_LIMITS.rounds),
+        intermissionMs: int(MECHANIC_LIMITS.intermissionMs),
+      }),
+    ),
+    health: nullable(
+      strictObject({
+        label,
+        max: int(MECHANIC_LIMITS.health),
+        damage: int(MECHANIC_LIMITS.damage),
+        heal: nullable(strictObject({ command, amount: int(MECHANIC_LIMITS.heal) })),
+      }),
+    ),
+    burst: nullable(
+      strictObject({
+        command: { type: ['string', 'null'], pattern: TRIGGER_LIMITS.commandPattern },
+        label,
+        participants: int(MECHANIC_LIMITS.burstParticipants),
+        windowMs: int(MECHANIC_LIMITS.burstWindowMs),
+        points: int(MECHANIC_LIMITS.burstPoints),
+        limit: int(MECHANIC_LIMITS.burstLimit),
+        shieldMs: int(MECHANIC_LIMITS.shieldMs),
+      }),
+    ),
+    milestones: {
+      type: 'array',
+      maxItems: MECHANIC_LIMITS.milestones,
+      items: strictObject({
+        id: { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,31}$' },
+        label,
+        score: { type: 'integer', minimum: 1, maximum: SESSION_LIMITS.maxScore },
+        unlock: nullable(strictObject({ command, points: int(MECHANIC_LIMITS.unlockPoints) })),
+      }),
+    },
+  }),
+);
+
+/**
  * Structured compiler output. Executable content is only ever read from these fields,
  * never extracted from free text. Strict validation of manifest and tests is the
  * sandbox verification pipeline's job; here we bound shape and size.
@@ -80,7 +198,7 @@ export const compileOutputSchema = z
     alternative: z.string().max(400).nullable(),
     source: z.string().max(16_384).nullable(),
     migrationSource: z.string().min(1).max(32768).nullable().optional(),
-    manifest: z.unknown(),
+    manifest: z.unknown().transform(withoutNullMechanics),
     tests: z.array(z.unknown()).max(12),
     behavior: behaviorSchema,
     assumptions: z.array(z.string().max(240)).max(8),
@@ -152,9 +270,11 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                     'resource',
                     'contribution',
                     'objective',
+                    'mechanics',
                   ],
                   properties: {
-                    version: { type: 'integer', enum: [1] },
+                    version: { type: 'integer', enum: [1, 2] },
+                    mechanics: MECHANICS_JSON_SCHEMA,
                     title: { type: 'string', minLength: 1, maxLength: SESSION_LIMITS.titleLength },
                     durationMs: {
                       type: 'integer',
@@ -219,7 +339,10 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                       additionalProperties: false,
                       required: ['kind', 'target'],
                       properties: {
-                        kind: { type: 'string', enum: ['highest-score', 'collective-goal'] },
+                        kind: {
+                          type: 'string',
+                          enum: ['highest-score', 'collective-goal', 'burst'],
+                        },
                         target: {
                           type: ['integer', 'null'],
                           minimum: 1,
@@ -235,12 +358,23 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             trigger: {
               type: 'object',
               additionalProperties: false,
-              required: ['command', 'audience', 'maxPerViewer', 'windowMs'],
+              required: [
+                'command',
+                'audience',
+                'maxPerViewer',
+                'windowMs',
+                'kind',
+                'reward',
+                'event',
+              ],
               properties: {
                 command: { type: 'string' },
                 audience: { type: 'array', items: { type: 'string', enum: [...AUDIENCE_ROLES] } },
                 maxPerViewer: { type: 'integer' },
                 windowMs: { type: 'integer' },
+                kind: { type: 'string', enum: [...TRIGGER_KINDS] },
+                reward: { type: ['string', 'null'], maxLength: 45 },
+                event: EVENT_TRIGGER_JSON,
               },
             },
             limits: {
@@ -275,7 +409,19 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
             items: {
               type: 'object',
               additionalProperties: false,
-              required: ['id', 'viewer', 'roles', 'text', 'at', 'expect', 'effects', 'session'],
+              required: [
+                'id',
+                'viewer',
+                'roles',
+                'text',
+                'at',
+                'expect',
+                'effects',
+                'session',
+                'timers',
+                'kind',
+                'twitch',
+              ],
               properties: {
                 id: { type: 'string' },
                 viewer: { type: 'string' },
@@ -284,6 +430,22 @@ export const COMPILE_OUTPUT_JSON_SCHEMA = {
                 at: { type: 'integer' },
                 expect: { type: 'string', enum: [...DECISION_CODES] },
                 effects: { type: 'integer' },
+                timers: {
+                  anyOf: [
+                    { type: 'null' },
+                    {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['fired', 'effects'],
+                      properties: {
+                        fired: { type: 'integer', minimum: 0 },
+                        effects: { type: 'integer', minimum: 0 },
+                      },
+                    },
+                  ],
+                },
+                kind: { type: ['string', 'null'], enum: ['points.redeem', null] },
+                twitch: TWITCH_STEP_JSON,
                 session: {
                   anyOf: [
                     { type: 'null' },

@@ -1,3 +1,15 @@
+import { createVoiceService } from './services/voice/service.js';
+import type { TranscriptionTransport } from './services/voice/transport.js';
+import { registerVoiceRoutes } from './routes/voice.js';
+import { createInsightsService } from './services/insights/service.js';
+import { registerInsightsRoutes } from './routes/insights.js';
+import {
+  createChatAuthoringService,
+  type ChatAuthoringService,
+  type ChatReplies,
+} from './services/chat-authoring/service.js';
+import { chatAuthoringRepository } from './db/repositories/chat-authoring.js';
+import { registerChatAuthoringRoutes } from './routes/chat-authoring.js';
 import { createProductionService, type ProductionService } from './services/production/service.js';
 import { registerProductionRoutes } from './routes/production.js';
 import {
@@ -48,12 +60,30 @@ import { createOverlayBroker } from './services/overlay/broker.js';
 import { createPreviewService } from './services/rehearsal/preview.js';
 import { createTwitchConnection, type TwitchConfig } from './services/twitch/connection.js';
 import type { FetchLike } from '@riff/twitch';
+import {
+  createChannelPointsService,
+  type ChannelPointsService,
+} from './services/channel-points/service.js';
+import {
+  createPredictionsService,
+  type PredictionsService,
+} from './services/predictions/service.js';
+import { registerChannelPointsRoutes } from './routes/channel-points.js';
+import {
+  createTwitchFeatureService,
+  type TwitchFeatureService,
+} from './services/twitch-features/service.js';
+import { twitchFeaturesRepository } from './db/repositories/twitch-features.js';
+import { registerTwitchFeatureRoutes } from './routes/twitch-features.js';
 
 /** The studio is operator-local: one home channel per server process. */
 export const HOME_CHANNEL = 'home';
 
 interface AppDependencies {
-  production?: Pick<Parameters<typeof createProductionService>[0], 'obsFactory' | 'botFactory'>;
+  production?: Pick<
+    Parameters<typeof createProductionService>[0],
+    'obsFactory' | 'botFactory' | 'firebotFactory'
+  >;
   checkDatabase?: () => boolean;
   logger: NonNullable<FastifyServerOptions['logger']>;
   webRoot?: string;
@@ -68,6 +98,10 @@ interface AppDependencies {
   peerFetch?: typeof fetch;
   /** Hosted console sign-in; omitted locally, where the console stays open. */
   console?: ConsoleAccess;
+  /** F09 push-to-talk transcription; null/omitted means voice is not configured. */
+  transcription?: TranscriptionTransport | null;
+  /** Test seam for host system chat replies; defaults to the Twitch connection. */
+  chatReplies?: ChatReplies;
 }
 
 export function migrateConnection(database: DatabaseConnection) {
@@ -77,6 +111,9 @@ export function migrateConnection(database: DatabaseConnection) {
 }
 
 export interface RiffServices {
+  chatAuthoring: ChatAuthoringService;
+  channelPoints: ChannelPointsService;
+  predictions: PredictionsService;
   production: ProductionService;
   participation: ParticipationService;
   recipes: RecipeService;
@@ -95,6 +132,7 @@ export interface RiffServices {
   rehearsal: ReturnType<typeof createRehearsalService>;
   scenes: ReturnType<typeof createSceneService>;
   twitch: ReturnType<typeof createTwitchConnection>;
+  twitchFeatures: TwitchFeatureService;
 }
 export type RiffApp = FastifyInstance & { riff: RiffServices };
 
@@ -155,7 +193,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   };
   const productionRef: { current?: ProductionService } = {};
   const participationRef: { current?: ParticipationService } = {};
+  const chatAuthoringRef: { current?: ChatAuthoringService } = {};
+  const pointsRef: { current?: ChannelPointsService } = {};
+  const predictionsRef: { current?: PredictionsService } = {};
+  const twitchFeaturesRef: { current?: TwitchFeatureService } = {};
   const runtime = createLiveRuntime({
+    onAuthorChat: (message) => chatAuthoringRef.current?.handle(message) ?? false,
+    onPredictionProposal: (proposal) => predictionsRef.current?.propose(proposal),
+    onTwitchActions: (actions, context) =>
+      twitchFeaturesRef.current?.dispatch(actions, context) ?? Promise.resolve(),
     onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
     onStop: () => {
@@ -165,6 +211,16 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
         /* Memory fencing precedes best-effort disconnect. */
       }
       participationRef.current?.stop();
+      try {
+        chatAuthoringRef.current?.stop('Everything was stopped.');
+      } catch {
+        /* Codes are fenced in memory first. */
+      }
+      // Best effort after the in-memory fence: pause rewards, refund queue, lock prediction.
+      void pointsRef.current?.onPanic().catch(() => undefined);
+      void predictionsRef.current?.onPanic().catch(() => undefined);
+      // Fences queued native actions in memory, then ends the poll Riff started.
+      void twitchFeaturesRef.current?.panic().catch(() => undefined);
       stopCollaboration();
     },
     repo,
@@ -264,8 +320,114 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     log: (message) => app.log.warn(message),
     onStatus: (status) => {
       if (status.state !== 'connected') stopCollaboration();
+      else {
+        void pointsRef.current?.refresh().catch(() => undefined);
+        void predictionsRef.current?.refresh().catch(() => undefined);
+      }
     },
+    onRedemption: (redemption) => {
+      void pointsRef.current?.handleRedemption(redemption).catch((error: unknown) => {
+        app.log.warn({ err: error }, 'redemption handling failed');
+      });
+    },
+    wantsChatWrite: () => chatAuthoringRef.current?.enabled() ?? false,
+    onRaid: (raider) => {
+      void twitchFeaturesRef.current?.recordRaid(raider).catch((error: unknown) => {
+        app.log.warn({ err: error }, 'recording a raid failed');
+      });
+    },
+    hostTriggers: () => (twitchFeaturesRef.current?.wantsRaids() ? ['raid'] : []),
   });
+  const chatAuthoring = createChatAuthoringService({
+    storage: chatAuthoringRepository(database, HOME_CHANNEL),
+    repo,
+    hub,
+    authoring,
+    approve: (versionId, expected) => studio.approve(versionId, expected),
+    discard: (versionId) => studio.discard(versionId),
+    blocked: () => runtime.panicked,
+    chat: dependencies.chatReplies ?? {
+      send: (text, replyTo) => twitch.sendChat(text, replyTo),
+      status: () => twitch.chatReplies(),
+    },
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  chatAuthoringRef.current = chatAuthoring;
+  chatAuthoring.boot();
+  const featureAccess = { api: () => twitch.api(), configured: twitch.configured };
+  const changedSoon = () => hub.publish('studio', null);
+  const channelPoints = createChannelPointsService({
+    database,
+    repo,
+    access: featureAccess,
+    route: (redemption) => runtime.handleRedemption(redemption),
+    blocked: () => runtime.panicked,
+    changed: changedSoon,
+    subscription: () => twitch.redemptions,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  pointsRef.current = channelPoints;
+  const predictions = createPredictionsService({
+    database,
+    repo,
+    access: featureAccess,
+    blocked: () => runtime.panicked,
+    changed: changedSoon,
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  predictionsRef.current = predictions;
+  const twitchFeatures = createTwitchFeatureService({
+    storage: twitchFeaturesRepository(database, HOME_CHANNEL),
+    connection: twitch,
+    blocked: () => runtime.panicked,
+    automations: () =>
+      repo.automations().flatMap((automation) => {
+        const version = automation.activeVersionId
+          ? repo.version(automation.activeVersionId)
+          : null;
+        const manifest = version?.manifest as { capabilities?: string[] } | undefined;
+        return version
+          ? [
+              {
+                automationId: automation.id,
+                title: automation.title,
+                capabilities: manifest?.capabilities ?? [],
+                live: automation.status === 'live',
+              },
+            ]
+          : [];
+      }),
+    record: (entry) => {
+      let row;
+      try {
+        row = repo.record({
+          ...entry,
+          at: Date.now(),
+          versionId: null,
+          eventId: null,
+          viewer: null,
+        });
+      } catch {
+        row = null;
+      }
+      if (row) hub.publish('activity', row);
+    },
+    disable: (automationId) => {
+      try {
+        studio.pause(automationId);
+      } catch {
+        runtime.pause(automationId);
+      }
+    },
+    changed: () => hub.publish('studio', null),
+    ...(dependencies.now ? { now: dependencies.now } : {}),
+  });
+  twitchFeaturesRef.current = twitchFeatures;
+  const twitchFeatureTimer = setInterval(
+    () => void twitchFeatures.tick().catch(() => undefined),
+    1000,
+  );
+  twitchFeatureTimer.unref();
   const publicUrl = dependencies.publicUrl ?? 'http://localhost:5173';
   const production = createProductionService({
     database,
@@ -399,9 +561,21 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     configured: !!sealer,
     ready: () => twitch.status.state === 'connected',
   });
+  registerChatAuthoringRoutes(app, chatAuthoring);
   registerProposalRoutes(app, { proposals, authoring, repo, changed: proposalChanged });
   registerRealtimeRoutes(app, { hub, overlay, repo, twitch });
   registerTwitchRoutes(app, { twitch, publicUrl });
+  registerVoiceRoutes(app, createVoiceService({ transport: dependencies.transcription ?? null }));
+  registerInsightsRoutes(
+    app,
+    createInsightsService({
+      database,
+      channelId: HOME_CHANNEL,
+      ...(dependencies.now ? { now: dependencies.now } : {}),
+    }),
+  );
+  registerChannelPointsRoutes(app, { points: channelPoints, predictions });
+  registerTwitchFeatureRoutes(app, twitchFeatures);
   app.addHook('onReady', async () => {
     twitch.start();
     // Warm the verifier (TypeScript parser, QuickJS WASM, worker startup) off the
@@ -413,6 +587,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
       );
   });
   app.addHook('onClose', async () => {
+    chatAuthoring.close();
+    clearInterval(twitchFeatureTimer);
+    twitchFeatures.close();
     clearInterval(directorTimer);
     directorService.close();
     participation.close();
@@ -441,6 +618,9 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     app.get('/production-test', (_request, reply) => reply.sendFile('index.html'));
   }
   const services: RiffServices = {
+    chatAuthoring,
+    channelPoints,
+    predictions,
     production,
     participation,
     recipes,
@@ -456,6 +636,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     rehearsal,
     scenes,
     twitch,
+    twitchFeatures,
   };
   return Object.assign(app as FastifyInstance, { riff: services });
 }

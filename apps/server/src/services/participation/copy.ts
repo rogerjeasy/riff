@@ -1,4 +1,9 @@
-import { SESSION_LIMITS, type PermissionManifest, type ParticipationLanguage } from '@riff/sdk';
+import {
+  SESSION_LIMITS,
+  type PermissionManifest,
+  type ParticipationLanguage,
+  type TwitchEventKind,
+} from '@riff/sdk';
 
 type Role = Exclude<PermissionManifest['trigger']['audience'][number], 'viewer'>;
 type Unit = 'second' | 'minute';
@@ -193,6 +198,42 @@ export function phaseCopy(
 }
 
 /** Public, truthful rule text for an approved manifest in one reviewed language. */
+/** F19: localized guidance for Twitch event triggers; viewers cannot type these. */
+const EVENT_COPY: Record<
+  ParticipationLanguage,
+  Record<TwitchEventKind, (minimum: number, n: string) => string>
+> = {
+  en: {
+    subscribe: () => 'Subscribe to the channel',
+    gift: (m, n) => (m > 1 ? `Gift ${n}+ subs` : 'Gift subs'),
+    resub: (m, n) => (m > 1 ? `Share a resub of ${n}+ months` : 'Share your resub'),
+    cheer: (_m, n) => `Cheer ${n}+ bits`,
+    raid: (m, n) => (m > 1 ? `Raid with ${n}+ viewers` : 'Raid the channel'),
+  },
+  fr: {
+    subscribe: () => 'Abonnez-vous à la chaîne',
+    gift: (m, n) => (m > 1 ? `Offrez ${n}+ abonnements` : 'Offrez des abonnements'),
+    resub: (m, n) =>
+      m > 1 ? `Partagez ${n}+ mois de réabonnement` : 'Partagez votre réabonnement',
+    cheer: (_m, n) => `Encouragez avec ${n}+ bits`,
+    raid: (m, n) => (m > 1 ? `Lancez un raid de ${n}+ spectateurs` : 'Lancez un raid'),
+  },
+  es: {
+    subscribe: () => 'Suscríbete al canal',
+    gift: (m, n) => (m > 1 ? `Regala ${n}+ suscripciones` : 'Regala suscripciones'),
+    resub: (m, n) => (m > 1 ? `Comparte ${n}+ meses de suscripción` : 'Comparte tu renovación'),
+    cheer: (_m, n) => `Anima con ${n}+ bits`,
+    raid: (m, n) => (m > 1 ? `Haz un raid con ${n}+ espectadores` : 'Haz un raid'),
+  },
+  de: {
+    subscribe: () => 'Abonniere den Kanal',
+    gift: (m, n) => (m > 1 ? `Verschenke ${n}+ Abos` : 'Verschenke Abos'),
+    resub: (m, n) => (m > 1 ? `Teile ${n}+ Abo-Monate` : 'Teile dein Abo-Jubiläum'),
+    cheer: (_m, n) => `Cheere ${n}+ Bits`,
+    raid: (m, n) => (m > 1 ? `Raide mit ${n}+ Zuschauern` : 'Starte einen Raid'),
+  },
+};
+
 export function ruleCopy(manifest: PermissionManifest, language: ParticipationLanguage) {
   const c = copy[language],
     t = manifest.trigger,
@@ -206,6 +247,12 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
     return c.unit(value, number(value), minutes ? 'minute' : 'second');
   };
   const instructions: string[] = [];
+  if (t.kind === 'twitch.event') {
+    instructions.push(
+      `${EVENT_COPY[language][t.event.kind](t.event.minimum, number(t.event.minimum))} · ${c.rolling(number(t.maxPerViewer), window())}`,
+    );
+    return { instructions: bounded(instructions), objective: c.free };
+  }
   if (!e) {
     instructions.push(`${c.type(who, t.command)} · ${c.rolling(number(t.maxPerViewer), window())}`);
     return { instructions: bounded(instructions), objective: everyone ? c.free : c.trigger };

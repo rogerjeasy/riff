@@ -255,3 +255,143 @@ Verification for this increment: 685 tests in 66 socket-independent Vitest files
 isolation, SQLite/Fastify smoke, focused secrets and a redacted Gitleaks scan of changed
 source files passed. Two existing socket-dependent test files were excluded from the
 local run. CI includes the new production, participation and dock checks.
+
+## Voice entry and aggregate insights (F09/F30) — November 1, 2026
+
+F09 adds push-to-talk to Describe with hold/tap control, a level meter, a 60-second cap,
+and an editable transcript review that never auto-submits. Permission-denied, no-device,
+unsupported, not-configured, transcribing and failed-with-retry states are explicit.
+`POST /api/voice/transcribe` accepts a bounded raw audio body behind the mutation guard
+and calls OpenAI file transcription (`gpt-transcribe` by default) or a deterministic mock;
+audio is never stored. The OpenAI transport is verified against the official guide and a
+fake `fetch` only; no live key was exercised. Browser Web Speech fallback and real
+microphone capture were not exercised in a real browser here (jsdom stubs only).
+
+F30 adds `GET /api/insights` and a console Insights card computed from existing tables with
+groups under three people suppressed and no per-viewer output. No migration or dependency.
+
+Verification: 73 Vitest files / 775 tests passed (`vitest run --maxWorkers=4`; an unbounded
+run under heavy machine load hit 20-second timeouts in pre-existing heavy tests, which pass
+on re-run). Lint, strict types, formatting, build, bundle and focused secret checks passed.
+
+## In-chat authoring and owner chat approval — November 1, 2026
+
+F10/F17 add opt-in, broadcaster-only chat authoring (`!riff create|edit|approve|reject|
+status|cancel`, `!approve` alias) over the existing compiler queue, verifier and exact
+approval path, with short-lived single-use approval codes persisted in
+`chat_authoring_state` (migration 0015). Helix Send Chat Message replies were implemented
+from the documented request/response (fixture `helix.send-chat-message.json`) and tested
+against fakes only; a real `user:write:chat` send to a live channel has not been
+exercised. Tests cover badge/name/text spoofing, budget, fake-clock expiry, single use,
+stale binding, lockout, panic invalidation, restart and the EventSub → Helix reply path.
+See the [service contract](../apps/server/src/services/chat-authoring/README.md).
+
+## Named timers (F18) — November 1, 2026
+
+SDK capability `timer` (additive to 0.4.0) stages named one-shot or repeating timers
+from generated handlers; the host persists them in the migration 0016 `timers` table,
+fires them through the same engine admission, budgets and sandbox as chat, resumes
+them on boot (≤30 s overdue fires once with `missed`, older fires are skipped and
+logged) and cancels them on pause, panic, activation/rollback and quarantine. Preview,
+generated scenarios and rehearsal run timers on private virtual clocks. The console
+live panel lists pending timers with countdowns and cancellation; there is no overlay
+countdown widget. Prompt pack `riff-compiler/7` and the offline compiler support
+"every N minutes" and "in N seconds" requests. Timers inside stateful sessions remain
+unsupported. Verified with Vitest service, route, sandbox, compiler and DOM tests; no
+live Twitch stream or OBS rendering of timer fires was exercised.
+
+## Channel Points and Predictions — F22, November 1, 2026
+
+`points.redeem` maps to `channel.channel_points_custom_reward_redemption.add` v1 with a
+doc-sourced fixture; Helix Create/Get/Update/Delete Custom Reward, Get/Update Redemption
+Status and Create/Get/End Prediction are zod-parsed against documented examples (creations
+are not retried on 5xx). Migration 0017 adds `channel_point_rewards`,
+`channel_point_redemptions` and `prediction_requests`. Feature consent is requested per
+panel; eligibility comes from Get Users `broadcaster_type`. SDK 0.4.0 adds the `predictions`
+proposal capability (bridge, d.ts and validator in sync) and `trigger.kind`/`trigger.reward`.
+Settlement of redemptions is host policy; settlement of predictions requires a confirmed
+creator request. Verified with fixtures, fake Helix and a local EventSub WebSocket; no real
+Affiliate channel, reward or prediction was exercised.
+
+## Broader stateful mechanics (F31 definition version 2) — November 1, 2026
+
+Implemented additive experience definition version 2 on the SDK 0.4.0 bridge: best-of-N
+matches with per-round reset and intermission, team health pools with damage, healing and
+elimination, distinct-viewer burst objectives on a sliding host-clocked window (with
+optional shield), and score milestones that unlock tiers and locked commands. Seven new
+decision codes, an independent hand-derived host suite, compatibility rules (any change
+except labels or a longer break requires reset), four rehearsal presets, prompt pack
+`riff-compiler/7` (merged with timers and Channel Points as `riff-compiler/9`), offline templates for four example intents with a recorded fixture,
+and accessible HUD/scoreboard presentation (health meters, burst meter with window
+countdown, round and break countdown, tiers). Version 1 definitions and identities are
+unchanged. No tables, migrations, routes, env vars or dependencies were added.
+
+Verification: 779 tests in 74 Vitest files pass (35 new across sandbox, compiler, server and web);
+lint, boundary checks, strict types, production build and overlay bundle isolation pass.
+Live server tests cover concurrent burst/damage admission, restart across a round
+deadline, single round advancement and journal audit; no real-model version 2 compile or
+live Twitch round is claimed.
+
+Integration: version 2 mechanics actions ignore Channel Points redemptions exactly like
+version 1 sessions, and F30 insights group the seven new mechanics codes under one
+"Game rule" blocked reason.
+
+## Native Twitch polls, announcements and shoutouts — November 1, 2026
+
+F21/F23 add Helix Create/Get/End Poll, Send Chat Announcement and Send a Shoutout
+(verified against the Twitch API reference and Polls guide on November 1, 2026), the
+`polls`, `chat.announce` and `shoutout` SDK capabilities, per-feature OAuth consent, the
+`twitch_feature_state` table (migration 0018, renumbered from the branch's 0015 at merge) and a console **Twitch features** panel. Tests use msw and
+doc-sourced fixtures; no live Twitch poll, announcement or shoutout was sent from this
+environment. The raiders-only shoutout policy awaits an incoming-raid trigger.
+
+Integration (prompt pack `riff-compiler/10`): one prompt carries the timer, Channel
+Points, Predictions, version 2 mechanics and native-action rules. `/auth/twitch` accepts
+both `?features=channel-points,predictions` and `?feature=polls|announcements|shoutouts`
+and always keeps granted scopes. Native actions staged by a named-timer fire or a
+Channel Points redemption are dispatched like chat-triggered ones (a fire-staged action
+counts against the effect budget; sandbox test). Redemptions now also apply staged
+timers and prediction proposals. Helix poll, announcement and shoutout mutations use
+`{ retries: 0 }`.
+
+## Sub, gift, resub, cheer and raid triggers (F19) — November 1, 2026
+
+`packages/twitch/src/triggers.ts` adds `subscribe` (`channel.subscribe`), `gift`
+(`channel.subscription.gift`), `resub` (`channel.subscription.message`), `cheer`
+(`channel.cheer`) and `raid` (`channel.raid`, `to_broadcaster_user_id`), all version 1,
+with versions, scopes and conditions checked against the EventSub subscription types page
+on November 1, 2026. Fixtures are the documentation notification examples (inline `//`
+comments removed). Normalization validates each payload with zod, hides anonymous
+gifts/cheers behind one `anonymous` identity, clamps amounts and sanitizes resub/cheer
+text and display names.
+
+Manifests may declare `trigger.kind: 'twitch.event'` with `trigger.event {kind, minimum}`
+and the reserved command `@kind` (SDK 0.4.0, additive; chat artifacts keep their identity). Events carry `event.twitch`
+and enter the same engine admission (dedupe → kind → `BELOW_MINIMUM` → per-viewer window
+→ channel budget) and live queue, durable admission records, panic fences and overlay path
+as chat. Prompt pack `riff-compiler/7` (merged as `riff-compiler/11`) and the offline
+compiler support event intents.
+The Twitch connection subscribes on demand for families live interactions use when the
+token carries the scope, and `GET /api/twitch/triggers` reports use, consent and
+subscription state; `/auth/twitch?triggers=` requests extra consent while keeping earlier
+scopes. Rehearsal and previews accept labeled synthetic Twitch events only.
+
+Not verified here: delivery from a real Twitch channel (tests use the documented protocol
+against a local WebSocket stand-in), and recipe export/adaptation of event-triggered
+interactions (the recipe profile flow remains chat-command based). No new dependency,
+table or environment variable.
+
+Integration (prompt pack `riff-compiler/11`): F19 merged after F18/F21/F22/F31. The
+shared `admit` loop keeps timer, prediction-proposal and native-action side effects for
+chat and platform events; redemptions keep their own linked-automation path. The
+manifest validator rejects a trigger that is both `points.redeem` and `trigger.event`.
+
+Trigger unification (prompt pack `riff-compiler/12`): the manifest trigger is one
+discriminated union on `trigger.kind` — `chat.command` (default when omitted),
+`points.redeem` (requires `reward`) and `twitch.event` (requires `event`). Mixed triggers
+cannot parse, and `matchesTrigger` routes each kind only to its own source. Chat and
+Channel Points artifact identities are byte-identical to pack 11; the never-shipped F19
+fixtures were regenerated with `kind: 'twitch.event'`.
+Incoming raids feed F23's "raiders only" shoutout policy (`recordRaid`), and selecting
+that policy subscribes to `channel.raid` on its own (server test). `/auth/twitch`
+accepts `?features=`, `?feature=` and `?triggers=` together.

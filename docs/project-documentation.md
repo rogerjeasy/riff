@@ -287,7 +287,7 @@ P0 includes real generation, chat input, overlay output, generated and independe
 | F16 | Activity and incidents | P0 | Show source event, version, allowed/blocked effects, outcome, and user-readable reason |
 | F17 | Owner chat approval | P1 | `!riff approve <code>` binds a short-lived candidate; one unambiguous pending candidate may allow `!approve` as an alias |
 | F18 | Persistent timer | P1 | Named timer, restart behavior, cancel semantics, host-owned countdown; no guest `setTimeout` |
-| F19 | Sub, gift, cheer, raid events | P1 | Add a selected event family with verified fixtures; the rest remain disabled until implemented |
+| F19 | Sub, gift, cheer, raid events | P1 | Implemented: `channel.subscribe`, `channel.subscription.gift`, `channel.subscription.message`, `channel.cheer` and `channel.raid` (v1, documentation fixtures) drive event-triggered projectile interactions through the shared admission path; consent per family, synthetic rehearsal inputs |
 | F20 | Language preferences | P1 | Explicit viewer choice with approved translations; streamer language fallback; anonymous gifts remain anonymous |
 | F21 | Polls and announcements | P1 | Feature-specific OAuth consent, eligibility checks, current API limits, realistic errors |
 | F22 | Channel Points and Predictions | P2 | Separate authority and outcomes; no model-decided prediction settlement; reward ownership constraints checked |
@@ -555,6 +555,8 @@ Examples of error copy: “This version tried to send more messages than you all
 | `!riff panic` | Broadcaster or current trusted Twitch moderator | Emergency stop only |
 | `!riff approve <code>` | Broadcaster only; P1 | Activate the matching reviewed candidate |
 | `!approve` | Broadcaster only; P1 alias | Valid only with exactly one unambiguous pending candidate |
+| `!riff create <intent>` / `!riff edit <intent>` | Broadcaster only, opt-in; P2 | Compile a candidate for private review and a short-lived approval code |
+| `!riff reject <code>` / `!riff status` / `!riff cancel` | Broadcaster only, opt-in | Discard, report or stop the pending chat candidate |
 | `!riff resume` | Broadcaster only; later | Requires explicit confirmation of resume scope |
 | `!riff language fr` | The sending viewer; P1 | Store that viewer's chosen language |
 
@@ -949,6 +951,8 @@ Timers are a P1 capability. Until enabled, the released SDK and manifest schema 
 Timers belong to the host and persist `channel`, automation/version, name, due time, payload, creation event, and status. The guest schedules intent; it does not hold a callback or native timer. Fire a normalized internal event against the approved version with a dedupe ID.
 
 Proposed P1 policy: one-shot timers only, maximum ten pending per automation, maximum duration one hour. After restart, fire once if overdue by at most 30 seconds and still approved; otherwise expire it and log why. Preview uses a virtual clock and separate timer store. Panic cancels pending timers; resuming does not recreate canceled timers silently.
+
+**Implemented (F18, November 1, 2026):** capability `timer` follows this policy with named one-shot or opt-in repeating timers (5 s to one hour, ten distinct names per automation, restart replaces a name, repeats re-arm on their original cadence without catch-up). Fires within 2 s are on time, up to 30 s late are delivered once with `missed: true`, and older ones expire with an activity record. Pause, version activation/rollback and quarantine also cancel timers. Timers inside stateful sessions are not yet enabled. See the F18 section of AGENTS.md.
 
 ### 14.5 Rollback semantics
 

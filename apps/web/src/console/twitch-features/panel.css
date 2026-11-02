@@ -1,0 +1,202 @@
+/* F21/F23 Twitch features: per-feature consent cards, live poll results, manual actions. */
+.tf-layout {
+  display: grid;
+  gap: 18px;
+}
+.tf-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tf-feature {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.tf-feature[data-state='ready'] {
+  border-color: rgb(79 211 148 / 0.3);
+}
+.tf-feature[data-state='ineligible'] {
+  border-color: rgb(255 95 95 / 0.3);
+}
+.tf-feature-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.tf-feature h3,
+.tf-poll h3,
+.tf-history h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+.tf-feature p {
+  margin: 0;
+}
+.tf-feature-message {
+  font-size: 13px;
+  color: var(--muted);
+}
+.tf-scope {
+  font-size: 12px;
+  color: var(--faint);
+}
+.tf-scope code {
+  color: var(--muted);
+}
+.panel-card .tf-switch {
+  align-items: center;
+  font-size: 13px;
+}
+.tf-live {
+  margin-left: 4px;
+  color: var(--good);
+}
+.tf-tab {
+  display: grid;
+  gap: 14px;
+  padding-top: 14px;
+}
+.tf-fields {
+  display: grid;
+  gap: 12px;
+}
+.tf-fields fieldset {
+  display: grid;
+  gap: 12px;
+}
+.tf-label-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tf-counter {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--faint);
+}
+.tf-counter[data-over] {
+  color: var(--bad);
+  font-weight: 700;
+}
+.tf-choices {
+  display: grid;
+  gap: 10px;
+}
+.tf-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+}
+.tf-add {
+  justify-self: start;
+}
+.tf-duration select {
+  max-width: 200px;
+}
+.tf-color {
+  display: grid;
+  gap: 6px;
+}
+.tf-group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tf-color .segmented {
+  justify-self: start;
+  flex-wrap: wrap;
+}
+.tf-poll {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.tf-bars {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tf-bar-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+.tf-bar-label span {
+  color: var(--muted);
+}
+.tf-bar {
+  display: block;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+/* Transform-only growth: no layout work while results refresh. */
+.tf-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--codex);
+  transform-origin: left center;
+  transition: transform 0.4s ease;
+}
+.tf-bars li[data-leading] .tf-bar > span {
+  background: var(--accent);
+}
+.tf-howto {
+  font-size: 13px;
+  color: var(--muted);
+}
+.tf-howto summary {
+  cursor: pointer;
+  font-weight: 650;
+  color: var(--text);
+}
+.tf-howto ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+.tf-history ol {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tf-history li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  font-size: 13px;
+}
+.tf-history-message {
+  color: var(--muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tf-bar > span {
+    transition: none;
+  }
+}

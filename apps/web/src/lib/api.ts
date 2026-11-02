@@ -120,6 +120,26 @@ const previewSchema = z.object({
               .object({ asset: z.enum(['tomato', 'star', 'heart']), x: z.number().min(0).max(1) })
               .passthrough(),
           ),
+          actions: z
+            .array(
+              z.discriminatedUnion('kind', [
+                z.object({
+                  kind: z.literal('poll.start'),
+                  title: z.string().max(60),
+                  choices: z.array(z.string().max(25)).max(5),
+                  durationSeconds: z.number(),
+                }),
+                z.object({ kind: z.literal('poll.end') }),
+                z.object({
+                  kind: z.literal('announce'),
+                  message: z.string().max(500),
+                  color: z.string(),
+                }),
+                z.object({ kind: z.literal('shoutout'), login: z.string().max(25) }),
+              ]),
+            )
+            .max(2)
+            .optional(),
         })
         .passthrough(),
     )
@@ -507,6 +527,12 @@ export const api = {
     request('POST', `/api/automations/${id}/${action}`, resetSession ? { resetSession: true } : {}),
   resetSession: (id: string) =>
     request('POST', `/api/automations/${id}/session/reset`, { confirm: true }),
+  cancelTimer: (automationId: string, name: string) =>
+    request<{ cancelled: number }>(
+      'POST',
+      `/api/automations/${automationId}/timers/${encodeURIComponent(name)}/cancel`,
+      {},
+    ),
   auditSession: async (id: string): Promise<SessionAudit> =>
     auditSchema.parse(await request('POST', `/api/automations/${id}/session/audit`, {}))
       .audit as SessionAudit,

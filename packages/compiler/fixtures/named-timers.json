@@ -1,0 +1,632 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/12",
+    "note": "Deterministic named-timer template responses recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "intent": "Every 10 minutes show a hydration reminder on the overlay.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  if (event.source === 'timer.fired') {\n    for (let i = 0; i < 3; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: 0.3 + i * 0.2 });\n    return;\n  }\n  await riff.timer.start('hydration', 600000, { repeat: true });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay", "timer"],
+          "trigger": {
+            "command": "!hydration",
+            "audience": ["broadcaster", "moderator"],
+            "maxPerViewer": 3,
+            "windowMs": 60000
+          },
+          "limits": {
+            "effectsPerEvent": 3,
+            "effectsPerMinute": 30
+          }
+        },
+        "tests": [
+          {
+            "name": "!hydration schedules stars every 10 min",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "start",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "before",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 599999,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              },
+              {
+                "id": "due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 600000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 1,
+                  "effects": 3
+                },
+                "session": null
+              },
+              {
+                "id": "again",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 1200000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 1,
+                  "effects": 3
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Starting again restarts the countdown instead of adding a second timer",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "restart",
+                "viewer": "dana",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 300000,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "old-due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 600000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              },
+              {
+                "id": "new-due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 900000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 1,
+                  "effects": 3
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Start 4 within the window is blocked",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 3,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat never starts a timer",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "chat",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "suffix",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydrations",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "nothing",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 600001,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "A redelivered start is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!hydration",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Only broadcasters, moderators can start it",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "viewer",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "!hydration",
+                "at": 0,
+                "expect": "AUDIENCE",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "nofire",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 600000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone types !hydration, then every 10 min",
+          "what": "Three stars appear on your overlay",
+          "who": "Only broadcasters, moderators",
+          "howMuch": "Repeats until paused or cancelled; up to 3 starts per person in any 1 min"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Timers start from chat: !hydration starts (or restarts) the hydration timer.",
+          "Only you and your moderators can start it.",
+          "Each fire shows three stars; text reminders are not available on the overlay.",
+          "Typing the command again restarts the timer from zero.",
+          "Up to three starts per person a minute."
+        ],
+        "kind": "candidate",
+        "title": "Hydration Reminder",
+        "summary": "!hydration starts a host-owned hydration timer that shows stars every 10 min."
+      }
+    },
+    {
+      "intent": "After !start, show a countdown and celebrate in 60 seconds.",
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  if (event.source === 'timer.fired') {\n    for (let i = 0; i < 3; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'heart', x: 0.3 + i * 0.2 });\n    return;\n  }\n  await riff.timer.start('celebrate', 60000);\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay", "timer"],
+          "trigger": {
+            "command": "!start",
+            "audience": ["broadcaster", "moderator"],
+            "maxPerViewer": 3,
+            "windowMs": 60000
+          },
+          "limits": {
+            "effectsPerEvent": 3,
+            "effectsPerMinute": 30
+          }
+        },
+        "tests": [
+          {
+            "name": "!start schedules hearts once after 1 min",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "start",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "before",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 59999,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              },
+              {
+                "id": "due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 60000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 1,
+                  "effects": 3
+                },
+                "session": null
+              },
+              {
+                "id": "once",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 120000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Starting again restarts the countdown instead of adding a second timer",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "first",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "restart",
+                "viewer": "dana",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 30000,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "old-due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 60000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              },
+              {
+                "id": "new-due",
+                "viewer": "bob",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 90000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 1,
+                  "effects": 3
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Start 4 within the window is blocked",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 2,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 3,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Ordinary chat never starts a timer",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "chat",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "suffix",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!starts",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "nothing",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "hello chat",
+                "at": 60001,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "A redelivered start is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["broadcaster", "viewer"],
+                "text": "!start",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              }
+            ]
+          },
+          {
+            "name": "Only broadcasters, moderators can start it",
+            "kind": "role",
+            "steps": [
+              {
+                "id": "viewer",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "!start",
+                "at": 0,
+                "expect": "AUDIENCE",
+                "effects": 0,
+                "timers": null,
+                "session": null
+              },
+              {
+                "id": "nofire",
+                "viewer": "carol",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 60000,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "timers": {
+                  "fired": 0,
+                  "effects": 0
+                },
+                "session": null
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "Someone types !start, then 1 min later",
+          "what": "Three hearts celebrate on your overlay",
+          "who": "Only broadcasters, moderators",
+          "howMuch": "Fires once; up to 3 starts per person in any 1 min"
+        },
+        "assumptions": [
+          "Offline template compiler; no model call.",
+          "Only you and your moderators can start it.",
+          "Each fire shows three hearts; text reminders are not available on the overlay.",
+          "The countdown is shown in your console timers list.",
+          "Typing the command again restarts the timer from zero.",
+          "Up to three starts per person a minute."
+        ],
+        "kind": "candidate",
+        "title": "Countdown Celebration",
+        "summary": "!start starts a host-owned celebrate timer that shows hearts once after 1 min."
+      }
+    }
+  ]
+}

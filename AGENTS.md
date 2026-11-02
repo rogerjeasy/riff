@@ -172,7 +172,8 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
 
 ### 2.4 The Twitch boundary (`packages/twitch`)
 
-- `helix.ts` is the only place that builds Helix requests. Every response is parsed
+- `helix.ts` is the only place that builds Helix requests (endpoint modules under
+  `helix/` shape paths and bodies through its single transport). Every response is parsed
   with zod; unknown fields are allowed (`.passthrough()`), missing required fields fail.
 - Retries only on 429 and 5xx, with jittered backoff and the `Ratelimit-Reset`
   header respected; never retry 4xx. Mutations (send message, create poll) are never
@@ -395,13 +396,19 @@ signed HttpOnly, SameSite=Lax session cookie (Secure over HTTPS, 30 days, key de
 static files stay public. `POST /api/session/login` is rate-limited, and `?access=<token>` on
 any GET trades the dock link for a session. Unset, the console stays open for local use.
 Migrations run at server boot.
-Tables: `channels`, `channel_state`, `automations`, `versions`, `compile_runs`, `activity`,
-`experience_sessions`, `session_events`, `session_outbox`, `session_journal`,
-`admission_events`, `session_transitions`, `proposals`, `proposal_contributors`,
+Tables: `channels`, `channel_state`, `collaboration_connections`, `director_state`,
+`recipe_state`, `production_state`, `chat_authoring_state`, `participation_state`,
+`twitch_feature_state`, `automations`, `versions`, `compile_runs`, `activity`,
+`experience_sessions`, `session_events`, `admission_events`, `session_journal`,
+`session_outbox`, `session_transitions`, `proposals`, `proposal_contributors`,
 `proposal_history`, `proposal_grants`, `proposal_credit`, `proposal_receipts`,
 `proposal_ballots`, `proposal_ballot_options`, `proposal_votes`, `proposal_selections`,
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
-`rehearsal_regressions`, `scene_heads`, `scene_revisions`.
+`rehearsal_regressions`, `scene_heads`, `scene_revisions`, `collaboration_sessions`,
+`collaboration_receipts`, `timers`, `channel_point_rewards`,
+`channel_point_redemptions`, `prediction_requests`.
+Twitch event triggers (F19) add routes `GET /api/twitch/triggers` and the optional
+`/auth/twitch?triggers=<family,...>` consent query; no table.
 
 ---
 
@@ -500,7 +507,8 @@ Pause freezes remaining time. Panic first fences memory, then persists the chann
 flag independently of session pause writes. Explicit resume uses persisted panicAt
 to recover a pause if an individual session write failed. Canonical definition
 changes require a reviewed preserving transition or explicit reset consent; identical-definition
-edits preserve progress. Generalized multi-round tournaments remain future work.
+edits preserve progress. Brackets/tournaments remain future work; best-of-N matches are
+version 2 mechanics (below).
 
 Every committed round change (start, chat decision, pause, resume, deadline/recovery
 advance) appends a `session_journal` row with a digest of the resulting state in the
@@ -519,6 +527,25 @@ clears old clients but preserves authoritative projection cache for reconnection
 The shared HUD uses safe DOM text, respects reduced motion and clears on lost liveness.
 No new environment variables or dependencies were added.
 
+Experience definition version 2 (same SDK 0.4.0 bridge, additive) adds one declarative
+`mechanics` block — `match` (best of 2–9, 0–60 s break), team `health` (pools, damage,
+heal, elimination), distinct-viewer `burst` (sliding host-clocked window, points, shield,
+per-round limit, `burst` objective) and up to four score `milestones` (tier plus optional
+locked command). Bounds are `MECHANIC_LIMITS` in the SDK. `packages/sandbox/src/mechanics.ts`
+owns pure staging/validation; snapshots gain `mechanics` {round, wins, history, standings}
+and outcome `elimination`, and validation re-derives scores, resource ledgers, tiers, wins
+and outcomes from the definition. New decision codes: `ELIMINATED`, `LOCKED`,
+`HEALTH_FULL`, `BURST_COUNTED`, `BURST_ACTIVE`, `BURST_LIMIT`, `ROUND_INTERMISSION`.
+Version 1 definitions never carry the key, so their hashes and artifact identities are
+unchanged; strict model output sends `mechanics:null`, which the compiler contract strips.
+`mechanics-suite.ts` is the independent host suite (hand-derived expectations); rehearsal
+adds `burst`, `elimination`, `match` and `unlock` presets (`mechanicPresetsFor`). Any
+mechanics change except labels or a longer break is reset-required. Prompt pack
+`riff-compiler/7` documents the primitives and adds Shield Wall/Castle Siege examples;
+`fixtures/stateful-mechanics.json` records the four offline intents. No tables,
+routes, env vars, dependencies or bridge capabilities were added. Collaboration still
+accepts only version 1 teamless cooperative rounds; participation copy shows
+elimination as a finished round.
 
 F32 adds tenant-scoped `session_transitions`: immutable migration source, host-computed
 plan and evidence identities, source session/version/revision, and durable review,
@@ -829,9 +856,13 @@ confirmation enables the scoped live overlay. Rollback checks unchanged settings
 only removes a newly created scene item. Reconnect fences apply/confirm (new connection
 identity) but keeps an applied setup's sealed snapshot, so rollback and re-review still
 work. Reviewing or importing mappings only stages a draft; approval replaces live
-mappings and consumes the review; `/mappings/discard` drops it. Native external
-scripts/configuration migration is unsupported; strict `riff-production` imports stage
-an inspectable mapping diff. No adapter access is granted to generated code or previews.
+mappings and consumes the review; `/mappings/discard` drops it. Strict `riff-production`
+imports stage an inspectable mapping diff. A local-network Firebot v5 connector (preset
+lists/variables only; inbound events need a creator key, never stored) uses the same
+per-tool mapping and loop rules. `/import/preview` and `/import/drafts` read Streamer.bot,
+Firebot setup and OBS scene-collection exports as bounded data: scripts/code are listed for
+review and never run, and recognised items become composer intents or staged bridge
+reviews, idempotent by item id. No adapter access is granted to generated code or previews.
 Panic fences authority before cleanup; durable causal receipts, bounded queues and
 finished-round claims prevent replay/loops. See the production service README for limits.
 
@@ -847,3 +878,249 @@ it sends no Twitch chat and changes no gameplay permissions. Motion/contrast/tex
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## Voice entry and aggregate insights — F09/F30
+
+`services/voice` adds push-to-talk authoring. `GET /api/voice` reports the provider;
+`POST /api/voice/transcribe` takes a raw `audio/webm|mp4|mpeg|wav` body (2 MiB route limit,
+≤60 s by the `x-riff-audio-duration-ms` header) behind the existing mutation guard, one at a
+time and six per minute. The injected transport is OpenAI file transcription
+(`/v1/audio/transcriptions`, `file` + `model`, verified against the speech-to-text guide on
+November 1, 2026) over native `fetch`, or a deterministic `mock`. Env: `RIFF_TRANSCRIPTION_MODE`
+(`off`|`mock`|`openai`; empty → `openai` when `OPENAI_API_KEY` is set), `OPENAI_API_KEY`,
+`RIFF_TRANSCRIPTION_MODEL` (default `gpt-transcribe`). Audio is never persisted or logged;
+transcripts are sanitized and capped at 1,200 characters and land in an editable review
+field that never auto-submits. Without a provider the console uses the browser Web Speech
+API where available, else shows "Voice unavailable — type instead".
+
+`services/insights` computes tenant-scoped aggregates for `GET /api/insights?range=stream|24h|7d`
+from existing tables (`activity`, `session_journal`, `compile_runs`, proposal tables): no
+new table or migration. Groups of 1–2 people are suppressed; no viewer identity, per-viewer
+list, leaderboard or spending ranking is produced. The console Insights card shows KPI
+tiles, a keyboard-readable SVG participation chart with a data table, blocked reasons, a
+per-interaction table and plain-language takeaways. No new dependency.
+
+## In-chat authoring and owner chat approval — F10/F17
+
+`services/chat-authoring` (contract in its README) adds opt-in, broadcaster-only
+`!riff create|edit|approve|reject|status|cancel` and the `!approve` alias, handled by a
+runtime `onAuthorChat` hook after panic and before help/proposals. Owner = EventSub
+`broadcaster` badge plus `chatter_user_id === broadcaster_user_id` on a local message;
+names, text and other badges never authorize. Chat intent (control/bidi stripped,
+8–500 code points) goes through the same `authoring.start`, compiler queue and verifier as
+the console. Viewers and moderators never spend budget; chat compiles are limited to one
+pending and 3 per rolling 15 minutes per channel.
+
+A verified candidate that the console could approve without extra consent (no blockers,
+wider authority, live round-rule change or removed lineage) gets a 5-character code from
+an unambiguous alphabet, valid 5 minutes, bound to version, artifact and expected active
+version. Approval consumes it durably first, rechecks the binding and calls
+`studio.approve`. Reuse, expiry, wrong (5 per 10 minutes, then locked), stale and
+non-owner attempts are rejected with a reason in activity. Panic, disabling and console
+revoke invalidate codes memory-first and cancel the pending compile.
+
+Migration 0015 adds channel-scoped `chat_authoring_state`. Codes survive restart until
+expiry and are revalidated; persisted panic invalidates them on boot; an in-flight chat
+compile is cleared on boot with an activity entry. Private guarded routes:
+`GET /api/chat-authoring`, `POST /api/chat-authoring/settings` (`enabled`,
+`expectedRevision`), `POST /api/chat-authoring/codes/:id/revoke`.
+
+`packages/twitch` adds Helix Send Chat Message (`sendChatMessage`, no retries, 500-char
+cap, `for_source_only` omitted for user tokens) with a docs-sourced fixture, and
+`CHAT_WRITE_SCOPES = ['user:write:chat']`, requested at sign-in only while this feature is
+on. Replies are host-owned system text prefixed `Riff · `, budgeted to 10 per minute;
+generated code has no path to them. Without the scope the console shows a reconnect link.
+The console panel shows opt-in risk copy, the live code with countdown, revoke, budget and
+"From chat" provenance (also on the evidence card). No SDK, capability or env var changes.
+
+## Named timers — F18
+
+Capability `timer` (SDK 0.4.0, additive; artifact identities unchanged because
+`TIMER_LIMITS` is separate from `HOST_LIMITS`). `riff.timer.start(name, ms, {repeat?})`
+and `riff.timer.cancel(name)` return `Promise<void>`: the guest bridge only stages
+validated operations, applied after the handler succeeds and its admission is durable.
+Names match `^[a-z][a-z0-9_-]{0,31}$`, ms is 5 s–1 h, at most 10 distinct pending
+names per automation; violations fault (quarantine) like other bridge abuse. Starting
+an existing name replaces it from now; cancelling an unknown name is a no-op. Guests
+still have no `setTimeout`/`setInterval` (static analysis and the isolate refuse them).
+Timers are rejected inside stateful experiences, where round deadlines stay host-owned.
+
+Fires are the internal normalized source `timer.fired`, never a Twitch transport event:
+`{source, id, channelId, name, scheduledAt, firedAt, missed, at}` runs the SAME handler
+through the engine's identity/order/budget checks (no command, audience or viewer
+window) and the sandbox. A chat event that queues a timer call spends the viewer
+allowance like an emitted effect. Live fires record `admission_events` (viewer key
+`timer:<name>`) with the dedupe id `timer:<row id>:<scheduledAt>` before overlay
+delivery, so a crash between the decision and re-arming never fires twice.
+
+Migration 0016 adds channel-scoped `timers` (automation, owning version, name,
+interval, repeat, due time, creating event, fire count; unique per automation+name).
+The live runtime checks due rows on its existing 250 ms serialized tick. Restart
+policy, identical at boot and runtime: a fire up to 2 s late is on time; up to 30 s
+late it fires once with `missed: true`; beyond that it is skipped with a
+`TIMER_EXPIRED` activity record. Repeating timers re-arm on their original cadence
+(never a catch-up burst) before the handler runs, so the handler may still cancel them.
+Boot keeps only rows owned by the currently live version. Pause, panic (after the
+in-memory fence), version activation/rollback, quarantine and storage-failure pauses
+cancel timers with a `TIMER_CANCELLED` record; channel resume never recreates them.
+
+Preview, generated scenarios and rehearsal use `createVirtualTimers` on their own
+virtual clock and store (≤32 fires per advance), never the live scheduler. Scenario
+steps may assert `timers: {fired, effects}` for fires reached before the step;
+rehearsal frames carry `timers` and quick preview returns `timerFires`. Studio
+automation snapshots include `timers`; new guarded route
+`POST /api/automations/:id/timers/:name/cancel` (404 when already fired or cancelled).
+The console lists pending timers per live interaction with a local countdown, cadence
+and cancel control. There is no overlay countdown widget yet. Prompt pack
+`riff-compiler/7` documents the contract, and the offline compiler handles explicit
+"every N minutes"/"in N seconds" phrasing (`fixtures/named-timers.json`). A downstream
+test (`apps/server/test/capability-sync.test.ts`) asserts the d.ts, bridge and compiler
+validator expose the same capability set. No dependencies or env vars were added.
+
+## Channel Points and Predictions — F22
+
+Authority and outcomes are separate. SDK 0.4.0 manifests may set `trigger.kind:
+'points.redeem'` with `trigger.reward` (1–45 characters); audience must be `['viewer']`
+(redemptions carry no badges) and no experience is allowed. Chat never matches such a
+trigger and redemptions never match chat triggers (`matchesTrigger`; see "Unified trigger
+model" below). The `predictions`
+capability (`riff.predictions.propose`) is in CAPABILITIES, the QuickJS bridge and the
+manifest validator; it validates one proposal per event against documented Twitch bounds
+(title ≤45, 2–10 distinct outcomes ≤25, 30–1800 s) and returns it in the decision. Guest
+code can never open, lock, resolve or cancel a prediction or settle a redemption.
+
+`points.redeem` maps to `channel.channel_points_custom_reward_redemption.add` v1 (fixture
+copied from the doc example). Helix modules `helix/channel-points.ts` and
+`helix/predictions.ts` cover Create/Get/Update/Delete Custom Reward, Get/Update Redemption
+Status and Create/Get/End Prediction; creations pass `retryServerErrors:false`, and 403s
+explain that only the creating client may manage a reward and that Affiliate/Partner is
+required. Riff always creates rewards with `should_redemptions_skip_request_queue:false`
+so refunds stay possible.
+
+`services/channel-points` manages only rewards in `channel_point_rewards` (Riff-created),
+links one reward to one points interaction with an `auto` or `manual` policy, dedupes by
+redemption id in `channel_point_redemptions`, routes through `runtime.handleRedemption`
+(the same durable admission, allowance and budgets as chat) and then fulfils accepted
+redemptions or refunds refused ones; unlinked, paused, not-live or panicked redemptions are
+refunded. `services/predictions` stores automation proposals in `prediction_requests`
+(5 pending, 10-minute expiry), opens them only on a creator request, enforces one
+prediction at a time and settles only via `POST /api/predictions/end` with `confirm:true`
+and an outcome id of the current prediction. Panic pauses Riff rewards, refunds the queue,
+dismisses proposals and locks an active prediction (the creator still decides the outcome).
+
+Feature consent is incremental: `/auth/twitch?features=channel-points,predictions` adds
+`channel:manage:redemptions` / `channel:manage:predictions` to the granted scopes; the
+redemption EventSub subscription is created only when that scope is present. Eligibility
+comes from Get Users `broadcaster_type`. Private guarded routes: GET `/api/channel-points`,
+POST `/api/channel-points/{refresh,rewards}`, `/rewards/:id`, `/rewards/:id/delete`
+(`confirm:true`), `/rewards/:id/link`, `/redemptions/:id`; GET `/api/predictions`, POST
+`/api/predictions`, `/refresh`, `/proposals/:id/{open,dismiss}`, `/end`. Prompt pack
+`riff-compiler/7` and the offline compiler support redemption and proposal intents and refuse
+model- or chat-decided settlement. No new dependency or environment variable.
+
+## Native Twitch polls, announcements and shoutouts — F21/F23
+
+SDK 0.4.0 additively adds capabilities `polls` (`riff.polls.start/end`), `chat.announce`
+(`riff.chat.announce`) and `shoutout` (`riff.shoutout.send`); existing 0.4.0/0.3.0
+artifacts keep identity. They stage `TwitchAction`s on `ExecutionDecision.actions`
+(present only when non-empty), each counting as an effect for effectsPerEvent,
+effectsPerMinute and viewer allowances; at most 2 per event, one poll call and one
+shoutout. The bridge validates bounds (Twitch: question ≤ 60, 2–5 unique choices ≤ 25,
+15–1800 s; announcement ≤ 500 without control characters; login `^[a-z0-9_]{1,25}$`) and
+faults on undeclared capabilities. Manifests with `polls`/`shoutout` must restrict audience
+to moderator/broadcaster. Constants live in `packages/sdk/src/twitch-actions.ts`.
+
+`packages/twitch/src/helix.ts` adds Create/Get/End Poll, Send Chat Announcement and Send
+a Shoutout with doc-sourced fixtures, endpoint-specific `reason`s and no mutation retry
+(Create Poll resolves ambiguous failures with a Get Polls idempotency read; 429s are
+cooldowns). `TWITCH_FEATURE_SCOPES` names one scope per feature; `/auth/twitch?feature=`
+requests it on top of existing grants. `services/twitch-features` owns the channel-scoped
+`twitch_feature_state` row (migration 0018): in-Riff toggles, Affiliate/Partner
+eligibility (Get Users `broadcaster_type`), shoutout policy (off, approved list resolved to
+ids, or raiders in the last hour), active poll, durable budgets/cooldowns and history.
+Order: consent/eligibility → channel budget (6 announcements/min, 12 polls/h, 10
+shoutouts/h) → Twitch hard caps (one poll, 2 s announcement interval, 2 min/60 min
+shoutout cooldowns) → one Helix call; refusals are typed `RiffError`s. A budget overrun by
+an automation pauses it and records an incident. Automations may end only polls they
+started. The live runtime queues actions from unfenced live decisions only; previews and
+rehearsals never reach the service. Panic fences queued actions, then ends Riff's poll.
+
+Private guarded routes: GET `/api/twitch/features`; POST `/api/twitch/features/toggle`,
+`/api/twitch/features/eligibility`, `/api/twitch/polls`, `/api/twitch/polls/end`,
+`/api/twitch/announcements`, `/api/twitch/shoutouts`, `/api/twitch/shoutouts/policy`.
+The console **Twitch features** panel shows per-feature grants, eligibility, live poll
+results and manual actions. Prompt pack `riff-compiler/7` (merged as `riff-compiler/10`); offline fixture
+`packages/compiler/fixtures/twitch-actions.json`. The "raiders only" policy is fed by
+`recordRaid`, called from the normalized `channel.raid` path (F19); while that policy is
+selected the connection subscribes to raids even with no raid interaction live. There is
+no overlay poll card (Twitch shows polls natively). One `// UNVERIFIED:` marker: the 403
+response for polls on non-Affiliate channels is not documented.
+
+**Automatic raider shoutout (host-owned rule).** A manifest whose trigger is
+`twitch.event` with event kind `raid` may declare `shoutout` with audience `['viewer']`;
+every other event kind is rejected, and polls stay moderator/broadcaster-only. The guest
+calls `riff.shoutout.raider()` (no argument, in the d.ts, bridge and guide); the bridge
+stages `{kind:'shoutout.raider', raiderId}` with `raiderId` bound from the normalized
+raid event's acting broadcaster. Calling `raider()` outside a raid event, or
+`riff.shoutout.send()` from an event trigger, faults with a structured reason (incident).
+The live runtime passes the raid (`id`, `login`, `displayName`) as `context.raid`;
+`services/twitch-features` cross-checks `raiderId === context.raid.id`, requires the
+creator's `shoutout.autoRaid` consent (stored in `twitch_feature_state`, default false,
+cleared when the policy mode is `off`, set via `POST /api/twitch/shoutouts/policy`
+`{mode, logins, autoRaid?}`) and then applies the same scope, channel budget, 2 min/60 min
+cooldowns, panic fence and single Helix call as every shoutout. Previews and rehearsals
+show the staged action in the simulated sink and never reach the service. The console
+Twitch features panel has an explicit "Shout out raiders automatically" toggle.
+`event.minimum` sets a minimum raid size. Prompt pack `riff-compiler/12` documents the
+rule; the offline compiler turns "when we get raided, shout out the raider and show a
+welcome burst" into it (`fixtures/raid-shoutout.json`) and refuses shoutouts on other
+events.
+
+## Sub, gift, resub, cheer and raid triggers — F19
+
+`triggers.ts` maps the platform trigger names `subscribe`, `gift`, `resub`, `cheer` and
+`raid` to `channel.subscribe`, `channel.subscription.gift`,
+`channel.subscription.message`, `channel.cheer` and `channel.raid` (all v1; raids use
+`to_broadcaster_user_id`), each with a documentation fixture, condition fields, scopes
+(`channel:read:subscriptions`, `bits:read`, none for raids) and a consent family. The SDK
+`TWITCH_EVENT_KINDS` equal those names; a server test keeps them in sync.
+`normalizeTwitchEvent` validates payloads with zod, keeps anonymous gifts/cheers anonymous
+(`viewerId` `anonymous`), clamps amounts and sanitizes viewer text (§4).
+
+SDK 0.4.0 manifests may declare `trigger.kind: 'twitch.event'` with `trigger.event {kind,
+minimum}`; `trigger.command` must then equal the reserved non-chat token `@kind`, audience
+is `['viewer']` and experience is null. This is additive: chat artifacts keep their identity. Handlers read
+`event.twitch {kind, amount, tier, anonymous, gift}`. The engine admits platform events
+through the shared path (dedupe → kind/UNRELATED → `BELOW_MINIMUM` → per-viewer window →
+channel budget); chat interactions ignore platform events and rounds never receive them.
+`hostScenarios` derives an independent event suite. Strict compiler output requires
+nullable `trigger.event` and per-step `twitch`; prompt pack `riff-compiler/7` (merged as
+`riff-compiler/11`) documents the
+triggers and embeds `cheer-shower`/`raid-welcome` examples; the offline compiler handles
+event intents, stating projectile stand-ins for confetti or banners.
+
+The server subscribes to a family on the current EventSub session only while a live
+interaction uses it and the token carries its scope; Twitch-directed reconnects keep
+subscriptions, fresh sessions recreate them, and a revoked family is marked without
+stopping chat. `runtime.handleTwitchEvent` uses the chat queue, durable admission, budgets
+and panic fences, and never reaches reserved commands, proposals, help or shared sessions.
+Previews and rehearsal presets use labeled synthetic Twitch events, never EventSub
+transport messages. The console's Twitch event triggers panel shows availability, use,
+missing consent and subscription state with scoped consent links; the private stage adds a
+synthetic event simulator. Recipe adaptation of event triggers is not supported yet.
+
+### Unified trigger model
+
+The manifest trigger is ONE discriminated union on `trigger.kind` (SDK `ManifestTrigger`,
+sandbox `triggerSchema`, web `ManifestTrigger`): `chat.command` (the default when `kind`
+is omitted, so chat artifacts keep byte-identical identity), `points.redeem` (requires
+`reward`, `event` null/absent) and `twitch.event` (requires `event {kind, minimum}`,
+`reward` null/absent, `command` the reserved `@kind`). Any other combination fails to parse
+with a field-specific message; event-side inputs (`ChatEvent`, scenario steps) may not
+carry both a redemption `kind` and a `twitch` detail. `matchesTrigger` is the single
+routing rule: each kind admits only its own source, then `twitch.event` applies
+`BELOW_MINIMUM`. Server consumers (`eventTriggers`, instructions, participation copy,
+version diffs) and the web branch on `kind`, never on the presence of `event`. Prompt pack
+`riff-compiler/12` documents it in one TASK_RULES section. `/auth/twitch` accepts `?features=`
+(Channel Points/Predictions), `?feature=` (polls/announcements/shoutouts) and
+`?triggers=` (event families) together and always keeps granted scopes.

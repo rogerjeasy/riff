@@ -2,7 +2,7 @@ import { TransitionReview } from './transition-review.js';
 import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
-import { CODE_LABEL, shortHash } from '../format.js';
+import { CODE_LABEL, shortHash, triggerSummary } from '../format.js';
 import type { RegressionEvidence } from '../rehearsal/contracts.js';
 import { describeCheck } from '../rehearsal/labels.js';
 
@@ -21,6 +21,8 @@ interface EvidenceProps {
   onApprove: (version: Version, resetSession?: boolean) => Promise<void>;
   onDiscard: (version: Version) => Promise<void>;
   previewed: boolean;
+  /** Requested with `!riff create|edit` from the broadcaster's chat. */
+  fromChat?: boolean;
   onTransitioned?: ((message: string) => Promise<void>) | undefined;
 }
 
@@ -80,6 +82,11 @@ function EvidenceCard(props: EvidenceProps) {
           </p>
           <h2 id="evidence-heading">
             {version.title} <span className="version-tag">v{version.number}</span>
+            {props.fromChat && (
+              <span className="badge chat-badge" title="Requested with !riff from your chat">
+                From chat
+              </span>
+            )}
           </h2>
         </div>
         <span className={`pill ${verification.ok ? 'good' : 'bad'}`}>
@@ -92,7 +99,7 @@ function EvidenceCard(props: EvidenceProps) {
       <dl className="facts" aria-label="What this version does">
         <div>
           <dt>When it runs</dt>
-          <dd>{version.behavior.when || `Someone types ${version.manifest.trigger.command}`}</dd>
+          <dd>{version.behavior.when || triggerSummary(version.manifest)}</dd>
         </div>
         <div>
           <dt>What it does</dt>

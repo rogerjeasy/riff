@@ -16,3 +16,7 @@ F39 production and F40 participation exports are host/UI contracts only: connect
 reviews, named mappings, public guidance and presentation settings. They add no guest
 capabilities. Recipe presentation/profile metadata optionally carries high contrast and
 effect labels alongside language/reduced motion; omitted fields preserve legacy editions.
+
+F18 adds the guest capability `timer` to SDK 0.4.0 (`TIMER_LIMITS`, `TimerEvent`,
+`TimerOp`, scenario `timers` assertions). The policy constants are kept outside
+`HOST_LIMITS` so existing artifact identities do not change.

@@ -12,6 +12,8 @@ export function createLoggerOptions(level: string): FastifyServerOptions['logger
         'refresh_token',
         'client_secret',
         'password',
+        'apiKey',
+        'api_key',
       ],
       censor: '[redacted]',
     },

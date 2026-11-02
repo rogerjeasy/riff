@@ -106,6 +106,34 @@
       "when": 1793560624935,
       "tag": "0014_production_participation",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1793568926824,
+      "tag": "0015_chat_authoring",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1793571086086,
+      "tag": "0016_named_timers",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793571755975,
+      "tag": "0017_channel_points_predictions",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793572564420,
+      "tag": "0018_twitch_features",
+      "breakpoints": true
     }
   ]
 }

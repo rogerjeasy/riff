@@ -265,7 +265,7 @@ export function sessionRepository(connection: DatabaseConnection, channelId: str
               viewerId: input.event.viewerId,
               at: input.event.at,
               code: input.decision.code,
-              effects: input.decision.effects.length,
+              effects: input.decision.effects.length + (input.decision.actions?.length ?? 0),
             })
             .run();
           db.insert(sessionEvents)

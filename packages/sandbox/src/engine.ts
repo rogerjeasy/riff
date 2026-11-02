@@ -3,17 +3,32 @@ import { Worker } from 'node:worker_threads';
 import {
   EFFECT_LIMITS,
   HOST_LIMITS,
+  PREDICTION_LIMITS,
+  type PredictionProposal,
   type AllowanceSnapshot,
   type DecisionCode,
   type ExecutionDecision,
   type ExecutionMode,
   type ProjectileEffect,
+  type TwitchAction,
+  TWITCH_ACTION_LIMITS,
   type SessionSnapshot,
+  type TimerOp,
+  type ManifestTrigger,
+  type TwitchEventKind,
 } from '@riff/sdk';
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
 import { advanceSession, createSessionSnapshot, validateSessionSnapshot } from './session.js';
-import { artifactSchema, eventSchema, effectSchema } from './contract.js';
+import { mechanicsActionFor, stageMechanicsAction } from './mechanics.js';
+import {
+  actionSchema,
+  artifactSchema,
+  eventSchema,
+  effectSchema,
+  predictionProposalSchema,
+} from './contract.js';
+import { timerEventSchema, timerOpSchema, type TimerFireEvent } from './timers.js';
 
 export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   ACCEPTED: 'Accepted. The effect was staged.',
@@ -33,6 +48,14 @@ export const DECISION_MESSAGES: Record<DecisionCode, string> = {
   SESSION_FINISHED: 'This session has finished.',
   ALREADY_JOINED: 'This participant already joined; teams cannot be changed.',
   PARTICIPANT_LIMIT: 'The session participant limit has been reached.',
+  ELIMINATED: 'This team has been eliminated for the rest of the round.',
+  LOCKED: 'This command unlocks at a later milestone.',
+  HEALTH_FULL: 'Health is already full, so nothing was spent.',
+  BURST_COUNTED: 'This viewer already counts toward the current burst.',
+  BURST_ACTIVE: 'The burst effect is already active.',
+  BURST_LIMIT: 'The burst limit for this round has been reached.',
+  ROUND_INTERMISSION: 'The next round has not started yet.',
+  BELOW_MINIMUM: 'This Twitch event is below the minimum this interaction reacts to.',
 };
 const workerReply = z
   .object({
@@ -40,6 +63,9 @@ const workerReply = z
     id: z.number().int(),
     ok: z.boolean(),
     effects: z.array(effectSchema).max(EFFECT_LIMITS.perEvent),
+    timers: z.array(timerOpSchema).max(HOST_LIMITS.bridgeCallsPerEvent),
+    proposals: z.array(predictionProposalSchema).max(PREDICTION_LIMITS.proposalsPerEvent),
+    actions: z.array(actionSchema).max(TWITCH_ACTION_LIMITS.perEvent),
     cpuMicros: z.number().nonnegative(),
     fault: z.string().max(200).nullable(),
   })
@@ -78,6 +104,8 @@ export interface EngineOptions {
   effectBudget?: Pick<AdmissionState, 'effects'>;
   channelBudget?: ChannelBudget;
   onIncident?: (incident: Incident) => void;
+  /** Host-owned pending timer names for this automation (live store or virtual preview store). */
+  timers?: { active(): readonly string[] };
 }
 export type ExecutionEngine = ReturnType<typeof createEngine>;
 
@@ -91,6 +119,31 @@ export function artifactIdentity(candidate: unknown): string {
 /** Exact command match after trimming and lowercasing; no suffixes are accepted. */
 export function matchesCommand(text: string, command: string) {
   return text.trim().toLowerCase() === command.toLowerCase();
+}
+
+/**
+ * The single routing rule, keyed on `trigger.kind`: each kind admits only its own source.
+ * chat.command matches chat text only; points.redeem matches linked redemptions only;
+ * twitch.event matches its own Twitch event kind only (the minimum is checked after).
+ */
+export function matchesTrigger(
+  event: {
+    text: string;
+    kind?: 'points.redeem' | undefined;
+    twitch?: { kind: TwitchEventKind } | null | undefined;
+  },
+  trigger: ManifestTrigger,
+) {
+  switch (trigger.kind) {
+    case 'points.redeem':
+      return event.kind === 'points.redeem' && !event.twitch;
+    case 'twitch.event':
+      return event.kind === undefined && event.twitch?.kind === trigger.event.kind;
+    default:
+      return (
+        event.kind === undefined && !event.twitch && matchesCommand(event.text, trigger.command)
+      );
+  }
 }
 
 /** Create isolated host state. Example: const engine = createEngine(artifact, { seed: 42 }). */
@@ -128,10 +181,13 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code: DecisionCode,
     extra: {
       effects?: ProjectileEffect[];
+      proposals?: PredictionProposal[];
+      actions?: TwitchAction[];
       viewerId?: string;
       at?: number;
       allowance?: AllowanceSnapshot;
       reason?: string;
+      timers?: TimerOp[];
     } = {},
   ): ExecutionDecision => ({
     eventId: id,
@@ -139,10 +195,13 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     code,
     reason: extra.reason ?? DECISION_MESSAGES[code],
     effects: extra.effects ?? [],
+    ...(extra.proposals?.length ? { proposals: extra.proposals } : {}),
+    ...(extra.actions?.length ? { actions: extra.actions } : {}),
     mode,
     viewerId: extra.viewerId ?? null,
     at: extra.at ?? null,
     allowance: extra.allowance ?? null,
+    ...(extra.timers?.length ? { timers: extra.timers } : {}),
     ...(session ? { session: structuredClone(session) } : {}),
   });
 
@@ -177,7 +236,7 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     void current?.terminate();
   }
   async function execute(
-    event: z.infer<typeof eventSchema>,
+    event: z.infer<typeof eventSchema> | TimerFireEvent,
     eventSeed: number,
     snapshot: SessionSnapshot | null = null,
   ) {
@@ -216,7 +275,13 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       };
       current.on('message', onMessage);
       current.once('exit', onExit);
-      current.postMessage({ id, event, seed: eventSeed, session: snapshot });
+      current.postMessage({
+        id,
+        event,
+        seed: eventSeed,
+        session: snapshot,
+        timers: [...(options.timers?.active() ?? [])],
+      });
     });
   }
   function forget(at: number) {
@@ -250,7 +315,9 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     state.lastAt = event.at;
     state.seen.set(event.id, event.at);
     if (experience) return runSession(event);
-    if (!matchesCommand(event.text, trigger.command)) return decision(event.id, 'UNRELATED', base);
+    if (!matchesTrigger(event, trigger)) return decision(event.id, 'UNRELATED', base);
+    if (trigger.kind === 'twitch.event' && (event.twitch?.amount ?? 0) < trigger.event.minimum)
+      return decision(event.id, 'BELOW_MINIMUM', base);
     if (!event.roles.some((role) => trigger.audience.includes(role)))
       return decision(event.id, 'AUDIENCE', base);
     const history = (state.viewers.get(event.viewerId) ?? []).filter(
@@ -279,7 +346,9 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     const reply = await execute(event, eventSeed);
     if (stopped) return decision(event.id, 'STOPPED', base);
     if (reply) lastCpuMicros = reply.cpuMicros;
-    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+    // Staged native Twitch actions count as effects for every automation limit.
+    const outputs = reply ? reply.effects.length + reply.actions.length : 0;
+    if (!reply?.ok || outputs > limits.effectsPerEvent) {
       disabled = true;
       discardWorker();
       incident = {
@@ -292,20 +361,92 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
         reason: `${DECISION_MESSAGES.INCIDENT} Cause: ${incident.fault}.`,
       });
     }
-    if (reply.effects.length > remaining)
+    if (outputs > remaining)
       return decision(event.id, 'CHANNEL_LIMIT', {
         ...base,
         allowance: allowance(history, event.at),
       });
-    if (reply.effects.length) {
+    // Queued timer calls, prediction proposals and native Twitch actions are side effects
+    // too, so they spend the viewer allowance; effects and actions also spend the budget.
+    if (outputs || reply.timers.length || reply.proposals.length) {
       history.push(event.at);
-      state.effects.push(...reply.effects.map(() => event.at));
-      shared?.effects.push(...reply.effects.map(() => event.at));
+      for (let i = 0; i < outputs; i++) {
+        state.effects.push(event.at);
+        shared?.effects.push(event.at);
+      }
     }
     return decision(event.id, 'ACCEPTED', {
       ...base,
       effects: reply.effects,
+      proposals: reply.proposals,
+      actions: reply.actions,
       allowance: allowance(history, event.at),
+      timers: reply.timers,
+    });
+  }
+  /**
+   * Internal `timer.fired` delivery: identity, order and budget checks still apply, but
+   * there is no command, audience or viewer allowance because no viewer sent it.
+   */
+  async function runTimer(raw: unknown): Promise<ExecutionDecision> {
+    const parsed = timerEventSchema.safeParse(raw);
+    if (!parsed.success || experience || !artifact.manifest.capabilities.includes('timer')) {
+      const id = z.object({ id: z.string().max(100) }).safeParse(raw);
+      return decision(id.success ? id.data.id : '', 'INVALID_EVENT');
+    }
+    const event = parsed.data;
+    const base = { at: event.at };
+    if (stopped) return decision(event.id, 'STOPPED', base);
+    if (disabled) return decision(event.id, 'DISABLED', base);
+    if (state.channelId && state.channelId !== event.channelId)
+      return decision(event.id, 'INVALID_EVENT', base);
+    if (state.seen.has(event.id)) return decision(event.id, 'DUPLICATE', base);
+    if (event.at < state.lastAt) return decision(event.id, 'INVALID_EVENT', base);
+    forget(event.at);
+    if (mode === 'preview' && state.seen.size >= HOST_LIMITS.previewEvents)
+      return decision(event.id, 'CAPACITY', base);
+    // Only chat binds the engine to a transport channel; a fire after restart must not.
+    state.lastAt = event.at;
+    state.seen.set(event.id, event.at);
+    state.effects = state.effects.filter((at) => at > event.at - 60_000);
+    const shared = options.channelBudget;
+    if (shared) shared.effects = shared.effects.filter((at) => at > event.at - 60_000);
+    const remaining = Math.min(
+      limits.effectsPerMinute - state.effects.length,
+      shared ? shared.perMinute - shared.effects.length : Infinity,
+    );
+    if (remaining <= 0) return decision(event.id, 'CHANNEL_LIMIT', base);
+    const eventSeed =
+      createHash('sha256').update(`${seed}:${event.id}`).digest().readUInt32LE() || 1;
+    const reply = await execute(event, eventSeed);
+    if (stopped) return decision(event.id, 'STOPPED', base);
+    if (reply) lastCpuMicros = reply.cpuMicros;
+    // Native Twitch actions staged by a fire count as effects, exactly as for chat.
+    const outputs = reply ? reply.effects.length + reply.actions.length : 0;
+    if (!reply?.ok || outputs > limits.effectsPerEvent) {
+      disabled = true;
+      discardWorker();
+      incident = {
+        eventId: event.id,
+        fault: reply?.fault ?? 'Exceeded the wall-clock, startup or worker limits',
+      };
+      options.onIncident?.(incident);
+      return decision(event.id, 'INCIDENT', {
+        ...base,
+        reason: `${DECISION_MESSAGES.INCIDENT} Cause: ${incident.fault}.`,
+      });
+    }
+    if (outputs > remaining) return decision(event.id, 'CHANNEL_LIMIT', base);
+    for (let i = 0; i < outputs; i++) {
+      state.effects.push(event.at);
+      shared?.effects.push(event.at);
+    }
+    return decision(event.id, 'ACCEPTED', {
+      ...base,
+      effects: reply.effects,
+      actions: reply.actions,
+      timers: reply.timers,
+      reason: `Timer “${event.name}” fired${event.missed ? ' late (missed while Riff was unavailable)' : ''}.`,
     });
   }
   async function runSession(event: z.infer<typeof eventSchema>): Promise<ExecutionDecision> {
@@ -315,8 +456,44 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     // Clock transitions do not depend on guest execution; gameplay mutations do.
     const before = session;
     const staged = advanceSession(session, event.at, experience);
-    const team = experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
-    const contributes = matchesCommand(event.text, experience.contribution.command);
+    // Sessions are chat-only; a redemption or Twitch platform event never joins,
+    // contributes or acts.
+    if (experience.mechanics) {
+      const action =
+        event.kind || event.twitch
+          ? undefined
+          : mechanicsActionFor(experience, matchesCommand, event.text);
+      if (!action) {
+        session = staged;
+        return decision(event.id, 'UNRELATED', base);
+      }
+      if (!event.roles.some((role) => trigger.audience.includes(role))) {
+        session = staged;
+        return decision(event.id, 'AUDIENCE', base);
+      }
+      if (staged.phase !== 'running') {
+        session = staged;
+        return decision(
+          event.id,
+          staged.phase === 'paused' ? 'SESSION_PAUSED' : 'SESSION_FINISHED',
+          base,
+        );
+      }
+      const stage = stageMechanicsAction(experience, staged, event, action);
+      if (!stage.invoke) {
+        session = staged;
+        return decision(event.id, stage.code, base);
+      }
+      // Like contributions, staged gameplay commits only after the guest succeeds.
+      const actor = staged.participants[event.viewerId];
+      return runGuest(event, before, staged, actor?.contributions ?? 0, stage.reason);
+    }
+    const team =
+      event.kind || event.twitch
+        ? undefined
+        : experience.teams.find((t) => matchesCommand(event.text, t.joinCommand));
+    const contributes =
+      !event.kind && !event.twitch && matchesCommand(event.text, experience.contribution.command);
     if (!team && !contributes) {
       session = staged;
       return decision(event.id, 'UNRELATED', base);
@@ -385,12 +562,24 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       staged.winner = 'community';
       staged.outcome = 'goal';
     }
+    return runGuest(event, before, staged, participant.contributions);
+  }
+  async function runGuest(
+    event: z.infer<typeof eventSchema>,
+    before: SessionSnapshot,
+    staged: SessionSnapshot,
+    used: number,
+    acceptedReason?: string,
+  ): Promise<ExecutionDecision> {
+    if (!experience) throw new Error('Missing experience');
+    const base = { viewerId: event.viewerId, at: event.at };
     const eventSeed =
       createHash('sha256').update(`${seed}:${event.id}`).digest().readUInt32LE() || 1;
     const reply = await execute(event, eventSeed, staged);
     if (stopped) return decision(event.id, 'STOPPED', base);
     if (reply) lastCpuMicros = reply.cpuMicros;
-    if (!reply?.ok || reply.effects.length > limits.effectsPerEvent) {
+    const outputs = reply ? reply.effects.length + reply.actions.length : 0;
+    if (!reply?.ok || outputs > limits.effectsPerEvent) {
       session = before;
       disabled = true;
       discardWorker();
@@ -412,21 +601,28 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
       limits.effectsPerMinute - effectBudget.effects.length,
       shared ? shared.perMinute - shared.effects.length : Infinity,
     );
-    const effects = reply.effects.length <= remaining ? reply.effects : [];
-    effectBudget.effects.push(...effects.map(() => event.at));
-    shared?.effects.push(...effects.map(() => event.at));
+    const fits = outputs <= remaining;
+    const effects = fits ? reply.effects : [];
+    const actions = fits ? reply.actions : [];
+    for (let i = 0; i < effects.length + actions.length; i++) {
+      effectBudget.effects.push(event.at);
+      shared?.effects.push(event.at);
+    }
     return decision(event.id, 'ACCEPTED', {
       ...base,
       effects,
+      actions,
       allowance: {
-        used: participant.contributions,
+        used,
         max: experience.resource.perParticipant,
         windowMs: experience.durationMs,
         nextAt: null,
       },
-      ...(effects.length < reply.effects.length
+      ...(!fits && outputs
         ? { reason: 'Contribution accepted; visual effects suppressed by the channel budget.' }
-        : {}),
+        : acceptedReason
+          ? { reason: acceptedReason }
+          : {}),
     });
   }
   return {
@@ -452,6 +648,12 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     /** Serialize admission and run the guest. Example: await engine.dispatch(event). */
     dispatch(event: unknown): Promise<ExecutionDecision> {
       const next = queue.then(() => run(event));
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /** Serialize a host timer fire with chat. Example: await engine.dispatchTimer(fire). */
+    dispatchTimer(event: unknown): Promise<ExecutionDecision> {
+      const next = queue.then(() => runTimer(event));
       queue = next.catch(() => undefined);
       return next;
     },

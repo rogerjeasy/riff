@@ -85,6 +85,56 @@ Compatible rule edits use a reviewed migration; incompatible changes and startin
 new round require explicit full-reset consent. Prior event identities and cosmetic
 rate budgets remain protected.
 
+### Broader mechanics (definition version 2)
+
+Version 2 definitions add one declarative `mechanics` block; version 1 rules, hashes
+and snapshots are unchanged. All four primitives run in the host, are driven by the
+recorded event clock (so live play, rehearsal and journal replay agree) and have
+explicit rejection codes:
+
+- **Distinct-viewer burst** — _“Shield Wall: when 5 different viewers type `!shield`
+  within 10 seconds, the shield goes up.”_ A sliding per-side window counts each viewer
+  once (`BURST_COUNTED`); triggers can award points, raise a damage shield
+  (`BURST_ACTIVE`), win a `burst` objective, and are capped per round (`BURST_LIMIT`).
+- **Health and elimination** — teams share a pool; each contribution damages every
+  other standing team, a heal command restores it (`HEALTH_FULL` at max), and a team at
+  0 is eliminated (`ELIMINATED` for its players and late joiners). The last team
+  standing wins.
+- **Best-of-N matches** — each round resets resources, scores, pools and bursts while
+  keeping teams; the break rejects actions with `ROUND_INTERMISSION`; a majority of
+  round wins ends the match.
+- **Milestones** — score thresholds unlock an effect tier and an optional command that
+  is `LOCKED` until then.
+
+The independent host suite derives its expectations from the canonical definition by
+hand, rehearsal adds `burst`, `elimination`, `match` and `unlock` presets for matching
+rules, and the overlay scoreboard and console HUD show health meters, a burst meter
+with its window countdown, the round and break countdown, and unlocked tiers as
+accessible text. Any mechanics change other than labels or a longer break requires
+explicit reset. The offline compiler supports the four example intents in
+`packages/compiler/fixtures/stateful-mechanics.json`; inventories, trades, lives,
+cooldowns, tournaments and random scoring remain unsupported.
+
+## Named timers — F18
+
+Describe a delay or a cadence and Riff schedules it on the host:
+
+> Every 10 minutes show a hydration reminder on the overlay.
+>
+> After !start, show a countdown and celebrate in 60 seconds.
+
+Generated handlers call `riff.timer.start(name, ms, { repeat })` or
+`riff.timer.cancel(name)`; there is still no guest `setTimeout`. A chat command
+starts a timer, starting the same name again restarts its countdown, and the fire
+runs the same sandboxed handler with a `timer.fired` event under the normal effect
+budgets. Timers persist in SQLite and resume after a restart: a fire that fell due
+while Riff was down is delivered once (marked missed) if it is at most 30 seconds
+late, otherwise it is skipped and logged. Pause, emergency stop, a new version,
+rollback and incidents cancel pending timers; resuming never brings them back.
+The live panel lists pending timers with a countdown and a **Cancel** button.
+Previews, generated tests and rehearsals use a private virtual clock, and the
+rehearsal timeline shows each timer fire.
+
 ## Live evolution — F32
 
 Edit a running Tomato Battle with:
@@ -332,12 +382,63 @@ change an approved live layout.
    `http://localhost:8787/auth/twitch/callback`.
 2. Set `TWITCH_CLIENT_ID`, `TWITCH_CLIENT_SECRET` and `RIFF_SECRET`
    (`openssl rand -base64 32`) in `.env`, restart, and press **Connect Twitch**.
-   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest.
+   Riff asks only for `user:read:chat`; tokens are sealed with AES-256-GCM at rest. If you
+   turn on **Chat authoring**, the next sign-in also asks for `user:write:chat` so Riff can
+   post short system replies (approval codes, results) as you.
+
+   Channel Points and Predictions ask separately, from their console panels, for
+   `channel:manage:redemptions` and `channel:manage:predictions` (Affiliate/Partner only).
+
+   Native polls, chat announcements and shoutouts (F21/F23) each ask for their own scope
+   (`channel:manage:polls`, `moderator:manage:announcements`, `moderator:manage:shoutouts`)
+   only when you press **Grant on Twitch** in the console's **Twitch features** panel.
+   Polls need an Affiliate or Partner channel; shoutouts go only to channels your policy
+   approves. Automations request them through `riff.polls`, `riff.chat.announce` and
+   `riff.shoutout`; rehearsals simulate them and Stop everything ends Riff's poll.
+   "When we get raided, shout out the raider" works once you turn on **Shout out raiders
+   automatically** (off by default): a raid-triggered interaction can then shout out only
+   the channel that just raided, under the same Twitch cooldowns and channel budget.
+
+   Event-triggered interactions (F19) add consent only when you choose it in the
+   **Twitch event triggers** panel: `channel:read:subscriptions` for new subs, gifted
+   subs and resubs, `bits:read` for cheers; incoming raids need no extra scope. Riff
+   subscribes to an event family only while an approved live interaction uses it.
+
 3. Without a Twitch app you can still exercise the full live path with the
    [Twitch CLI mock EventSub server](https://dev.twitch.tv/docs/cli/websocket-event-command/):
    set `TWITCH_EVENTSUB_WS_URL` / `TWITCH_HELIX_URL` to the mock endpoints. The
    automated test `apps/server/test/twitch-live.test.ts` drives the same path with the
    documented EventSub protocol and fixtures.
+
+## In-chat authoring — F10/F17
+
+Off by default. Once you opt in from the **Chat authoring** card, your own broadcaster
+account can type `!riff create <idea>` (or `!riff edit <change>` for the one live
+interaction). Riff compiles and verifies it exactly like the console, shows the candidate
+with a **From chat** badge, and posts `Ready: approve with !riff approve K7Q3X (expires in
+5 min)`. `!riff approve <code>` (or `!approve` when one code is waiting) activates exactly
+that candidate; `!riff reject`, `!riff status` and `!riff cancel` round it out. Roles come
+only from Twitch badges and your account id; viewers and moderators cannot spend
+compiler budget. Changes that widen authority or alter a live round must still be
+approved in the console. Stop everything invalidates every code. See the
+[service contract](apps/server/src/services/chat-authoring/README.md).
+
+## Channel Points and Predictions — F22
+
+Describe “When someone redeems 'Hydrate', show a water splash.” The candidate uses a
+`points.redeem` trigger. In the **Channel Points** panel, allow access, create a Riff reward
+(Twitch only lets the app that created a reward manage it, so Riff never touches rewards
+from your dashboard) and link it to the interaction. Redemptions pass the same durable
+admission, per-viewer allowance and channel budget as chat; Riff then fulfils accepted ones
+and refunds refused ones, or queues accepted ones for you (“I review”). Stopping Riff pauses
+its rewards and refunds anything waiting.
+
+An interaction with the `predictions` capability can only **propose** a prediction
+(`!predict` → “Will we beat the boss?”). The **Predictions** panel shows proposals; only you
+open them, and only you resolve (pick the winner, then confirm), lock or cancel. Stopping
+Riff locks an open prediction. Rehearsal and generated tests use simulated redemptions and
+proposals with no Twitch call. `apps/server/test/channel-points.test.ts` exercises the full
+EventSub → admission → Helix path against documented fixtures.
 
 ## Deployment
 
@@ -424,3 +525,21 @@ coordinator sessions and 10,000 event receipts per session. Behavior changes req
 new agreement and new consent. Roles from another channel, raw participant snapshots,
 private prompts and Twitch credentials never become shared authority or public output.
 See [the collaboration contract](apps/server/src/services/collaboration/README.md).
+
+## Voice entry and insights — F09/F30
+
+**Voice.** In Describe, hold **Hold to talk** (or Space/Enter on it), or tap once to start
+and again to stop. A level meter and a timer show the 60-second cap. The transcript appears
+in an editable review box; choose **Use as description** or **Add to description**, then
+press Generate as usual. Typing always works. Set `OPENAI_API_KEY` (and optionally
+`RIFF_TRANSCRIPTION_MODEL`) to transcribe on the server, or `RIFF_TRANSCRIPTION_MODE=mock`
+for deterministic offline transcripts. Without either, browsers with speech recognition use
+it; others show “Voice unavailable — type instead”. Audio is never stored. See
+[the voice contract](apps/server/src/services/voice/README.md).
+
+**Insights.** The **Insights** card summarizes the last stream, 24 hours or 7 days: people
+taking part, admitted vs blocked actions over time, why actions were blocked, a
+per-interaction table, round outcomes, generation success/latency, incidents and proposal
+engagement, with suggestions such as “12 actions on Tomato Battle were blocked by the
+per-viewer limit — consider raising it…”. It is aggregate only: groups under three people are
+hidden and no one is ranked. See [the insights contract](apps/server/src/services/insights/README.md).

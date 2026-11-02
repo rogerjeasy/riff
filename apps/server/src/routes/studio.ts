@@ -4,7 +4,7 @@ import { communityProjection } from '../services/proposals/projection.js';
 import { proposalFailure } from './proposals.js';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { eventSchema } from '@riff/sandbox';
+import { eventSchema, timerNameSchema } from '@riff/sandbox';
 import { AuthoringError, type AuthoringService } from '../services/authoring/service.js';
 import { StudioError, type StudioService } from '../services/automations/studio.js';
 import type { PreviewService } from '../services/rehearsal/preview.js';
@@ -230,6 +230,15 @@ export function registerStudioRoutes(
         return fail(reply, error);
       }
     });
+  app.post('/api/automations/:id/timers/:name/cancel', async (request, reply) => {
+    const p = z.object({ id, name: timerNameSchema }).strict().safeParse(request.params);
+    if (!p.success) return reply.code(404).send({ code: 'NOT_FOUND', message: 'Unknown timer.' });
+    try {
+      return await studio.cancelTimer(p.data.id, p.data.name);
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
   app.post('/api/automations/:id/session/reset', async (request, reply) => {
     const p = params.safeParse(request.params);
     const body = z

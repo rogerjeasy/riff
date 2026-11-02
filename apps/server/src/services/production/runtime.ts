@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { ProductionState, ProductionKind, ProductionConnection } from '@riff/sdk';
+import type {
+  ProductionState,
+  ProductionKind,
+  ProductionBotKind,
+  ProductionConnection,
+} from '@riff/sdk';
 import type { DatabaseConnection } from '../../db/client.js';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import { productionRepository } from '../../db/repositories/production.js';
@@ -22,9 +27,19 @@ export interface ProductionDeps {
   now?: () => number;
   obsFactory?: (onClose: () => void) => ObsTransport;
   botFactory?: (event: (raw: unknown) => void, onClose: () => void) => BotTransport;
+  firebotFactory?: (event: (raw: unknown) => void, onClose: () => void) => BotTransport;
 }
 
-export const toolName: Record<ProductionKind, string> = { obs: 'OBS', streamerbot: 'Streamer.bot' };
+export const toolName: Record<ProductionKind, string> = {
+  obs: 'OBS',
+  streamerbot: 'Streamer.bot',
+  firebot: 'Firebot',
+};
+export const BOT_KINDS = ['streamerbot', 'firebot'] as const satisfies readonly ProductionBotKind[];
+export const KINDS = ['obs', ...BOT_KINDS] as const satisfies readonly ProductionKind[];
+/** Mappings from version 1 documents have no tool and belong to Streamer.bot. */
+export const toolOf = (mapping: { tool?: ProductionBotKind | undefined }): ProductionBotKind =>
+  mapping.tool ?? 'streamerbot';
 export const disconnected = (
   reason = 'Not connected. Connect explicitly to enable production access.',
 ): ProductionConnection => ({ status: 'disconnected', reason, url: null, scenes: [], actions: [] });
@@ -82,18 +97,29 @@ export function createRuntime(deps: ProductionDeps) {
     return sealer;
   };
 
-  const epochs = { global: 0, mapping: 0, connector: { obs: 0, streamerbot: 0 } };
+  const epochs = { global: 0, mapping: 0, connector: { obs: 0, streamerbot: 0, firebot: 0 } };
   const state = {
     closed: false,
-    busy: { obs: false, streamerbot: false } as Record<ProductionKind, boolean>,
+    busy: { obs: false, streamerbot: false, firebot: false } as Record<ProductionKind, boolean>,
     /** Random identity of each live connection; null while disconnected. */
-    session: { obs: null, streamerbot: null } as Record<ProductionKind, string | null>,
+    session: { obs: null, streamerbot: null, firebot: null } as Record<
+      ProductionKind,
+      string | null
+    >,
     obs: null as ObsTransport | null,
     bot: null as BotTransport | null,
+    firebot: null as BotTransport | null,
+  };
+  /** The live transport of one automation tool, or null. */
+  const botFor = (kind: ProductionBotKind) => (kind === 'firebot' ? state.firebot : state.bot);
+  const setBot = (kind: ProductionBotKind, client: BotTransport | null) => {
+    if (kind === 'firebot') state.firebot = client;
+    else state.bot = client;
   };
   const connections: Record<ProductionKind, ProductionConnection> = {
     obs: disconnected(),
     streamerbot: disconnected(),
+    firebot: disconnected(),
   };
   const recent: ProductionState['recent'] = [];
   const record = (code: string, message: string) => {
@@ -128,9 +154,10 @@ export function createRuntime(deps: ProductionDeps) {
   /** A changed connection never inherits that connector's unconfirmed authority. */
   function fenceGrants(kind: ProductionKind) {
     mutate((s) => {
-      if (kind === 'streamerbot') {
+      if (kind !== 'obs') {
+        // Reviews pin every bot connection; grants are revoked only for this tool.
         s.mappingReview = null;
-        s.mappings = [];
+        s.mappings = s.mappings.filter((m) => toolOf(m) !== kind);
       } else if (s.setup && !s.setup.expectedSealed) {
         // Nothing was written; the review has no rollback value.
         s.setup = null;
@@ -144,9 +171,9 @@ export function createRuntime(deps: ProductionDeps) {
   function revoke(kind: ProductionKind, connection: ProductionConnection) {
     epochs.connector[kind]++;
     state.session[kind] = null;
-    const target = kind === 'obs' ? state.obs : state.bot;
+    const target = kind === 'obs' ? state.obs : botFor(kind);
     if (kind === 'obs') state.obs = null;
-    else state.bot = null;
+    else setBot(kind, null);
     connections[kind] = connection;
     try {
       target?.disconnect();
@@ -216,14 +243,15 @@ export function createRuntime(deps: ProductionDeps) {
   /** Synchronous panic/close fence: memory authority first, cleanup best effort. */
   function stop(reason = 'Production access stopped. Resume Riff, then reconnect explicitly.') {
     epochs.global++;
-    for (const kind of ['obs', 'streamerbot'] as const) {
+    for (const kind of KINDS) {
       epochs.connector[kind]++;
       state.session[kind] = null;
       connections[kind] = disconnected(reason);
     }
-    const targets = [state.obs, state.bot];
+    const targets = [state.obs, state.bot, state.firebot];
     state.obs = null;
     state.bot = null;
+    state.firebot = null;
     for (const target of targets)
       try {
         target?.disconnect();
@@ -255,6 +283,8 @@ export function createRuntime(deps: ProductionDeps) {
     cipher,
     epochs,
     state,
+    botFor,
+    setBot,
     connections,
     record,
     assertRunning,

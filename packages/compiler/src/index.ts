@@ -16,6 +16,8 @@ export {
   type ManifestView,
 } from './intent.js';
 export { compileOffline, createOfflineTransport } from './offline.js';
+export { compileEventOffline } from './event-output.js';
+export { extractEventHints, type EventHints } from './event-hints.js';
 export { createCompileQueue, QUEUE_LIMITS, QueueFullError } from './queue.js';
 export {
   compile,
@@ -36,6 +38,11 @@ export type {
 export { buildPrompt, buildRepairPrompt, buildWorkspace, PROMPT_VERSION } from './workspace.js';
 
 export { PRESERVING_MIGRATION_SOURCE } from './experience-output.js';
+export {
+  extractExperienceHints,
+  type ExperienceHints,
+  type MechanicHints,
+} from './experience-hints.js';
 
 export {
   sceneSchema,

@@ -1,11 +1,39 @@
 import {
   PROJECTILE_ASSETS,
+  CHANNEL_POINTS_LIMITS,
   type AudienceRole,
   type ProjectileAsset,
   type ExperienceDefinition,
+  type EventTrigger,
+  type TriggerKind,
 } from '@riff/sdk';
 
-import { extractExperienceHints } from './experience-hints.js';
+import { extractExperienceHints, type MechanicHints } from './experience-hints.js';
+import { extractEventHints } from './event-hints.js';
+import { extractTimerHint, timerOfSource, type TimerHint } from './timer-hints.js';
+
+/** Normalized version 2 facts, comparable between creator text and canonical rules. */
+function statedMechanics(h: MechanicHints): string[] {
+  return [
+    ...(h.burst ? [`burst ${h.burst.participants} viewers / ${h.burst.windowMs / 1000} s`] : []),
+    ...(h.health ? [`health ${h.health.max}`] : []),
+    ...(h.health?.damage ? [`damage ${h.health.damage}`] : []),
+    ...(h.health?.heal ? [`heal ${h.health.heal.command} ${h.health.heal.amount}`] : []),
+    ...(h.match ? [`best of ${h.match.rounds}`] : []),
+    ...h.milestones.map((x) => `unlock at ${x.score}${x.command ? ` ${x.command}` : ''}`),
+  ];
+}
+function actualMechanics(d: ExperienceDefinition | null | undefined): string[] {
+  const m = d?.mechanics;
+  if (!m) return [];
+  return [
+    ...(m.burst ? [`burst ${m.burst.participants} viewers / ${m.burst.windowMs / 1000} s`] : []),
+    ...(m.health ? [`health ${m.health.max}`, `damage ${m.health.damage}`] : []),
+    ...(m.health?.heal ? [`heal ${m.health.heal.command} ${m.health.heal.amount}`] : []),
+    ...(m.match ? [`best of ${m.match.rounds}`] : []),
+    ...m.milestones.map((x) => `unlock at ${x.score}${x.unlock ? ` ${x.unlock.command}` : ''}`),
+  ];
+}
 
 /** Facts stated explicitly in the creator's words. Absent facts stay null. */
 export interface IntentHints {
@@ -24,7 +52,11 @@ export type IntentAspect =
   | 'duration'
   | 'teams'
   | 'resource'
-  | 'objective';
+  | 'objective'
+  | 'timer'
+  | 'reward'
+  | 'mechanics'
+  | 'event';
 export interface IntentCheck {
   aspect: IntentAspect;
   label: string;
@@ -128,7 +160,30 @@ export function extractIntentHints(intent: string): IntentHints {
 
 export interface ManifestView {
   experience?: ExperienceDefinition | null;
-  trigger: { command: string; audience: AudienceRole[]; maxPerViewer: number; windowMs: number };
+  capabilities?: readonly string[] | undefined;
+  trigger: {
+    command: string;
+    audience: AudienceRole[];
+    maxPerViewer: number;
+    windowMs: number;
+    kind?: TriggerKind | undefined;
+    reward?: string | null | undefined;
+    event?: EventTrigger | null | undefined;
+  };
+}
+
+/** The quoted Channel Points reward title after "redeem", if the creator named one. */
+export function rewardTitleOf(intent: string): string | null {
+  const named =
+    intent.match(
+      /\bredeem(?:s|ed|ing)?\s+(?:the\s+|a\s+|my\s+)?["“‘']([^"”’']{1,60})["”’']/i,
+    )?.[1] ??
+    intent.match(/["“‘']([^"”’']{1,60})["”’']\s+(?:reward|redemption)/i)?.[1] ??
+    null;
+  const title = named?.trim() ?? null;
+  return title && Array.from(title).length <= CHANNEL_POINTS_LIMITS.rewardTitleLength
+    ? title
+    : null;
 }
 export const describeWindow = (ms: number) =>
   ms % 3_600_000 === 0
@@ -138,6 +193,8 @@ export const describeWindow = (ms: number) =>
       : `${ms / 1000} s`;
 export const describeAudience = (roles: AudienceRole[]) =>
   roles.includes('viewer') ? 'everyone' : roles.map((role) => `${role}s`).join(', ');
+export const describeTimer = (timer: TimerHint) =>
+  `${timer.repeat ? 'every' : 'once after'} ${describeWindow(timer.ms)}`;
 const sameAudience = (stated: AudienceRole[], actual: AudienceRole[]) =>
   stated.includes('viewer')
     ? actual.includes('viewer')
@@ -165,6 +222,15 @@ export function checkIntent(
     hints.maxPerViewer = sessionHints.perParticipant;
     hints.windowMs = null;
   }
+  // "Every 10 minutes" or "in 60 seconds" names a host timer, never a rolling allowance.
+  const statedTimer = extractTimerHint(intent);
+  const actualTimer = timerOfSource(candidate.source);
+  const previousTimer = previous ? timerOfSource(previous.source) : null;
+  const timerRequest = !sessionRequest && (!!statedTimer || !!actualTimer || !!previousTimer);
+  if (timerRequest && statedTimer && hints.windowMs === statedTimer.ms) hints.windowMs = null;
+  // A duration stated for a prediction is its voting window, not the rolling allowance.
+  if (/\bpredictions?\b/i.test(intent) && candidate.manifest.capabilities?.includes('predictions'))
+    hints.windowMs = null;
   const t = candidate.manifest.trigger;
   const p = previous?.manifest.trigger;
   const assetOf = (source: string) =>
@@ -215,6 +281,31 @@ export function checkIntent(
       hints.asset ? hints.asset === actualAsset : true,
     ],
   ];
+  if (timerRequest)
+    rows.push([
+      'timer',
+      'Named timer',
+      statedTimer ? describeTimer(statedTimer) : null,
+      actualTimer ? describeTimer(actualTimer) : 'no timer',
+      previous ? (previousTimer ? describeTimer(previousTimer) : 'no timer') : null,
+      statedTimer
+        ? !!actualTimer &&
+          actualTimer.ms === statedTimer.ms &&
+          actualTimer.repeat === statedTimer.repeat
+        : true,
+    ]);
+  const statedReward = rewardTitleOf(intent);
+  if (statedReward || t.kind === 'points.redeem' || p?.kind === 'points.redeem')
+    rows.push([
+      'reward',
+      'Channel Points reward',
+      statedReward,
+      t.kind === 'points.redeem' ? (t.reward ?? '') : 'chat command',
+      p ? (p.kind === 'points.redeem' ? (p.reward ?? '') : 'chat command') : null,
+      statedReward
+        ? t.kind === 'points.redeem' && statedReward.toLowerCase() === t.reward?.toLowerCase()
+        : true,
+    ]);
   if (sessionRequest) {
     // Rolling windows are not gameplay resources; compare canonical session facts instead.
     rows.splice(
@@ -294,6 +385,44 @@ export function checkIntent(
           (sessionHints.target === null || sessionHints.target === experience.objective.target),
       ],
     );
+    const stated = statedMechanics(sessionHints.mechanics);
+    const actual = actualMechanics(experience);
+    if (stated.length || actual.length || sessionHints.mechanics.mentioned)
+      rows.push([
+        'mechanics',
+        'Health, bursts, rounds and unlocks',
+        stated.length || sessionHints.mechanics.mentioned ? stated.join('; ') || 'mentioned' : null,
+        actual.join('; ') || 'none',
+        oldExperience ? actualMechanics(oldExperience).join('; ') || 'none' : null,
+        stated.every((fact) => actual.includes(fact)) &&
+          (stated.length > 0 || !sessionHints.mechanics.mentioned || actual.length > 0),
+      ]);
+  }
+  // F19: the Twitch event family and threshold are explicit facts like a command.
+  const eventHints = extractEventHints(intent);
+  // trigger.kind is the single source of truth; an event field on another kind is ignored.
+  const eventOf = (trigger: ManifestView['trigger'] | undefined) =>
+    trigger?.kind === 'twitch.event' ? (trigger.event ?? null) : null;
+  const tEvent = eventOf(t);
+  const pEvent = eventOf(p);
+  if (eventHints || tEvent || pEvent) {
+    const eventText = (event: EventTrigger | null | undefined) =>
+      event ? `${event.kind} ≥ ${event.minimum}` : 'chat command';
+    const statedEvent = eventHints
+      ? eventHints.minimum === null
+        ? eventHints.kind
+        : `${eventHints.kind} ≥ ${eventHints.minimum}`
+      : null;
+    rows.push([
+      'event',
+      'Twitch event',
+      statedEvent,
+      eventText(tEvent),
+      p ? eventText(pEvent) : null,
+      !eventHints ||
+        (tEvent?.kind === eventHints.kind &&
+          (eventHints.minimum === null || eventHints.minimum === tEvent.minimum)),
+    ]);
   }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({
     aspect,

@@ -1,6 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { EVENT_TRIGGER_NAMES, type EventTriggerName } from '@riff/twitch';
 import type { TwitchConnection } from '../services/twitch/connection.js';
+
+// `?triggers=cheer,raid` asks for consent to extra event families (F19).
+const authorizeQuery = z
+  .object({
+    triggers: z
+      .string()
+      .max(200)
+      .optional()
+      .transform((value, ctx) => {
+        const names = (value ?? '').split(',').filter(Boolean);
+        for (const name of names)
+          if (!(EVENT_TRIGGER_NAMES as readonly string[]).includes(name)) {
+            ctx.addIssue({ code: 'custom', message: `Unknown trigger ${name}` });
+            return z.NEVER;
+          }
+        return [...new Set(names)] as EventTriggerName[];
+      }),
+  })
+  .strip();
 
 const escapeHtml = (value: string) =>
   value.replace(
@@ -12,7 +32,7 @@ export function registerTwitchRoutes(
   app: FastifyInstance,
   deps: { twitch: TwitchConnection; publicUrl: string },
 ) {
-  app.get('/auth/twitch', async (_request, reply) => {
+  app.get('/auth/twitch', async (request, reply) => {
     if (!deps.twitch.configured)
       return reply
         .code(503)
@@ -20,7 +40,43 @@ export function registerTwitchRoutes(
         .send(
           'Twitch is not configured. Set TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET and RIFF_SECRET.',
         );
-    return reply.redirect(deps.twitch.beginAuthorization());
+    // F19 event-family consent: ?triggers=cheer,raid (unknown families are refused).
+    const query = authorizeQuery.safeParse(request.query);
+    if (!query.success)
+      return reply
+        .code(400)
+        .type('text/plain')
+        .send('Unknown Twitch event family. Start again from the Riff console.');
+    // Native feature consent (F21/F23) is granted one feature at a time: ?feature=polls
+    const native = z
+      .object({ feature: z.enum(['polls', 'announcements', 'shoutouts']).optional() })
+      .safeParse(request.query);
+    if (!native.success)
+      return reply.code(400).type('text/plain').send('Unknown Twitch feature. Nothing changed.');
+    // Optional feature consent (F22): ?features=channel-points,predictions
+    const features = z
+      .object({
+        features: z
+          .string()
+          .max(64)
+          .transform((v) => v.split(',').filter(Boolean))
+          .pipe(z.array(z.enum(['channel-points', 'predictions'])).max(2))
+          .optional(),
+      })
+      .safeParse(request.query);
+    return reply.redirect(
+      deps.twitch.beginAuthorization(
+        [
+          ...(features.success ? (features.data.features ?? []) : []),
+          ...(native.data.feature ? [native.data.feature] : []),
+        ],
+        query.data.triggers,
+      ),
+    );
+  });
+  app.get('/api/twitch/triggers', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    return { configured: deps.twitch.configured, triggers: deps.twitch.triggers() };
   });
   app.get('/auth/twitch/callback', async (request, reply) => {
     const query = z

@@ -4,15 +4,20 @@ import {
   type AudienceRole,
   type Capability,
   type DecisionCode,
+  type ExecutionDecision,
   type PermissionManifest,
   type Scenario,
   type SessionSnapshot,
   type SessionAssertion,
+  type TimerAssertion,
+  type TwitchEventDetail,
 } from '@riff/sdk';
 import { artifactSchema, manifestSchema, scenariosSchema } from './contract.js';
 import { artifactIdentity, createEngine, matchesCommand } from './engine.js';
 import { createSessionSnapshot } from './session.js';
 import { instrumentHandler } from './instrument.js';
+import { createVirtualTimers } from './timers.js';
+import { mechanicsHostScenarios } from './mechanics-suite.js';
 
 export type StageId = 'manifest' | 'static' | 'compile' | 'generated' | 'host';
 export type StageStatus = 'passed' | 'failed' | 'skipped';
@@ -25,11 +30,17 @@ export interface Finding {
 export interface StepResult {
   session?: SessionSnapshot;
   expectSession?: SessionAssertion;
+  /** Timer fires delivered on the virtual clock before this step, and their effects. */
+  timers?: TimerAssertion;
+  expectTimers?: TimerAssertion;
   id: string;
   viewer: string;
   roles: AudienceRole[];
   text: string;
+  /** Synthetic Twitch event for event-trigger steps (F19). */
+  twitch?: TwitchEventDetail;
   at: number;
+  kind?: 'points.redeem';
   expect: DecisionCode;
   expectEffects: number | null;
   actual: DecisionCode;
@@ -72,8 +83,8 @@ const FORBIDDEN_IDENTIFIERS = new Map([
   ['fetch', 'Network access is not available'],
   ['XMLHttpRequest', 'Network access is not available'],
   ['WebSocket', 'Network access is not available'],
-  ['setTimeout', 'Timers are not available in this SDK version'],
-  ['setInterval', 'Timers are not available in this SDK version'],
+  ['setTimeout', 'Use riff.timer.start for a host-owned named timer'],
+  ['setInterval', 'Use riff.timer.start with { repeat: true } for a host-owned timer'],
   ['process', 'Host process access is not available'],
 ]);
 
@@ -121,8 +132,15 @@ export function analyzeSource(source: string, manifest: PermissionManifest) {
       add('error', 'small-literals', 'Regular expressions are limited to 200 characters', node);
     if (ts.isStringLiteralLike(node) && node.text.length > 500)
       add('error', 'small-literals', 'String literals are limited to 500 characters', node);
-    if (ts.isPropertyAccessExpression(node) && CAPABILITIES.includes(node.name.text as Capability))
-      used.add(node.name.text as Capability);
+    if (ts.isPropertyAccessExpression(node)) {
+      // Dotted capabilities (`chat.announce`) are matched on the full member chain.
+      const dotted = ts.isPropertyAccessExpression(node.expression)
+        ? `${node.expression.name.text}.${node.name.text}`
+        : null;
+      if (dotted && CAPABILITIES.includes(dotted as Capability)) used.add(dotted as Capability);
+      else if (CAPABILITIES.includes(node.name.text as Capability))
+        used.add(node.name.text as Capability);
+    }
     ts.forEachChild(node, visit);
   };
   visit(file);
@@ -140,6 +158,11 @@ export function analyzeSource(source: string, manifest: PermissionManifest) {
   return { findings, capabilitiesUsed: [...used] };
 }
 
+/** Effects plus staged native Twitch actions: what a scenario step's `effects` counts. */
+export function outputCount(decision: Pick<ExecutionDecision, 'effects' | 'actions'>): number {
+  return decision.effects.length + (decision.actions?.length ?? 0);
+}
+
 /** Run declarative scenarios through fresh preview engines, one engine per scenario. */
 export async function runScenarios(
   artifact: { source: string; manifest: PermissionManifest },
@@ -150,9 +173,12 @@ export async function runScenarios(
   const results: ScenarioResult[] = [];
   for (const scenario of scenarios) {
     const started = performance.now();
+    // Each scenario owns a fresh virtual timer store on the scenario clock.
+    const timers = createVirtualTimers('verification');
     const engine = createEngine(artifact, {
       seed,
       mode: 'preview',
+      timers,
       ...(artifact.manifest.experience
         ? { session: createSessionSnapshot(artifact.manifest.experience, 0) }
         : {}),
@@ -160,6 +186,11 @@ export async function runScenarios(
     const steps: StepResult[] = [];
     try {
       for (const step of scenario.steps) {
+        const advanced = await timers.advance(engine, step.at);
+        const fired = {
+          fired: advanced.fires.length,
+          effects: advanced.fires.reduce((sum, fire) => sum + fire.decision.effects.length, 0),
+        };
         const decision = await engine.dispatch({
           id: step.id,
           channelId: 'verification',
@@ -167,27 +198,36 @@ export async function runScenarios(
           roles: step.roles,
           text: step.text,
           at: step.at,
+          ...(step.kind ? { kind: step.kind } : {}),
+          ...(step.twitch ? { twitch: step.twitch } : {}),
         });
+        timers.apply(decision);
         const expectEffects = step.effects;
+        const timersMatch =
+          !step.timers ||
+          (step.timers.fired === fired.fired && step.timers.effects === fired.effects);
+        const actual = outputCount(decision);
         const passed =
+          timersMatch &&
           matchesSessionAssertion(decision.session, step.session) &&
           decision.code === step.expect &&
-          (expectEffects === -2 ||
-            (expectEffects < 0
-              ? decision.effects.length > 0
-              : decision.effects.length === expectEffects));
+          (expectEffects === -2 || (expectEffects < 0 ? actual > 0 : actual === expectEffects));
         steps.push({
           id: step.id,
           viewer: step.viewer,
           roles: step.roles,
           text: step.text,
+          ...(step.twitch ? { twitch: step.twitch } : {}),
           at: step.at,
+          ...(step.kind ? { kind: step.kind } : {}),
           expect: step.expect,
           expectEffects: expectEffects < 0 ? null : expectEffects,
           ...(decision.session ? { session: decision.session } : {}),
           ...(step.session ? { expectSession: step.session } : {}),
+          ...(fired.fired || step.timers ? { timers: fired } : {}),
+          ...(step.timers ? { expectTimers: step.timers } : {}),
           actual: decision.code,
-          actualEffects: decision.effects.length,
+          actualEffects: actual,
           passed,
         });
       }
@@ -212,11 +252,19 @@ export async function runScenarios(
  * internal session steps use -2 to check semantic state with any effect count.
  */
 export function hostScenarios(manifest: PermissionManifest): Scenario[] {
+  if (manifest.experience?.mechanics) return mechanicsHostScenarios(manifest);
   if (manifest.experience) return sessionHostScenarios(manifest);
+  if (manifest.trigger.kind === 'points.redeem') return redemptionHostScenarios(manifest);
+  if (manifest.trigger.kind === 'twitch.event') return eventHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
+  // Proposal-only handlers emit no overlay effect: assert admission, not effect count.
+  const produced = manifest.capabilities.includes('overlay') ? -1 : -2;
   const eligible: AudienceRole[] = audience.includes('viewer')
     ? ['viewer']
     : [audience[0] ?? 'broadcaster', 'viewer'];
+  // A timer interaction may only schedule on chat and show effects when the timer fires,
+  // so accepted chat steps assert admission with any effect count (-2).
+  const anyEffects = manifest.capabilities.includes('timer');
   const step = (
     id: string,
     viewer: string,
@@ -225,7 +273,7 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
     expect: DecisionCode,
     effects: number,
     roles = eligible,
-  ) => ({ id, viewer, roles, text, at, expect, effects });
+  ) => ({ id, viewer, roles, text, at, expect, effects: anyEffects && effects < 0 ? -2 : effects });
   const perEvent = manifest.limits.effectsPerEvent;
   const perMinute = manifest.limits.effectsPerMinute;
   // Only assert what the budget guarantees regardless of how many effects a call emits.
@@ -235,13 +283,13 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
     {
       name: `${command} from an eligible viewer produces an effect`,
       kind: 'happy',
-      steps: [step('h1', 'ada', command, 0, 'ACCEPTED', -1)],
+      steps: [step('h1', 'ada', command, 0, 'ACCEPTED', produced)],
     },
     {
       name: 'Surrounding spaces and capitals still match; suffixes do not',
       kind: 'negative',
       steps: [
-        step('h1', 'ada', `  ${command.toUpperCase()} `, 0, 'ACCEPTED', -1),
+        step('h1', 'ada', `  ${command.toUpperCase()} `, 0, 'ACCEPTED', produced),
         step('h2', 'ben', `${command}s`, 1, 'UNRELATED', 0),
         step('h3', 'ben', `hello ${command}`, 2, 'UNRELATED', 0),
         step('h4', 'ben', 'hello chat', 3, 'UNRELATED', 0),
@@ -251,17 +299,18 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
       name: 'A redelivered event never produces a second effect',
       kind: 'duplicate',
       steps: [
-        step('h1', 'ada', command, 0, 'ACCEPTED', -1),
+        step('h1', 'ada', command, 0, 'ACCEPTED', produced),
         step('h1', 'ada', command, 5, 'DUPLICATE', 0),
       ],
     },
   ];
   if (fitsBudget) {
     const steps = Array.from({ length: maxPerViewer }, (_, i) =>
-      step(`a${i}`, 'ada', command, i, 'ACCEPTED', -1),
+      step(`a${i}`, 'ada', command, i, 'ACCEPTED', produced),
     );
     steps.push(step('over', 'ada', command, maxPerViewer, 'VIEWER_LIMIT', 0));
-    if (otherFits) steps.push(step('other', 'ben', command, maxPerViewer + 1, 'ACCEPTED', -1));
+    if (otherFits)
+      steps.push(step('other', 'ben', command, maxPerViewer + 1, 'ACCEPTED', produced));
     scenarios.push({
       name: `Viewer allowance: ${maxPerViewer} accepted, next blocked${otherFits ? ', another viewer unaffected' : ''}`,
       kind: 'limit',
@@ -273,10 +322,10 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
         kind: 'window',
         steps: [
           ...Array.from({ length: maxPerViewer }, (_, i) =>
-            step(`w${i}`, 'ada', command, i, 'ACCEPTED', -1),
+            step(`w${i}`, 'ada', command, i, 'ACCEPTED', produced),
           ),
           step('wover', 'ada', command, windowMs - 1, 'VIEWER_LIMIT', 0),
-          step('wback', 'ada', command, Math.max(windowMs, 60_000), 'ACCEPTED', -1),
+          step('wback', 'ada', command, Math.max(windowMs, 60_000), 'ACCEPTED', produced),
         ],
       });
   }
@@ -286,9 +335,180 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
       kind: 'role',
       steps: [
         step('r1', 'cy', command, 0, 'AUDIENCE', 0, ['viewer']),
-        step('r2', 'ada', command, 1, 'ACCEPTED', -1),
+        step('r2', 'ada', command, 1, 'ACCEPTED', produced),
       ],
     });
+  return scenarios;
+}
+
+/** Host suite for Channel Points triggers: redemptions only, dedupe, allowance, chat ignored. */
+function redemptionHostScenarios(manifest: PermissionManifest): Scenario[] {
+  const { command, maxPerViewer, windowMs } = manifest.trigger;
+  const produced = manifest.capabilities.includes('overlay') ? -1 : -2;
+  const redeem = (
+    id: string,
+    viewer: string,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+  ) => ({
+    id,
+    viewer,
+    roles: ['viewer'] as AudienceRole[],
+    text: '',
+    at,
+    expect,
+    effects,
+    kind: 'points.redeem' as const,
+  });
+  const scenarios: Scenario[] = [
+    {
+      name: 'A linked redemption produces the effect',
+      kind: 'happy',
+      steps: [redeem('h1', 'ada', 0, 'ACCEPTED', produced)],
+    },
+    {
+      name: 'Chat never triggers a Channel Points interaction, even its handle',
+      kind: 'negative',
+      steps: [
+        {
+          id: 'c1',
+          viewer: 'ada',
+          roles: ['viewer'],
+          text: command,
+          at: 0,
+          expect: 'UNRELATED',
+          effects: 0,
+        },
+        {
+          id: 'c2',
+          viewer: 'ada',
+          roles: ['broadcaster'],
+          text: command,
+          at: 1,
+          expect: 'UNRELATED',
+          effects: 0,
+        },
+      ],
+    },
+    {
+      name: 'A redelivered redemption never produces a second effect',
+      kind: 'duplicate',
+      steps: [redeem('d1', 'ada', 0, 'ACCEPTED', produced), redeem('d1', 'ada', 5, 'DUPLICATE', 0)],
+    },
+  ];
+  const perEvent = manifest.limits.effectsPerEvent;
+  if (maxPerViewer * perEvent <= manifest.limits.effectsPerMinute && maxPerViewer <= 20) {
+    const steps = Array.from({ length: maxPerViewer }, (_, i) =>
+      redeem(`a${i}`, 'ada', i, 'ACCEPTED', produced),
+    );
+    steps.push(redeem('over', 'ada', maxPerViewer, 'VIEWER_LIMIT', 0));
+    scenarios.push({
+      name: `Viewer allowance: ${maxPerViewer} redemptions per ${windowMs} ms, the next is refused (and refunded by the host)`,
+      kind: 'limit',
+      steps,
+    });
+  }
+  return scenarios;
+}
+
+/** Synthetic Twitch event detail for host and offline scenarios. Example: syntheticTwitchEvent('cheer', 100). */
+export function syntheticTwitchEvent(
+  kind: TwitchEventDetail['kind'],
+  amount: number,
+  options: { anonymous?: boolean; gift?: boolean } = {},
+): TwitchEventDetail {
+  const subscription = kind === 'subscribe' || kind === 'gift' || kind === 'resub';
+  return {
+    kind,
+    amount: kind === 'subscribe' ? 1 : Math.max(1, Math.trunc(amount)),
+    tier: subscription ? '1000' : null,
+    anonymous: Boolean(options.anonymous) && (kind === 'gift' || kind === 'cheer'),
+    gift: Boolean(options.gift) && kind === 'subscribe',
+  };
+}
+
+/**
+ * Host suite for F19 event triggers: the matching event admits, chat and other kinds
+ * are unrelated, amounts below the minimum never run the handler, redeliveries are
+ * ignored and the per-viewer allowance holds for events too.
+ */
+function eventHostScenarios(manifest: PermissionManifest): Scenario[] {
+  if (manifest.trigger.kind !== 'twitch.event') return [];
+  const event = manifest.trigger.event;
+  const { maxPerViewer } = manifest.trigger;
+  const other = event.kind === 'raid' ? 'cheer' : 'raid';
+  const step = (
+    id: string,
+    viewer: string,
+    twitch: TwitchEventDetail | null,
+    at: number,
+    expect: DecisionCode,
+    effects: number,
+    text = '',
+  ): Scenario['steps'][number] => ({
+    id,
+    viewer,
+    roles: ['viewer'],
+    text,
+    at,
+    expect,
+    effects,
+    ...(twitch ? { twitch } : {}),
+  });
+  const hit = () => syntheticTwitchEvent(event.kind, event.minimum);
+  const perEvent = manifest.limits.effectsPerEvent;
+  const scenarios: Scenario[] = [
+    {
+      name: `A ${event.kind} at the minimum produces an effect`,
+      kind: 'happy',
+      steps: [step('e1', 'ada', hit(), 0, 'ACCEPTED', -1)],
+    },
+    {
+      name: 'Chat messages and other Twitch events do nothing',
+      kind: 'negative',
+      steps: [
+        step('n1', 'ben', null, 0, 'UNRELATED', 0, manifest.trigger.command),
+        step('n2', 'ben', null, 1, 'UNRELATED', 0, 'hello chat'),
+        step('n3', 'ben', syntheticTwitchEvent(other, 1_000), 2, 'UNRELATED', 0),
+      ],
+    },
+    {
+      name: 'A redelivered Twitch event never produces a second effect',
+      kind: 'duplicate',
+      steps: [
+        step('d1', 'ada', hit(), 0, 'ACCEPTED', -1),
+        step('d1', 'ada', hit(), 5, 'DUPLICATE', 0),
+      ],
+    },
+  ];
+  if (event.minimum > 1 && event.kind !== 'subscribe')
+    scenarios.push({
+      name: `Below ${event.minimum} does not run the handler`,
+      kind: 'limit',
+      steps: [
+        step(
+          'b1',
+          'ada',
+          syntheticTwitchEvent(event.kind, event.minimum - 1),
+          0,
+          'BELOW_MINIMUM',
+          0,
+        ),
+        step('b2', 'ada', hit(), 1, 'ACCEPTED', -1),
+      ],
+    });
+  if (maxPerViewer * perEvent <= manifest.limits.effectsPerMinute && maxPerViewer <= 20) {
+    const steps = Array.from({ length: maxPerViewer }, (_, i) =>
+      step(`a${i}`, 'ada', hit(), i, 'ACCEPTED', -1),
+    );
+    steps.push(step('over', 'ada', hit(), maxPerViewer, 'VIEWER_LIMIT', 0));
+    scenarios.push({
+      name: `Event allowance: ${maxPerViewer} per viewer, next blocked`,
+      kind: 'limit',
+      steps,
+    });
+  }
   return scenarios;
 }
 
@@ -304,6 +524,18 @@ export function matchesSessionAssertion(
     return false;
   for (const [key, score] of Object.entries(expected.scores ?? {}))
     if (!Object.hasOwn(actual.scores, key) || actual.scores[key] !== score) return false;
+  if (expected.round !== undefined && actual.mechanics?.round !== expected.round) return false;
+  if (expected.winner !== undefined && actual.winner !== expected.winner) return false;
+  for (const [key, wins] of Object.entries(expected.wins ?? {}))
+    if (!actual.mechanics || actual.mechanics.wins[key] !== wins) return false;
+  for (const [key, standing] of Object.entries(expected.standings ?? {})) {
+    const found = actual.mechanics?.standings[key];
+    if (!found || !Object.hasOwn(actual.mechanics?.standings ?? {}, key)) return false;
+    if (standing.health !== undefined && found.health !== standing.health) return false;
+    if (standing.eliminated !== undefined && found.eliminated !== standing.eliminated) return false;
+    if (standing.bursts !== undefined && found.bursts !== standing.bursts) return false;
+    if (standing.tier !== undefined && found.unlocked.length !== standing.tier) return false;
+  }
   for (const [key, participant] of Object.entries(expected.participants ?? {})) {
     if (!Object.hasOwn(actual.participants, key)) return false;
     const found = actual.participants[key];
@@ -510,8 +742,8 @@ function compactFailure(report: Omit<VerificationReport, 'failureReport'>) {
     lines.push(`Scenario "${result.name}" (${result.origin}) failed:`);
     for (const step of result.steps.filter((s) => !s.passed))
       lines.push(
-        `  step ${step.id} ${step.viewer} "${step.text}" @${step.at}ms expected ${step.expect}` +
-          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}`,
+        `  step ${step.id} ${step.viewer} ${step.twitch ? `${step.twitch.kind}(${step.twitch.amount})` : `"${step.text}"`} @${step.at}ms expected ${step.expect}` +
+          `${step.expectEffects === null ? '' : `/${step.expectEffects} effects`}, got ${step.actual}/${step.actualEffects}${step.expectSession ? `; state expected ${JSON.stringify(step.expectSession)}, got ${JSON.stringify(step.session)}` : ''}${step.expectTimers ? `; timers expected ${JSON.stringify(step.expectTimers)}, got ${JSON.stringify(step.timers ?? { fired: 0, effects: 0 })}` : ''}`,
       );
   }
   const text = lines.join('\n');

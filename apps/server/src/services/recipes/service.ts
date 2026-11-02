@@ -392,7 +392,7 @@ export function createRecipeService(deps: {
           tests: publicTests(
             version.tests,
             manifest.trigger.command,
-            manifest.experience?.teams.map((team) => team.joinCommand),
+            commandsOf(manifest).slice(1),
           ),
           scene,
           presentation: (deps.publicPresentation ?? ((original) => original))({

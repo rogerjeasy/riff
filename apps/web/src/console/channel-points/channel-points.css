@@ -1,0 +1,215 @@
+/* F22 Channel Points and Predictions panels; built on panel-kit tokens. */
+.points-layout {
+  display: grid;
+  gap: 20px;
+}
+.points-access {
+  display: grid;
+  gap: 10px;
+}
+.points-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.points-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.points-section > h3 {
+  font-size: 15px;
+}
+.points-empty {
+  padding: 14px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+}
+.points-label {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.points-rewards,
+.points-queue,
+.predict-requests {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+.points-reward,
+.predict-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  min-width: 0;
+}
+.points-reward-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.points-reward-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.points-reward-head b,
+.predict-card-head b {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.points-link {
+  display: grid;
+  gap: 6px;
+  max-width: 560px;
+}
+.points-link .segmented {
+  justify-self: start;
+}
+.points-confirm,
+.predict-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(255 95 95 / 0.4);
+  background: var(--bad-bg);
+  color: #ffd2d2;
+  font-size: 13px;
+}
+.points-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.points-edit input {
+  width: 140px;
+}
+.points-grid,
+.predict-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  max-width: 620px;
+}
+@media (max-width: 640px) {
+  .points-grid,
+  .predict-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.points-form fieldset {
+  display: grid;
+  gap: 12px;
+}
+.points-redemption {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.points-redemption > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.points-redemption[data-status='queued'],
+.points-redemption[data-status='failed'] {
+  border-color: rgb(245 196 81 / 0.35);
+}
+.points-redemption-side {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.points-input {
+  color: var(--text);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+/* Predictions */
+.predict-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.predict-outcomes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.predict-outcome {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+.predict-outcome:focus-within {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.predict-outcome[data-selected='true'] {
+  border-color: var(--accent);
+  background: rgb(255 122 69 / 0.08);
+}
+.predict-outcome[data-winner='true'] {
+  border-color: rgb(79 211 148 / 0.5);
+  background: var(--good-bg);
+}
+.predict-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.predict-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--codex);
+  transition: width 0.3s ease;
+}
+.predict-outcome-fields {
+  display: grid;
+  gap: 6px;
+}
+.predict-outcome-fields > div {
+  display: flex;
+  gap: 6px;
+}
+.predict-outcome-fields input {
+  flex: 1;
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .predict-bar > span {
+    transition: none;
+  }
+}

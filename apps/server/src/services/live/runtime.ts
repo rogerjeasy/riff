@@ -15,6 +15,7 @@ import {
 import {
   artifactIdentity,
   advanceSession,
+  definitionCommands,
   runSessionMigration,
   sessionDefinitionHash,
   migrationSourceHash,
@@ -28,9 +29,14 @@ import {
 } from '@riff/sandbox';
 import {
   EFFECT_LIMITS,
+  describeTrigger,
   type ChatEvent,
   type PermissionManifest,
   type ExecutionDecision,
+  type PredictionProposal,
+  type TwitchAction,
+  type TwitchEventDetail,
+  type TwitchEventKind,
 } from '@riff/sdk';
 import { describeWindow, describeAudience } from '@riff/compiler';
 import { transitionEvidenceId } from '../../db/repositories/transitions.js';
@@ -38,6 +44,7 @@ import { approvalBlockers } from '../automations/views.js';
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { Hub } from '../hub.js';
 import type { OverlayBroker } from '../overlay/broker.js';
+import { createTimerScheduler, type TimerFire } from '../timers/scheduler.js';
 
 /** Incoming chat, already normalized from an authenticated transport. */
 export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
@@ -47,6 +54,54 @@ export interface LiveChatMessage extends Omit<ChatEvent, 'at'> {
   sourceMessageId?: string;
 }
 const PANIC_COMMAND = '!riff panic';
+/** A Channel Points redemption the host already matched to one linked automation. */
+export interface LiveRedemption {
+  /** Twitch redemption id; also the durable admission identity. */
+  id: string;
+  channelId: string;
+  viewerId: string;
+  viewerName: string;
+  /** Sanitized viewer input ('' when the reward takes none). */
+  text: string;
+  automationId: string;
+}
+/** A host-validated proposal; the creator decides whether to open it. */
+export interface LivePredictionProposal {
+  automationId: string;
+  versionId: string;
+  eventId: string;
+  proposal: PredictionProposal;
+}
+
+/** A Twitch platform event (F19), already normalized from authenticated EventSub. */
+export interface LiveTwitchEvent {
+  id: string;
+  channelId: string;
+  viewerId: string;
+  viewerName: string;
+  /** Acting account login when Twitch reports one (raids: the raiding broadcaster). */
+  viewerLogin?: string | null;
+  text: string;
+  twitch: TwitchEventDetail;
+  source: 'twitch';
+}
+const TIER_LABEL = { '1000': 'Tier 1', '2000': 'Tier 2', '3000': 'Tier 3' } as const;
+/** Activity wording for an accepted platform event. */
+export function twitchActivity(event: TwitchEventDetail): string {
+  const tier = event.tier ? ` (${TIER_LABEL[event.tier]})` : '';
+  switch (event.kind) {
+    case 'subscribe':
+      return event.gift ? `received a gifted sub${tier}` : `subscribed${tier}`;
+    case 'gift':
+      return `gifted ${event.amount} sub${event.amount === 1 ? '' : 's'}${tier}`;
+    case 'resub':
+      return `resubscribed for ${event.amount} month${event.amount === 1 ? '' : 's'}${tier}`;
+    case 'cheer':
+      return `cheered ${event.amount} bit${event.amount === 1 ? '' : 's'}`;
+    case 'raid':
+      return `raided with ${event.amount} viewer${event.amount === 1 ? '' : 's'}`;
+  }
+}
 
 /**
  * The live control plane for one channel. Panic flips an in-memory flag first and
@@ -59,9 +114,22 @@ export function createLiveRuntime(deps: {
   now?: () => number;
   proposals?: ProposalService;
   onHelpChat?: (message: LiveChatMessage) => boolean;
+  /** Owner-only in-chat authoring (`!riff create|edit|approve|…`); true when consumed. */
+  onAuthorChat?: (message: LiveChatMessage) => boolean;
   onSharedChat?: (message: LiveChatMessage) => Promise<boolean>;
   onStop?: () => void;
   onProposalChange?: (kind: ProposalCommand['kind'] | undefined) => void;
+  onPredictionProposal?: (proposal: LivePredictionProposal) => void;
+  /** Host-side queue for staged polls, announcements and shoutouts (F21/F23). */
+  onTwitchActions?: (
+    actions: readonly TwitchAction[],
+    context: {
+      automationId: string;
+      viewer: string;
+      /** F23: the raid this decision handled; the only target a raider shoutout may use. */
+      raid?: { id: string; login: string | null; displayName: string };
+    },
+  ) => Promise<void>;
 }) {
   const { repo, hub, overlay } = deps;
   const now = deps.now ?? Date.now;
@@ -113,30 +181,69 @@ export function createLiveRuntime(deps: {
   function refreshInstructions() {
     const lines = [...engines.values()].map(({ version }) => {
       const t = (version.manifest as PermissionManifest).trigger;
+      if (t.kind === 'points.redeem')
+        return `Redeem “${t.reward ?? ''}” with Channel Points · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       const who = t.audience.includes('viewer') ? '' : ` (${describeAudience(t.audience)})`;
       const experience = experienceOf(version);
+      if (t.kind === 'twitch.event') return describeTrigger(t);
       if (!experience)
         return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       // Rounds spend a lifetime allowance and may need a team first; never imply a
       // rolling window or let a late viewer type a command that is rejected.
       const { teams, contribution, resource, objective } = experience;
       const each = `${resource.perParticipant} ${resource.name} each this round`;
-      return teams.length
-        ? `Type ${teams
-            .map((team) => team.joinCommand)
-            .join(', ')
-            .replace(
-              /, ([^,]*)$/,
-              ' or $1',
-            )} to join a team${who}, then ${contribution.command} · ${each}`
-        : `Type ${contribution.command}${who} to help reach ${objective.target ?? ''} together · ${each}`;
+      // Version 2 rules add heal, burst and unlock commands; name them on stream too.
+      const more = definitionCommands(experience).filter(
+        (command) =>
+          command !== contribution.command && !teams.some((team) => team.joinCommand === command),
+      );
+      const also = more.length ? ` · also ${more.join(', ')}` : '';
+      return (
+        (teams.length
+          ? `Type ${teams
+              .map((team) => team.joinCommand)
+              .join(', ')
+              .replace(
+                /, ([^,]*)$/,
+                ' or $1',
+              )} to join a team${who}, then ${contribution.command} · ${each}`
+          : `Type ${contribution.command}${who} to help reach ${objective.target ?? ''} together · ${each}`) +
+        also
+      );
     });
     overlay.setInstructions(panic ? [] : lines);
     sessions.publish(panic);
   }
+  const timers = createTimerScheduler({ repo, record: publishActivity });
+  /** Fenced, best-effort timer cancellation: in-memory stop always happens first. */
+  function cancelTimers(automationId: string | null, reason: string) {
+    try {
+      timers.cancel(automationId, reason);
+    } catch {
+      /* Boot and resume reconcile timers again before anything can fire. */
+    }
+  }
+  /** Commit staged timer operations; a failed write is visible and never fires later. */
+  function applyTimers(automationId: string, versionId: string, decision: ExecutionDecision) {
+    try {
+      timers.apply(automationId, versionId, decision);
+    } catch {
+      publishActivity({
+        at: Date.now(),
+        kind: 'incident',
+        automationId,
+        versionId,
+        eventId: decision.eventId,
+        viewer: null,
+        code: 'TIMER_FAILED',
+        message: 'Riff could not save a timer this interaction asked for, so it will not fire.',
+      });
+    }
+  }
   function quarantine(automationId: string, version: VersionRow, fault: string) {
     engines.get(automationId)?.engine.stop();
     engines.delete(automationId);
+    cancelTimers(automationId, 'the version was stopped after an incident');
     try {
       repo.updateVersion(version.id, { status: 'quarantined', incident: fault });
       repo.updateAutomation(automationId, { status: 'paused' });
@@ -170,6 +277,7 @@ export function createLiveRuntime(deps: {
           ? { session: stored.snapshot, effectBudget: admissionFor(automationId) }
           : { admission: admissionFor(automationId) }),
         channelBudget,
+        timers: { active: () => timers.active(automationId) },
       },
     );
     void engine.warm();
@@ -190,6 +298,7 @@ export function createLiveRuntime(deps: {
         api.panic(`!riff panic by ${message.viewerName}`);
       return [];
     }
+    if (!panic && deps.onAuthorChat?.(message)) return [];
     if (!panic && deps.onHelpChat?.(message)) return [];
     const command = deps.proposals?.handleCommand(
       {
@@ -225,18 +334,34 @@ export function createLiveRuntime(deps: {
       at: lastAt,
     });
     if (!event.success) return [];
+    return admit(event.data, message.viewerName, message.id);
+  }
+
+  /**
+   * Run one normalized input through every live engine: the same durable admission,
+   * budget, incident and overlay path for chat and Twitch platform events (F19).
+   */
+  async function admit(
+    data: ChatEvent,
+    viewerName: string,
+    messageId: string,
+    raid?: { id: string; login: string | null; displayName: string },
+  ): Promise<ExecutionDecision[]> {
+    const event = { data };
     const fence = generation;
     const results = [];
     for (const [automationId, { engine, version }] of [...engines.entries()]) {
       let decision: ExecutionDecision;
       let sessionDelivered = 0;
       try {
+        // Rounds are chat gameplay; platform events never enter session journals.
+        if (experienceOf(version) && data.twitch) continue;
         if (experienceOf(version)) {
           const result = await sessions.process(
             version,
             engine,
             event.data,
-            message.viewerName,
+            viewerName,
             () => fence === generation && !panic && !closed,
           );
           decision = result.decision;
@@ -264,7 +389,7 @@ export function createLiveRuntime(deps: {
               viewerId: event.data.viewerId,
               at: event.data.at,
               code: decision.code,
-              effects: decision.effects.length,
+              effects: decision.effects.length + (decision.actions?.length ?? 0),
             });
         }
       } catch {
@@ -284,6 +409,7 @@ export function createLiveRuntime(deps: {
         } catch {
           /* memory fence already applied */
         }
+        cancelTimers(automationId, 'the interaction was paused after a storage failure');
         refreshInstructions();
         hub.publish('studio', null);
         decision = {
@@ -310,25 +436,207 @@ export function createLiveRuntime(deps: {
         fence === generation && !panic
           ? experienceOf(version)
             ? sessionDelivered
-            : overlay.deliver(decision, message.viewerName, automationId, version.id)
+            : overlay.deliver(decision, viewerName, automationId, version.id)
           : 0;
-      lastEvent = { at: Date.now(), viewer: message.viewerName, code: decision.code };
+      // Timer operations commit only for accepted, unfenced work, after admission is durable.
+      if (fence === generation && !panic && decision.timers?.length)
+        applyTimers(automationId, version.id, decision);
+      if (decision.proposals?.length && fence === generation && !panic)
+        for (const proposal of decision.proposals)
+          deps.onPredictionProposal?.({
+            automationId,
+            versionId: version.id,
+            eventId: messageId,
+            proposal,
+          });
+      lastEvent = { at: Date.now(), viewer: viewerName, code: decision.code };
       publishActivity({
         at: Date.now(),
         kind: 'decision',
         automationId,
         versionId: version.id,
-        eventId: message.id,
-        viewer: message.viewerName,
+        eventId: messageId,
+        viewer: viewerName,
         code: fence === generation ? decision.code : 'STOPPED',
         message:
           decision.code === 'ACCEPTED'
-            ? `${message.viewerName} used ${(version.manifest as PermissionManifest).trigger.command} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+            ? `${viewerName} ${data.twitch ? twitchActivity(data.twitch) : `used ${(version.manifest as PermissionManifest).trigger.command}`} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
       });
+      if (fence === generation && !panic)
+        queueTwitchActions(decision, automationId, viewerName, raid);
     }
     await applyPending();
     return results;
+  }
+
+  /**
+   * Staged native Twitch actions leave the host only from a live, unfenced, accepted
+   * decision (chat, timer fire or redemption). They are queued, never awaited, so the
+   * serialized pipeline keeps moving. Callers check their own fence first.
+   */
+  function queueTwitchActions(
+    decision: ExecutionDecision,
+    automationId: string,
+    viewer: string,
+    raid?: { id: string; login: string | null; displayName: string },
+  ) {
+    if (
+      decision.code !== 'ACCEPTED' ||
+      !decision.actions?.length ||
+      panic ||
+      closed ||
+      decision.mode !== 'live'
+    )
+      return;
+    void deps
+      .onTwitchActions?.(decision.actions, { automationId, viewer, ...(raid ? { raid } : {}) })
+      ?.catch(() => undefined);
+  }
+
+  /** Deliver due timers through the same engine, budgets and overlay fences as chat. */
+  async function fireTimers(fence: number) {
+    const valid = () => fence === generation && !panic && !closed;
+    if (!valid()) return;
+    lastAt = Math.max(lastAt, now());
+    await timers.fireDue(
+      lastAt,
+      (automationId) => {
+        const entry = engines.get(automationId);
+        return (
+          entry && {
+            ...entry,
+            channelId: admissions.get(automationId)?.channelId || repo.channelId,
+          }
+        );
+      },
+      onTimerFire,
+      valid,
+    );
+  }
+  function onTimerFire({ row, event, decision, target }: TimerFire) {
+    if (decision.code === 'INCIDENT') {
+      const entry = engines.get(row.automationId);
+      if (entry?.engine === target.engine)
+        quarantine(
+          row.automationId,
+          entry.version,
+          entry.engine.incident?.fault ?? 'execution incident',
+        );
+      return;
+    }
+    const current = engines.get(row.automationId);
+    const fenced = panic || closed || current?.engine !== target.engine;
+    const delivered = fenced ? 0 : overlay.deliver(decision, null, row.automationId, row.versionId);
+    if (!fenced && decision.timers?.length) applyTimers(row.automationId, row.versionId, decision);
+    if (!fenced) queueTwitchActions(decision, row.automationId, `timer ${row.name}`);
+    publishActivity({
+      at: Date.now(),
+      kind: 'decision',
+      automationId: row.automationId,
+      versionId: row.versionId,
+      eventId: event.id,
+      viewer: null,
+      code: fenced ? 'STOPPED' : decision.code,
+      message:
+        decision.code === 'ACCEPTED'
+          ? `Timer “${row.name}” fired${event.missed ? ` ${Math.round((event.firedAt - event.scheduledAt) / 1000)} s late (missed while Riff was unavailable)` : ''} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+          : `Timer “${row.name}”: ${decision.reason}`,
+    });
+    hub.publish('studio', null);
+  }
+
+  /** One redemption, one linked automation, the same durable admission as chat. */
+  async function processRedemption(input: LiveRedemption): Promise<ExecutionDecision | null> {
+    const entry = engines.get(input.automationId);
+    if (!entry || panic || closed) return null;
+    const { engine, version } = entry;
+    const trigger = (version.manifest as PermissionManifest).trigger;
+    if (trigger.kind !== 'points.redeem' || experienceOf(version)) return null;
+    lastAt = Math.max(lastAt, now());
+    const event = eventSchema.safeParse({
+      id: input.id,
+      channelId: input.channelId,
+      viewerId: input.viewerId,
+      roles: ['viewer'],
+      text: input.text,
+      at: lastAt,
+      kind: 'points.redeem',
+    });
+    if (!event.success) return null;
+    const fence = generation;
+    let decision: ExecutionDecision;
+    try {
+      if (repo.hasAdmission(input.automationId, event.data.id))
+        return {
+          eventId: event.data.id,
+          artifactId: engine.artifactId,
+          mode: 'live',
+          code: 'DUPLICATE',
+          reason: DECISION_MESSAGES.DUPLICATE,
+          effects: [],
+          viewerId: event.data.viewerId,
+          at: event.data.at,
+          allowance: null,
+        };
+      decision = await engine.dispatch(event.data);
+      if (recordsAdmission(decision.code))
+        repo.recordAdmission({
+          automationId: input.automationId,
+          eventId: event.data.id,
+          viewerId: event.data.viewerId,
+          at: event.data.at,
+          code: decision.code,
+          effects: decision.effects.length,
+        });
+    } catch {
+      generation++;
+      engine.stop();
+      engines.delete(input.automationId);
+      admissions.delete(input.automationId);
+      try {
+        repo.updateAutomation(input.automationId, { status: 'paused' });
+      } catch {
+        /* memory fence already applied */
+      }
+      refreshInstructions();
+      hub.publish('studio', null);
+      return null;
+    }
+    if (decision.code === 'INCIDENT') {
+      quarantine(input.automationId, version, engine.incident?.fault ?? 'execution incident');
+      return decision;
+    }
+    const live = fence === generation && !panic;
+    const delivered = live
+      ? overlay.deliver(decision, input.viewerName, input.automationId, version.id)
+      : 0;
+    // Redemptions keep every side effect a chat trigger has: timers, proposals and actions.
+    if (live && decision.timers?.length) applyTimers(input.automationId, version.id, decision);
+    if (live && decision.proposals?.length)
+      for (const proposal of decision.proposals)
+        deps.onPredictionProposal?.({
+          automationId: input.automationId,
+          versionId: version.id,
+          eventId: input.id,
+          proposal,
+        });
+    if (live) queueTwitchActions(decision, input.automationId, input.viewerName);
+    lastEvent = { at: Date.now(), viewer: input.viewerName, code: decision.code };
+    publishActivity({
+      at: Date.now(),
+      kind: 'decision',
+      automationId: input.automationId,
+      versionId: version.id,
+      eventId: input.id,
+      viewer: input.viewerName,
+      code: live ? decision.code : 'STOPPED',
+      message:
+        decision.code === 'ACCEPTED'
+          ? `${input.viewerName} redeemed “${trigger.reward ?? ''}” · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
+          : decision.reason,
+    });
+    return live ? decision : { ...decision, code: 'STOPPED', effects: [] };
   }
 
   async function applyTransition(id: string) {
@@ -471,6 +779,7 @@ export function createLiveRuntime(deps: {
       if (panic) {
         overlay.clear('panic');
         repo.invalidateTransitions();
+        cancelTimers(null, 'everything is stopped');
         return;
       }
       for (const automation of repo.automations()) {
@@ -478,15 +787,20 @@ export function createLiveRuntime(deps: {
         const version = repo.version(automation.activeVersionId);
         if (version?.status === 'active') start(automation.id, version);
       }
+      // Pending timers resume only for the version that is live now; overdue ones are
+      // delivered or expired by the first tick under the shared grace policy.
+      timers.reconcile((automationId) => engines.get(automationId)?.version.id ?? null);
     },
     /** Swap to an approved version with a generation fence; in-flight old work is discarded. */
     activate(automationId: string, version: VersionRow) {
       generation++;
+      cancelTimers(automationId, `v${version.number} replaced the previous version`);
       if (!panic) start(automationId, version);
     },
     pause(automationId: string) {
       generation++;
       stop(automationId);
+      cancelTimers(automationId, 'the interaction was paused');
       sessions.pause(automationId);
       overlay.clear('pause');
       refreshInstructions();
@@ -507,6 +821,7 @@ export function createLiveRuntime(deps: {
       overlay.clear('panic');
       overlay.setInstructions([]);
       const panicAt = now();
+      cancelTimers(null, 'everything was stopped');
       try {
         repo.updateState({
           panic: true,
@@ -574,6 +889,8 @@ export function createLiveRuntime(deps: {
         repo.updateState({ panic: false, panicAt: null });
       });
       panic = false;
+      // Resuming never silently recreates timers cancelled by panic.
+      cancelTimers(null, 'the channel resumed without restoring cancelled timers');
       overlay.resumeCommunity();
       publishActivity({
         at: Date.now(),
@@ -645,6 +962,81 @@ export function createLiveRuntime(deps: {
       queue = next.catch(() => undefined);
       return next;
     },
+    /**
+     * Route a linked redemption through admission and budgets. Null means it never reached
+     * a live engine (stopped, panicked, not live); the caller refunds per host policy.
+     */
+    handleRedemption(input: LiveRedemption): Promise<ExecutionDecision | null> {
+      if (closed || panic) return Promise.resolve(null);
+      const fence = generation;
+      const next = queue.then(() =>
+        fence === generation && !closed && !panic ? processRedemption(input) : null,
+      );
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /**
+     * F19: admit one normalized Twitch platform event through the same serialized
+     * queue, durable admission, budgets and panic fences as chat. Platform events never
+     * reach reserved chat commands, proposals, help or shared sessions.
+     */
+    handleTwitchEvent(input: LiveTwitchEvent): Promise<ExecutionDecision[]> {
+      if (closed || panic || input.source !== 'twitch') return Promise.resolve([]);
+      if (pendingChat >= 128) {
+        publishActivity({
+          at: now(),
+          kind: 'decision',
+          automationId: null,
+          versionId: null,
+          eventId: input.id,
+          viewer: input.viewerName,
+          code: 'CAPACITY',
+          message: `The gameplay queue was full, so this ${input.twitch.kind} was not admitted.`,
+        });
+        return Promise.resolve([]);
+      }
+      const fence = generation;
+      pendingChat++;
+      const next = queue
+        .then(async () => {
+          if (fence !== generation || closed || panic) return [];
+          lastAt = Math.max(lastAt, now());
+          const event = eventSchema.safeParse({
+            id: input.id,
+            channelId: input.channelId,
+            viewerId: input.viewerId,
+            roles: ['viewer'],
+            text: input.text,
+            at: lastAt,
+            twitch: input.twitch,
+          });
+          if (!event.success) return [];
+          // The normalized raid binds the only target a raider shoutout may use.
+          const raid =
+            input.twitch.kind === 'raid'
+              ? {
+                  id: input.viewerId,
+                  login: input.viewerLogin ?? null,
+                  displayName: input.viewerName,
+                }
+              : undefined;
+          return admit(event.data, input.viewerName, input.id, raid);
+        })
+        .finally(() => {
+          pendingChat--;
+        });
+      queue = next.catch(() => undefined);
+      return next;
+    },
+    /** Event families that live automations currently listen to (drives EventSub). */
+    eventTriggers(): TwitchEventKind[] {
+      const kinds = new Set<TwitchEventKind>();
+      for (const { version } of engines.values()) {
+        const trigger = (version.manifest as PermissionManifest).trigger;
+        if (trigger.kind === 'twitch.event') kinds.add(trigger.event.kind);
+      }
+      return [...kinds];
+    },
     tick(): Promise<void> {
       const fence = generation;
       const next = queue.then(async () => {
@@ -652,6 +1044,7 @@ export function createLiveRuntime(deps: {
         for (const [automationId, { engine, version }] of engines) {
           if (experienceOf(version)) sessions.tick(automationId, engine);
         }
+        await fireTimers(fence);
         await applyPending();
       });
       queue = next.catch(() => undefined);
@@ -669,6 +1062,18 @@ export function createLiveRuntime(deps: {
       return next.finally(() => {
         transitionJobs--;
       });
+    },
+    /** Pending named timers for the console. */
+    timers(automationId?: string) {
+      return timers.views(automationId);
+    },
+    /** Creator cancellation, serialized with chat and fires so it never races a delivery. */
+    cancelTimer(automationId: string, name: string): Promise<number> {
+      const next = queue.then(() =>
+        timers.cancel(automationId, 'cancelled from the console', name),
+      );
+      queue = next.catch(() => undefined);
+      return next;
     },
     /** Read-only: replays the round journal privately; never touches engines or the overlay. */
     auditSession(automationId: string) {

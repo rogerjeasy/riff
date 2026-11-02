@@ -1,0 +1,597 @@
+{
+  "provenance": {
+    "transport": "offline",
+    "model": null,
+    "promptVersion": "riff-compiler/12",
+    "note": "Deterministic F23 raider-shoutout template responses recorded locally; no live model call or credentials."
+  },
+  "records": [
+    {
+      "request": {
+        "intent": "When we get raided, shout out the raider and show a welcome burst",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Raid Shoutout",
+        "summary": "A raid arrives: Twitch shows a shoutout card for the raiding channel, and a welcome burst of 5 stars crosses your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.shoutout.raider();\n  for (let i = 0; i < 5; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay", "shoutout"],
+          "trigger": {
+            "command": "@raid",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "kind": "twitch.event",
+            "event": {
+              "kind": "raid",
+              "minimum": 1
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 6,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A raid at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 1,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "A raid arrives",
+          "what": "Twitch shows a shoutout card for the raiding channel, and a welcome burst of 5 stars crosses your overlay",
+          "who": "Any channel that raids you",
+          "howMuch": "one shoutout and 5 stars per raid; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": [
+          "Every raid counts; no minimum was stated.",
+          "Shows stars.",
+          "Up to 5 reactions per account in any 60 seconds.",
+          "Turn on “Shout out raiders automatically” in Twitch features; until then the welcome burst still plays and the shoutout is refused.",
+          "Twitch allows one shoutout every 2 minutes and the same channel once an hour."
+        ]
+      }
+    },
+    {
+      "request": {
+        "intent": "When a raid of 20+ viewers arrives, shout out the raider",
+        "base": null
+      },
+      "output": {
+        "kind": "candidate",
+        "title": "Raid Shoutout",
+        "summary": "A raid of 20+ viewers arrives: Twitch shows a shoutout card for the raiding channel, and a welcome burst of 5 stars crosses your overlay.",
+        "question": null,
+        "choices": [],
+        "unsupportedReason": null,
+        "alternative": null,
+        "source": "async (event, riff) => {\n  await riff.shoutout.raider();\n  for (let i = 0; i < 5; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() });\n}",
+        "migrationSource": null,
+        "manifest": {
+          "sdkVersion": "0.4.0",
+          "experience": null,
+          "capabilities": ["overlay", "shoutout"],
+          "trigger": {
+            "command": "@raid",
+            "audience": ["viewer"],
+            "maxPerViewer": 5,
+            "windowMs": 60000,
+            "kind": "twitch.event",
+            "event": {
+              "kind": "raid",
+              "minimum": 20
+            }
+          },
+          "limits": {
+            "effectsPerEvent": 6,
+            "effectsPerMinute": 60
+          }
+        },
+        "tests": [
+          {
+            "name": "A raid at the threshold shows the effect",
+            "kind": "happy",
+            "steps": [
+              {
+                "id": "e1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Below 20 does nothing",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "b1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "BELOW_MINIMUM",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 19,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "b2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "5 per viewer in 60 seconds, then blocked; another viewer still can",
+            "kind": "limit",
+            "steps": [
+              {
+                "id": "a0",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 10,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 20,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a3",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 30,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "a4",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 40,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "over",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 50,
+                "expect": "VIEWER_LIMIT",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "bob",
+                "viewer": "bob",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 51,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "Chat and other Twitch events do nothing",
+            "kind": "negative",
+            "steps": [
+              {
+                "id": "c1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "hello chat",
+                "at": 0,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": null
+              },
+              {
+                "id": "c2",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 1,
+                "expect": "UNRELATED",
+                "effects": 0,
+                "twitch": {
+                  "kind": "cheer",
+                  "amount": 1000,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          },
+          {
+            "name": "A redelivered event is ignored",
+            "kind": "duplicate",
+            "steps": [
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 0,
+                "expect": "ACCEPTED",
+                "effects": 6,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              },
+              {
+                "id": "d1",
+                "viewer": "alice",
+                "roles": ["viewer"],
+                "text": "",
+                "at": 5,
+                "expect": "DUPLICATE",
+                "effects": 0,
+                "twitch": {
+                  "kind": "raid",
+                  "amount": 20,
+                  "tier": null,
+                  "anonymous": false,
+                  "gift": false
+                }
+              }
+            ]
+          }
+        ],
+        "behavior": {
+          "when": "A raid of 20+ viewers arrives",
+          "what": "Twitch shows a shoutout card for the raiding channel, and a welcome burst of 5 stars crosses your overlay",
+          "who": "Any channel that raids you",
+          "howMuch": "one shoutout and 5 stars per raid; up to 5 per account in any 60 seconds"
+        },
+        "assumptions": [
+          "Shows stars.",
+          "Up to 5 reactions per account in any 60 seconds.",
+          "Turn on “Shout out raiders automatically” in Twitch features; until then the welcome burst still plays and the shoutout is refused.",
+          "Twitch allows one shoutout every 2 minutes and the same channel once an hour."
+        ]
+      }
+    },
+    {
+      "request": {
+        "intent": "When someone cheers 100 bits, shout them out",
+        "base": null
+      },
+      "output": {
+        "question": null,
+        "choices": [],
+        "unsupportedReason": "Riff can shout out a channel automatically only when it raids you; a cheer has no channel to shout out.",
+        "alternative": "Show a burst of stars on the overlay when it happens, or shout out raiders automatically.",
+        "source": null,
+        "migrationSource": null,
+        "manifest": null,
+        "tests": [],
+        "behavior": {
+          "when": "",
+          "what": "",
+          "who": "",
+          "howMuch": ""
+        },
+        "assumptions": [],
+        "kind": "unsupported",
+        "title": "Raids only",
+        "summary": "Automatic shoutouts are only for the channel that raids you."
+      }
+    }
+  ]
+}

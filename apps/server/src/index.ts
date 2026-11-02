@@ -6,6 +6,7 @@ import { parseEnv, workspaceRoot } from './env.js';
 import { createLoggerOptions } from './log.js';
 import { createCodexTransport } from './services/authoring/codex-transport.js';
 import { createOfflineTransport } from '@riff/compiler';
+import { createMockTranscription, createOpenAiTranscription } from './services/voice/transport.js';
 
 const environment = parseEnv(process.env);
 const database = openDatabase(environment.databasePath);
@@ -28,6 +29,15 @@ try {
             reasoningEffort: environment.compilerEffort,
           })
         : createOfflineTransport({ delayMs: 400 }),
+    transcription:
+      environment.transcription.mode === 'mock'
+        ? createMockTranscription()
+        : environment.transcription.mode === 'openai' && environment.transcription.apiKey
+          ? createOpenAiTranscription({
+              apiKey: environment.transcription.apiKey,
+              model: environment.transcription.model,
+            })
+          : null,
     ...(existsSync(webRoot) ? { webRoot } : {}),
   });
   app.addHook('onClose', () => {

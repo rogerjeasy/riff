@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import type { ProductionKind } from '@riff/sdk';
+import type { ProductionBotKind, ProductionKind } from '@riff/sdk';
 import { createObsTransport } from '../../adapters/obs/client.js';
 import { createBotTransport } from '../../adapters/streamer-bot/client.js';
+import { createFirebotTransport } from '../../adapters/firebot/client.js';
 import {
+  FIREBOT_KEY_MIN,
   ProductionError,
   connectSchema,
   connectionUrl,
   discoveryLimits,
+  firebotUrl,
   type ConnectInput,
 } from './contract.js';
 import { disconnected, explain, toolName, type Runtime } from './runtime.js';
@@ -23,12 +26,20 @@ function skippedReason(count: number, noun: string, limit: number) {
   return `Connected. ${count} ${noun}${count === 1 ? ' was' : 's were'} not listed: names must be 1–${discoveryLimits.name} characters and only the first ${limit} are shown.`;
 }
 
-export function createConnections(rt: Runtime, onBotEvent: (raw: unknown) => void) {
+export function createConnections(
+  rt: Runtime,
+  onBotEvent: (raw: unknown, kind: ProductionBotKind) => void,
+) {
   const { deps, state, connections } = rt;
   async function connect(input: ConnectInput) {
     const body = connectSchema.parse(input),
-      url = connectionUrl(body.url),
-      kind = body.kind;
+      kind = body.kind,
+      url = kind === 'firebot' ? firebotUrl(body.url) : connectionUrl(body.url);
+    if (kind === 'firebot' && body.password.length < FIREBOT_KEY_MIN)
+      throw new ProductionError(
+        'INVALID',
+        `Use a Firebot event key of at least ${FIREBOT_KEY_MIN} characters; it authenticates events Firebot sends to Riff.`,
+      );
     if (!rt.sealer)
       throw new ProductionError('DENIED', 'Configure RIFF_SECRET before production setup.');
     return rt.work(kind, async () => {
@@ -68,8 +79,12 @@ export function createConnections(rt: Runtime, onBotEvent: (raw: unknown) => voi
             actions: [],
           };
         } else {
-          const client = (deps.botFactory ?? createBotTransport)(onBotEvent, onClose);
-          state.bot = client;
+          const factory =
+            kind === 'firebot'
+              ? (deps.firebotFactory ?? createFirebotTransport)
+              : (deps.botFactory ?? createBotTransport);
+          const client = factory((raw) => onBotEvent(raw, kind), onClose);
+          rt.setBot(kind, client);
           await client.connect(url, body.password);
           rt.fence(stamp);
           const actions = bounded(
@@ -78,12 +93,21 @@ export function createConnections(rt: Runtime, onBotEvent: (raw: unknown) => voi
             (a) => fits(a.id) && fits(a.name),
           );
           rt.fence(stamp);
-          connections.streamerbot = {
+          const commands = client.commands
+            ? bounded(
+                (await client.commands()).map((c) => c.trigger),
+                discoveryLimits.actions,
+                fits,
+              ).kept
+            : null;
+          rt.fence(stamp);
+          connections[kind] = {
             status: 'connected',
             reason: skippedReason(actions.skipped, 'action', discoveryLimits.actions),
             url,
             scenes: [],
             actions: actions.kept,
+            ...(commands ? { commands } : {}),
           };
         }
         state.session[kind] = session;

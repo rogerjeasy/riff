@@ -1,0 +1,120 @@
+/* F09 push-to-talk controls inside the Describe composer. */
+.voice {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.voice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.voice-talk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  touch-action: none;
+  user-select: none;
+}
+.voice-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.voice-talk[aria-pressed='true'] {
+  border-color: var(--bad);
+  background: var(--bad-bg);
+}
+.voice-talk[aria-pressed='true'] .voice-dot {
+  background: var(--bad);
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.voice-meter {
+  position: relative;
+  width: 96px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.voice-meter > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  background: var(--good);
+  transform-origin: left center;
+  transition: transform 80ms linear;
+}
+.voice-meter > span[data-static] {
+  opacity: 0.4;
+}
+.voice-time {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.voice-hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.voice-unavailable {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.voice-spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  animation: voice-spin 0.8s linear infinite;
+}
+@keyframes voice-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.voice-review {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+}
+.voice-review label {
+  font-size: 13px;
+  font-weight: 650;
+}
+.voice-review textarea {
+  width: 100%;
+  resize: vertical;
+}
+.voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.voice-error p {
+  margin: 0 0 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .voice-talk[aria-pressed='true'] .voice-dot,
+  .voice-spinner {
+    animation: none;
+  }
+  .voice-meter > span {
+    transition: none;
+  }
+}
