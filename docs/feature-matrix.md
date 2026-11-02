@@ -64,6 +64,8 @@ None. The trigger model is one discriminated `trigger.kind` (`chat.command`, `po
 
 Done on `rogerjeasy.18-210-118-156.sslip.io` with real Twitch, Codex and Helix: feature consent across three grants; real chat driving a live interaction and its overlay; `!riff status` answered in chat; manual and automation announcements; a real Codex compile (which exposed and led to fixing a timer action-counting bug); a persistent timer firing every 5 minutes across a redeploy; echo suppression of Riff's own reply; Affiliate-only features refused from Twitch's real `broadcaster_type`; a shoutout refused by Twitch while offline.
 
+Second pass (after F20/F27/F29/F31/F36/F40 landed): approval binding refused a missing (400) and a stale (409) test-report hash and recorded `approvedBy: console`; activity rows carried source, version and effect counts; `!riff language de` and `!riff help` answered in German in real chat; a real Codex compile of a 3-question quiz ("each question lasts 40 seconds") verified first time in 31 s and ran a full round from real chat, with each question, lettered options and live counts, then the answer and explanation, shown on the 1920×1080 overlay. This pass found and fixed five defects, each with a regression test that fails without the fix: participation ignored real Twitch chat (channel id), viewer replies used Riff's event id instead of Twitch's message id, the intent check read a per-question duration as the whole round, the overlay's hidden 60-character text cap blanked the stream on long quiz explanations, and the stream showed only "Q 1/3" instead of the question.
+
 ### Still outstanding
 
 - An Affiliate/Partner channel for polls, Channel Points, Predictions, cheers and subscriptions (the test channel is neither).
