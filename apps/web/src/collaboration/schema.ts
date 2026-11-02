@@ -111,6 +111,7 @@ export const contractSchema = z
     const experience = v.artifact.manifest.experience;
     return (
       experience.teams.length === 0 &&
+      experience.version <= 2 &&
       (experience.objective.kind === 'collective-goal' ||
         (experience.objective.kind === 'burst' && experience.version === 2)) &&
       !experience.mechanics?.match &&

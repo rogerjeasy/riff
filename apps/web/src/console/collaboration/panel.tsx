@@ -474,6 +474,7 @@ export function CollaborationPanel({
       v.evidence.verification.ok &&
       !['failed', 'discarded', 'quarantined'].includes(v.status) &&
       !!v.manifest.experience &&
+      v.manifest.experience.version <= 2 &&
       v.manifest.experience.teams.length === 0 &&
       (v.manifest.experience.objective.kind === 'collective-goal' ||
         (v.manifest.experience.version === 2 &&

@@ -4,8 +4,13 @@ import type { ExperienceDefinition, PermissionManifest } from '@riff/sdk';
 import { migrateConnection } from '../src/app.js';
 import { openDatabase } from '../src/db/client.js';
 import { forChannel } from '../src/db/repositories/studio.js';
+import { collaborationRepository } from '../src/db/repositories/collaboration.js';
 import { createCoordinator } from '../src/services/collaboration/coordinator.js';
-import { sharedPresentation, type SharedRole } from '../src/services/collaboration/contract.js';
+import {
+  SHARED_LIMITS,
+  sharedPresentation,
+  type SharedRole,
+} from '../src/services/collaboration/contract.js';
 
 /** F36 gaps: distinct role mechanics, version 2 rules, continuation choices, raid handoff. */
 const cleanups: (() => void)[] = [];
@@ -135,6 +140,7 @@ function setup(
     roles.map((role) => [role.id, coordinator.invite(contract.id, role.id).token]),
   );
   const f = {
+    database,
     repo,
     version,
     coordinator,
@@ -427,4 +433,31 @@ it('ignores outgoing raids observed while this channel is stopped', () => {
   expect(() =>
     f.coordinator.handoff(f.tokens.steer!, { eventId: 'r', fromChannelId: '100' }),
   ).toThrow('has not recorded a raid');
+});
+
+it('settles a wait even when receipt history is full, and keeps ticking other sessions', () => {
+  const f = setup();
+  f.start();
+  f.coordinator.leave(f.tokens.steer!);
+  f.control('wait');
+  // Fill the receipt history to its cap behind the wait.
+  const store = collaborationRepository(f.database, 'home');
+  store.atomic(() => {
+    for (let i = store.receiptCount(f.contract.id); i < SHARED_LIMITS.receipts; i++)
+      store.receipt(f.contract.id, `filler-${i}`, 'ACCEPTED', 1000);
+  });
+  // A second session runs while the first stays paused.
+  const other = f.coordinator.create(f.version.id, distinct).contract;
+  const tokens = distinct.map((r) => f.coordinator.invite(other.id, r.id).token);
+  tokens.forEach((token) => f.coordinator.approve(token, other.digest));
+  f.coordinator.control(other.id, f.coordinator.view(other.id).revision, 'start');
+  f.now(1000 + 120001);
+  expect(() => f.coordinator.tick()).not.toThrow();
+  const capped = f.coordinator.view(f.contract.id);
+  expect(capped).toMatchObject({ status: 'paused', waitUntil: null });
+  expect(capped.reason).toContain('did not return in time');
+  // The other session's leases expired too; it was still enforced (paused), not skipped.
+  expect(f.coordinator.view(other.id).status).toBe('paused');
+  // Host decisions stay capped by the full history.
+  expect(() => f.control('wait')).toThrow('history is full');
 });

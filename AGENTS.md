@@ -821,7 +821,8 @@ final results, allowed while locally stopped). The wait marker is the exact wait
 plus `waitUntil`; any other pause, local stop/panic (a blocked tick cancels it) or restart
 clears it, so a stale wait never auto-resumes; `wait` itself needs an unblocked channel.
 Choices and raid handoffs are `audit:` receipts returned as `decisions`, capped at 32 host
-decisions and inside the 10,000-receipt cap; members see the state through the reason.
+decisions and inside the 10,000-receipt cap (system wait follow-ups are never capped and
+always clear the wait; each session ticks in isolation); members see the state through the reason.
 Raid handoff is opt-in per agreement and keeps the single coordinator. It is verified by
 the coordinator itself: while an opted-in session is started, the coordinating channel
 subscribes to its own outgoing `channel.raid` (`from_broadcaster_user_id`, no scope) and

@@ -98,7 +98,8 @@ export function sharedProblem(
   definition: Definition | null | undefined,
   roles: readonly Pick<SharedRole, 'action'>[],
 ): string | null {
-  if (!definition || definition.teams.length)
+  // Version 3 non-game formats (stages, quizzes) have no reviewed shared projection.
+  if (!definition || definition.teams.length || definition.version > 2)
     return 'Sharing requires a teamless cooperative round';
   const kind = definition.objective.kind;
   if (kind !== 'collective-goal' && !(kind === 'burst' && definition.version === 2))

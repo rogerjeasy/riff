@@ -38,7 +38,8 @@ only approved aggregate state reaches each receiving channel's own overlay broke
   recorded target. One handoff per session; duplicates are idempotent; raids observed
   while stopped are ignored. The coordinator itself does not migrate and no token moves.
 - Waits are marked by the exact wait reason plus `waitUntil`; other pauses, stop/panic and
-  restart clear them, so only the chosen wait can auto-resume. Host decisions cap at 32.
+  restart clear them, so only the chosen wait can auto-resume. Host decisions cap at 32;
+  system wait follow-ups are never capped, and each session ticks in isolation.
 - Shared Chat source identities deduplicate echoed/retried messages. Only original
   channel inputs use that channel's authenticated badges. Viewer identities are
   channel-namespaced; raw participant state and credentials never enter projections.

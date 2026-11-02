@@ -204,7 +204,9 @@ export function createCoordinator(deps: {
     eventId = `audit:${randomUUID()}`,
     host = true,
   ) {
-    if (store.receiptCount(row.id) >= SHARED_LIMITS.receipts)
+    // System follow-ups (host=false) are never capped: they are bounded by the decisions
+    // that caused them and must always be able to settle a wait.
+    if (host && store.receiptCount(row.id) >= SHARED_LIMITS.receipts)
       return fail('LIMIT', 'Shared event history is full. Start a new session.');
     if (host && store.decisions(row.id).length >= SHARED_LIMITS.decisions)
       return fail('LIMIT', 'This session reached its host decision limit. End the round.');
@@ -317,69 +319,89 @@ export function createCoordinator(deps: {
     if (blocked()) {
       clearWait(row);
       row.reason = 'The local channel stopped during the wait. The host must choose again.';
-      decide(row, 'POLICY_WAIT_CANCELLED', undefined, false);
+      settle(row, 'POLICY_WAIT_CANCELLED');
       return;
     }
     if (!lostOf(row).length) {
       try {
         resumable(row, false);
-        decide(row, 'POLICY_RESUMED', undefined, false);
       } catch {
-        /* Stay paused; the host still holds the explicit choices. */
+        return; // Stay paused; the host still holds the explicit choices.
       }
+      settle(row, 'POLICY_RESUMED');
       return;
     }
     if (now() < waitDeadline(row)) return;
     const lost = lostOf(row);
     clearWait(row);
     row.reason = `${labels(row, lost)} did not return in time. The host can continue without them or end the round.`;
-    decide(row, 'POLICY_WAIT_EXPIRED', undefined, false);
+    settle(row, 'POLICY_WAIT_EXPIRED');
   }
+  /** Record a wait outcome; if the audit receipt cannot be written, still persist the state. */
+  function settle(row: CollaborationRow, code: string) {
+    const revision = row.revision;
+    try {
+      decide(row, code, undefined, false);
+    } catch {
+      row.revision = revision;
+      save(row);
+    }
+  }
+  function tickRow(stored: CollaborationRow) {
+    if (stored.status !== 'running' && stored.members.some((m) => m.waitUntil !== undefined)) {
+      settleWait(required(stored.id));
+      return;
+    }
+    if (stored.status !== 'running') return;
+    const row = required(stored.id);
+    if (quarantined.has(row.id)) {
+      pause(row, INCIDENT_REASON);
+      return;
+    }
+    if (blocked()) {
+      pause(row, 'The coordinator has stopped this session.');
+      return;
+    }
+    try {
+      ensureHealthy(row);
+    } catch {
+      pause(row, 'The shared behavior is no longer authorized.');
+      return;
+    }
+    const lost = lostOf(row);
+    if (lost.length) {
+      pause(
+        row,
+        `${labels(row, lost)} disconnected. The host can wait, continue without them, or end the round.`,
+        Math.min(...lost.map((m) => m.leaseUntil)),
+      );
+      return;
+    }
+    const advanced = advanceSession(
+      row.snapshot,
+      Math.max(now(), row.snapshot.updatedAt),
+      definition(row),
+    );
+    if (advanced.phase === 'finished') {
+      fence(row.id);
+      row.snapshot = advanced;
+      row.status = 'finished';
+      row.reason = endReason(row);
+      save(row);
+    }
+  }
+  /** Each session is enforced on its own: one failing row never blocks the others. */
   function tick() {
     if (closed) return;
+    let failure: unknown = null;
     for (const stored of store.list()) {
-      if (stored.status !== 'running' && stored.members.some((m) => m.waitUntil !== undefined)) {
-        settleWait(required(stored.id));
-        continue;
-      }
-      if (stored.status !== 'running') continue;
-      const row = required(stored.id);
-      if (quarantined.has(row.id)) {
-        pause(row, INCIDENT_REASON);
-        continue;
-      }
-      if (blocked()) {
-        pause(row, 'The coordinator has stopped this session.');
-        continue;
-      }
       try {
-        ensureHealthy(row);
-      } catch {
-        pause(row, 'The shared behavior is no longer authorized.');
-        continue;
-      }
-      const lost = lostOf(row);
-      if (lost.length) {
-        pause(
-          row,
-          `${labels(row, lost)} disconnected. The host can wait, continue without them, or end the round.`,
-          Math.min(...lost.map((m) => m.leaseUntil)),
-        );
-        continue;
-      }
-      const advanced = advanceSession(
-        row.snapshot,
-        Math.max(now(), row.snapshot.updatedAt),
-        definition(row),
-      );
-      if (advanced.phase === 'finished') {
-        fence(row.id);
-        row.snapshot = advanced;
-        row.status = 'finished';
-        row.reason = endReason(row);
-        save(row);
+        tickRow(stored);
+      } catch (error) {
+        failure ??= error;
       }
     }
+    if (failure) throw failure;
   }
   /** Outgoing raids this coordinator observed itself, by target channel (memory only). */
   const raids = new Map<string, { eventId: string; until: number }>();
