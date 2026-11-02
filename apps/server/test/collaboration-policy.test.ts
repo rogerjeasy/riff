@@ -424,6 +424,18 @@ it('hands presentation only to the channel this coordinator itself raided', () =
   expect(() => f.coordinator.heartbeat(f.tokens.repair!)).toThrow();
 });
 
+it('never applies a raid observed before the session started (stale evidence)', () => {
+  const f = setup({ raidHandoff: true });
+  // The coordinator raids channel 200 before this session has started.
+  expect(f.coordinator.recordRaid({ eventId: 'early', toChannelId: '200' })).toEqual([]);
+  f.start();
+  // Inside the validity window, the earlier raid is still not evidence for this session.
+  expect(() =>
+    f.coordinator.handoff(f.tokens.steer!, { eventId: 'early', fromChannelId: '100' }),
+  ).toThrow('has not recorded a raid');
+  expect(f.coordinator.view(f.contract.id).members.some((m) => m.presenting)).toBe(false);
+});
+
 it('ignores outgoing raids observed while this channel is stopped', () => {
   const f = setup({ raidHandoff: true });
   f.start();

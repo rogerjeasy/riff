@@ -403,8 +403,13 @@ export function createCoordinator(deps: {
     }
     if (failure) throw failure;
   }
-  /** Outgoing raids this coordinator observed itself, by target channel (memory only). */
+  /**
+   * Outgoing raids this coordinator observed itself (memory only), keyed by session and
+   * target channel. A raid is evidence only for the sessions that were started, unfinished
+   * and opted in when it happened, never for a session started later.
+   */
   const raids = new Map<string, { eventId: string; until: number }>();
+  const raidKey = (sessionId: string, channelId: string) => `${sessionId}:${channelId}`;
   function applyHandoff(row: CollaborationRow, roleId: string, hostRoleId: string, raid: string) {
     const eventId = `audit:handoff:${hash(raid)}`;
     // One handoff per session: once a presenter exists, later raids change nothing.
@@ -812,7 +817,7 @@ export function createCoordinator(deps: {
     recordRaid(raid: { eventId: string; toChannelId: string }) {
       if (hostBlocked()) return [];
       const at = now();
-      raids.set(raid.toChannelId, { eventId: raid.eventId, until: at + SHARED_LIMITS.raidMs });
+      for (const [key, value] of raids) if (value.until < at) raids.delete(key);
       const host = deps.repo.state().twitchUserId;
       const changed: string[] = [];
       for (const stored of store.list()) {
@@ -822,6 +827,10 @@ export function createCoordinator(deps: {
         const target = row.contract.roles.find((r) => r.channelId === raid.toChannelId);
         const hostRole = row.contract.roles.find((r) => r.channelId === host);
         if (!target || !hostRole || target.id === hostRole.id) continue;
+        raids.set(raidKey(row.id, raid.toChannelId), {
+          eventId: raid.eventId,
+          until: at + SHARED_LIMITS.raidMs,
+        });
         if (applyHandoff(row, target.id, hostRole.id, raid.eventId)) changed.push(row.id);
       }
       return changed;
@@ -846,7 +855,7 @@ export function createCoordinator(deps: {
         return fail('CONFLICT', 'The coordinating channel cannot hand off to itself.');
       if (!row.started || row.status === 'finished')
         return fail('CONFLICT', 'Only a started, unfinished round can hand off.');
-      const recorded = raids.get(role.channelId);
+      const recorded = raids.get(raidKey(row.id, role.channelId));
       if (!recorded || recorded.until < now())
         return fail(
           'UNAUTHORIZED',

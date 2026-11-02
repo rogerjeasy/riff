@@ -9,7 +9,7 @@ Status legend:
 - **Partial**: part of the requirement in project-documentation.md is missing; the row names what.
 - **Live**: whether the feature has run against the real external service in production (Twitch, OpenAI, OBS, Firebot, Streamer.bot). _Blocked_ means Twitch eligibility prevented it on the test channel.
 
-Last integration: `main`, 2026-11-02. Status verified by an independent audit of project-documentation.md against the code (F01–F40 and acceptance scenarios A1–A36). `pnpm check`: 118 files / 1204 tests.
+Last integration: `main`, 2026-11-02. Status verified by an independent audit of project-documentation.md against the code (F01–F40 and acceptance scenarios A1–A36). `pnpm check`: 129 files / 1289 tests.
 
 Release blockers closed (main, 2026-11-02): `pnpm test` green (110 files / 1157 tests on top of `ffab38d`); `pnpm audit --prod` reports no known vulnerabilities (glob and minimatch pinned to patched versions through `pnpm-workspace.yaml` overrides); the Gitleaks history and directory scans find no leaks; acceptance scenario A12 (a failed compile and repair leaves the live version, engine and chat dispatch intact) has a named test in `apps/server/test/workflow.test.ts`; `pnpm check:unverified` counts 3 `UNVERIFIED` markers (F21 Helix poll response, F39 Streamer.bot export shape and import encoding), so `RIFF_RELEASE=1 pnpm check:unverified` still fails until they are verified live.
 
