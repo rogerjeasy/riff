@@ -9,10 +9,12 @@
 <p align="center">
   <strong>▶ <a href="docs/assets/riff-demo.mp4">Watch the demo (2:47)</a></strong>: the problem, the approach, then a live run on
   production. Codex compiles a sentence, Riff verifies and rehearses it, and real Twitch chat
-  drives the overlay.
+  drives the overlay. Also on the
+  <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0"><strong>v1.0.0 release</strong></a>.
 </p>
 
 <p align="center">
+  <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0"><img alt="Release v1.0.0" src="https://img.shields.io/badge/release-v1.0.0-7c4dff?labelColor=07070c&style=flat-square&logo=github&logoColor=white"></a>
   <a href="https://twitchcon-codex.devpost.com/"><img alt="Codex × TwitchCon Hackathon" src="https://img.shields.io/badge/Codex_%C3%97_TwitchCon-Hackathon_2026-7c4dff?labelColor=07070c&style=flat-square"></a>
   <a href="https://github.com/rogerjeasy/riff/actions/workflows/verify.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rogerjeasy/riff/verify.yml?branch=main&label=CI&labelColor=07070c&style=flat-square"></a>
   <img alt="Codex: runtime compiler" src="https://img.shields.io/badge/Codex-runtime_compiler-9db4ff?labelColor=07070c&style=flat-square&logo=openai&logoColor=white">
@@ -23,6 +25,7 @@
 
 <p align="center">
   <strong><a href="#try-it">Try it</a></strong> ·
+  <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0">Release v1.0.0</a> ·
   <a href="docs/studio-guide.md">Studio guide</a> ·
   <a href="packages/sdk/SDK.md">SDK guide</a> ·
   <a href="docs/project-documentation.md">Product document</a> ·
