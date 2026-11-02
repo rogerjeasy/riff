@@ -6,6 +6,7 @@ import { request } from '../../lib/api.js';
 import { publicationSchema, downloadRecipe, type RecipePublication } from './contracts.js';
 import { RecipePreview } from './preview.js';
 import { RuleFacts } from './rules.js';
+import { installLinkFor } from './install-link.js';
 
 const digestFromHash = () => {
   const value = window.location.hash.slice(1);
@@ -21,6 +22,7 @@ export function RecipeDirectory() {
   const [report, setReport] = useState('');
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [copied, setCopied] = useState('');
   const serial = useRef(0);
   const detail = useRef<HTMLElement>(null);
 
@@ -165,10 +167,36 @@ export function RecipeDirectory() {
               <h2>
                 {recipe.title} · edition {recipe.revision}
               </h2>
-              <button className="button primary" onClick={() => downloadRecipe(recipe)}>
-                Download pinned recipe
-              </button>
+              <span className="recipe-detail-actions">
+                <a
+                  className="button primary"
+                  href={installLinkFor(window.location.origin, recipe.digest)}
+                >
+                  Install in my console
+                </a>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    const link = installLinkFor(window.location.origin, recipe.digest);
+                    void (navigator.clipboard?.writeText(link) ?? Promise.reject(new Error())).then(
+                      () => setCopied(recipe.digest),
+                      () => setError(`Copy failed. Install link: ${link}`),
+                    );
+                  }}
+                >
+                  Copy install link
+                </button>
+                <button className="button ghost" onClick={() => downloadRecipe(recipe)}>
+                  Download pinned recipe
+                </button>
+              </span>
             </div>
+            {copied === recipe.digest && (
+              <p role="status" className="panel-hint">
+                Install link copied. It opens a guided install pinned to this exact edition.
+              </p>
+            )}
             <p>{recipe.description}</p>
             <p className="panel-hint">
               Publisher-declared author: {recipe.author} · License: {recipe.license}. Riff has not
@@ -192,10 +220,12 @@ export function RecipeDirectory() {
               </p>
             )}
             <p className="panel-callout">
-              To use it: download the file, open your Riff console, and import it under Recipe
-              library → Remix. Downloads never activate an interaction or grant permissions; Twitch
-              chat participation needs only <code>user:read:chat</code>. Built-in artwork comes from
-              your own Riff installation under its project license.
+              To use it: open the install link in your Riff console. It checks the pinned digest,
+              compatibility and authority before anything is saved. Another Riff installation can
+              download the file and choose it from the same link. Installs never activate an
+              interaction or grant permissions; Twitch chat participation needs only{' '}
+              <code>user:read:chat</code>. Built-in artwork comes from your own Riff installation
+              under its project license.
             </p>
             <details>
               <summary>Source code, rules and lineage</summary>

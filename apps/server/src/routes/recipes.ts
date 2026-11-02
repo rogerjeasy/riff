@@ -117,6 +117,48 @@ export function registerRecipeRoutes(
   route('install', z.object({ reviewId: z.string().uuid(), digest: hash }).strict(), (body) =>
     service.install(body),
   );
+  // F27 install links. The preview is read-only (no state change is announced); an
+  // optional `package` is a file the creator chose, pinned to the link's digest.
+  app.post('/api/recipes/install-preview', { bodyLimit: 192 * 1024 }, async (req, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const parsed = z
+      .object({ digest: hash, package: z.unknown().optional() })
+      .strict()
+      .safeParse(req.body);
+    if (!parsed.success)
+      return reply.code(400).send({ code: 'INVALID', message: 'Invalid install link digest.' });
+    try {
+      return {
+        preview: await service.installPreview({
+          digest: parsed.data.digest,
+          ...(parsed.data.package !== undefined ? { package: parsed.data.package } : {}),
+        }),
+      };
+    } catch (error) {
+      const result = failure(error);
+      if (result.status === 500) req.log.error({ err: error }, 'recipe install preview failed');
+      return reply.code(result.status).send({ code: result.code, message: result.message });
+    }
+  });
+  route(
+    'install-link',
+    z
+      .object({
+        digest: hash,
+        package: z.unknown().optional(),
+        profileRevision: revision,
+        targetVersionId: z.string().uuid().optional(),
+      })
+      .strict(),
+    async (body) => ({
+      installed: await service.installFromLink({
+        digest: body.digest,
+        profileRevision: body.profileRevision,
+        ...(body.package !== undefined ? { package: body.package } : {}),
+        ...(body.targetVersionId ? { targetVersionId: body.targetVersionId } : {}),
+      }),
+    }),
+  );
   route('publish', z.object({ package: z.unknown() }).strict(), async (body) => ({
     publication: await service.publish(body.package),
   }));

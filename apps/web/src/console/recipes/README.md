@@ -10,6 +10,8 @@ Creator-facing remix and distribution. The server contract lives in
 | `share.tsx`       | Describe, license and attest → inspect the sanitized export → download or publish        |
 | `published.tsx`   | Your public editions, withhold/restore, and the operator-only report queue               |
 | `directory.tsx`   | Public `/recipes` page: search, deep links (`/recipes#<digest>`), demo, download, report |
+| `install.tsx`     | F27 guided install from a link: edition, compatibility, authority diff, demo, confirm    |
+| `install-link.ts` | Install-link parsing (`?from=&digest=` or `#<digest>`) and link building                 |
 | `differences.tsx` | Key-level before/after for adapted rules; unchanged fields collapse to one line          |
 | `rules.tsx`       | Plain-language rule facts (command, audience, allowance, needs)                          |
 | `preview.tsx`     | Synthetic sample chat on the shared `StagePlayer` (never a live overlay)                 |

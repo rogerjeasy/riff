@@ -48,6 +48,25 @@ test('publish a pinned demo, remix privately, then hand a candidate to local rev
   await detail.getByRole('button', { name: 'Play sample chat' }).click();
   await expect(detail.locator('[data-projectile=tomato]')).toHaveCount(1);
   expect((await new AxeBuilder({ page: directory }).analyze()).violations).toEqual([]);
+  // F27: the install link opens a guided, read-only review in the console. This channel's
+  // own live !recipepublish makes the command conflict, so installing is blocked.
+  await detail.getByRole('link', { name: 'Install in my console' }).click();
+  await expect(directory).toHaveURL(/\/recipes\/install\?from=.*&digest=[a-f0-9]{64}$/);
+  const install = directory.getByRole('region', { name: 'Install “Portable tomatoes”' });
+  await expect(install).toContainText('digest verified');
+  await expect(install).toContainText('Example creator');
+  await expect(install.getByRole('list', { name: 'Compatibility checks' })).toContainText(
+    'already used by a live interaction',
+  );
+  await expect(
+    install.getByRole('button', { name: 'Install as private candidate' }),
+  ).toBeDisabled();
+  expect(
+    (await new AxeBuilder({ page: directory }).include('.recipe-install').analyze()).violations,
+  ).toEqual([]);
+  await install.getByRole('button', { name: 'Cancel' }).first().click();
+  await expect(directory).toHaveURL(/\/$/);
+  await expect(directory.locator('.recipe-install')).toHaveCount(0);
   const response = await page.request.get('/api/recipes');
   const { state } = await response.json();
   await library.getByRole('tab', { name: /Remix into my channel/ }).click();

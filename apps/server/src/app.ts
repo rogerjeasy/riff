@@ -19,6 +19,8 @@ import {
 import { registerParticipationRoutes } from './routes/participation.js';
 import { createRecipeService, type RecipeService } from './services/recipes/service.js';
 import { registerRecipeRoutes } from './routes/recipes.js';
+import type { TwitchAccess } from './services/recipes/install.js';
+import { createEligibility } from './services/twitch/features.js';
 import { createDirectorService, type DirectorService } from './services/director/service.js';
 import { directorRepository } from './db/repositories/director.js';
 import { registerDirectorRoutes } from './routes/director.js';
@@ -260,6 +262,8 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   });
   participationRef.current = participation;
   const recipeRef: { current?: RecipeService } = {};
+  // F27 install-link compatibility reads Twitch facts once the connection exists below.
+  const recipeTwitchRef: { current?: () => Promise<TwitchAccess> } = {};
   const scenes = createSceneService({
     database,
     repo,
@@ -278,6 +282,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     queue,
     saveScene: (versionId, scene) => scenes.save(versionId, 0, scene),
     rateSecret: dependencies.secret ?? null,
+    twitchAccess: async () =>
+      (await recipeTwitchRef.current?.()) ?? {
+        connected: false,
+        scopes: [],
+        eligibility: 'unknown',
+      },
     publicPresentation: participation.exportPresentation,
     reservedCommands: () => {
       const member = shared.current?.member.status();
@@ -362,6 +372,12 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   chatAuthoringRef.current = chatAuthoring;
   chatAuthoring.boot();
   const featureAccess = { api: () => twitch.api(), configured: twitch.configured };
+  const recipeEligibility = createEligibility(featureAccess, dependencies.now ?? Date.now);
+  recipeTwitchRef.current = async () => ({
+    connected: twitch.api() !== null,
+    scopes: twitch.scopes(),
+    eligibility: await recipeEligibility.refresh(),
+  });
   const changedSoon = () => hub.publish('studio', null);
   const channelPoints = createChannelPointsService({
     database,
@@ -621,6 +637,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
   if (dependencies.webRoot) {
     await app.register(staticFiles, { root: dependencies.webRoot, dotfiles: 'deny' });
     app.get('/recipes', (_request, reply) => reply.sendFile('index.html'));
+    app.get('/recipes/install', (_request, reply) => reply.sendFile('index.html'));
     app.get('/participate', (_request, reply) => reply.sendFile('index.html'));
     app.get('/production-test', (_request, reply) => reply.sendFile('index.html'));
   }

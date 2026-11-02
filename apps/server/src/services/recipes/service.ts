@@ -37,6 +37,7 @@ import {
   publicTests,
 } from './contract.js';
 import { rehearseArtifact } from './proof.js';
+import { compatibilityFor, scopeDiff, type TwitchAccess } from './install.js';
 import { adaptationIntent, presentationFor, type InstalledPresentation } from './presentation.js';
 import {
   assertReviewRoom,
@@ -123,6 +124,8 @@ export function createRecipeService(deps: {
   rateSecret?: string | null;
   /** Deadline for adaptation and publication work. */
   deadlineMs?: number;
+  /** F27 compatibility facts: granted scopes and Twitch eligibility, never tokens. */
+  twitchAccess?: () => TwitchAccess | Promise<TwitchAccess>;
 }) {
   const { repo } = deps,
     storage = recipeRepository(deps.database, repo.channelId),
@@ -352,8 +355,150 @@ export function createRecipeService(deps: {
     );
   }
 
+  /**
+   * F27: the pinned edition an install link names. Same-origin links read this directory's
+   * published snapshot; a file chosen by the creator must carry exactly the linked digest.
+   * There is no URL fetching.
+   */
+  function pinned(linkDigest: string, supplied?: unknown) {
+    // Stored snapshots are re-verified too: the canonical content must still hash to the link.
+    const pack = parsePackage(supplied === undefined ? api.detail(linkDigest).package : supplied);
+    if (pack.digest !== linkDigest)
+      throw new RecipeError(
+        'CONFLICT',
+        'Digest mismatch: this file is a different edition than the install link names. Nothing was saved.',
+      );
+    return pack;
+  }
+  /** What the channel already holds from the same recipe, for update and compare. */
+  function existingFor(pack: RecipePackage, record: RecipeRecord) {
+    const installed = Object.values(record.installations).flatMap((installation) => {
+      const version = repo.version(installation.versionId);
+      const source = record.imports.find((item) => item.digest === installation.sourceDigest);
+      if (!version || !source || source.package.recipeId !== pack.recipeId) return [];
+      return [
+        {
+          versionId: version.id,
+          title: version.title,
+          digest: installation.sourceDigest,
+          revision: source.package.revision,
+          manifest: version.manifest as Manifest,
+        },
+      ];
+    });
+    const same = installed.find((item) => item.digest === pack.digest);
+    const latest = [...installed].sort((a, b) => b.revision - a.revision)[0] ?? null;
+    const status = same
+      ? ('installed' as const)
+      : latest
+        ? ('other-revision' as const)
+        : record.imports.some((item) => item.digest === pack.digest)
+          ? ('imported' as const)
+          : ('none' as const);
+    return { status, compareTo: same ?? latest };
+  }
+
   const api = {
     state,
+    /** F27 read-only guided-install preview. Never writes. */
+    async installPreview(input: { digest: string; package?: unknown }) {
+      const pack = pinned(input.digest, input.package);
+      const access = (await deps.twitchAccess?.()) ?? {
+        connected: false,
+        scopes: [],
+        eligibility: 'unknown' as const,
+      };
+      const record = read();
+      const existing = existingFor(pack, record);
+      const checkedManifest = manifestSchema.safeParse(pack.manifest);
+      let conflict: string | null = null;
+      if (checkedManifest.success)
+        try {
+          assertCommandsFree(
+            checkedManifest.data as Manifest,
+            existing.status === 'other-revision' ? (existing.compareTo?.versionId ?? null) : null,
+          );
+        } catch (error) {
+          if (!(error instanceof RecipeError)) throw error;
+          conflict = error.message;
+        }
+      const published =
+        input.package === undefined
+          ? storage.published().find((item) => item.package.digest === pack.digest)
+          : undefined;
+      return structuredClone({
+        package: pack,
+        source: input.package === undefined ? ('directory' as const) : ('file' as const),
+        proof: published?.proof ?? null,
+        profileRevision: record.profile.revision,
+        compatibility: compatibilityFor(pack, record.profile.capabilities, access, conflict),
+        scope: checkedManifest.success
+          ? scopeDiff(
+              checkedManifest.data as Manifest,
+              existing.status === 'installed' || existing.status === 'other-revision'
+                ? (existing.compareTo?.manifest ?? null)
+                : null,
+            )
+          : [],
+        existing: {
+          status: existing.status,
+          versionId: existing.compareTo?.versionId ?? null,
+          title: existing.compareTo?.title ?? null,
+          revision: existing.compareTo?.revision ?? null,
+        },
+      });
+    },
+    /**
+     * F27 confirm: import the pinned edition, run the exact-source validation pipeline and
+     * create a private candidate. A failure removes an import this call created, so an
+     * aborted install leaves nothing behind. Activation still needs the normal approval.
+     */
+    async installFromLink(input: {
+      digest: string;
+      package?: unknown;
+      profileRevision: number;
+      targetVersionId?: string;
+    }) {
+      assertOpen();
+      const pack = pinned(input.digest, input.package);
+      const record = read();
+      if (record.profile.revision !== input.profileRevision)
+        throw new RecipeError('STALE', 'The recipe profile changed. Review the install again.');
+      const blockers = blockersFor(pack, record.profile.capabilities);
+      if (blockers.length) throw new RecipeError('UNSUPPORTED', blockers.join('; '));
+      const existing = existingFor(pack, record);
+      if (existing.status === 'installed' && !input.targetVersionId && existing.compareTo)
+        return { versionId: existing.compareTo.versionId, review: null, alreadyInstalled: true };
+      const created = !record.imports.some((item) => item.digest === pack.digest);
+      api.import(pack);
+      try {
+        const review = await api.adapt({
+          sourceDigest: pack.digest,
+          profileRevision: input.profileRevision,
+          ...(input.targetVersionId ? { targetVersionId: input.targetVersionId } : {}),
+        });
+        if (!review.passed)
+          throw new RecipeError(
+            'BLOCKED',
+            'The private rehearsal did not pass, so nothing was installed. Inspect the recipe in the library.',
+          );
+        const { versionId } = api.install({ reviewId: review.id, digest: review.digest });
+        return { versionId, review, alreadyInstalled: false };
+      } catch (error) {
+        if (created)
+          mutate((current) => {
+            const kept = Object.values(current.installations).some(
+              (installation) => installation.sourceDigest === pack.digest,
+            );
+            if (kept) return;
+            current.imports = current.imports.filter((item) => item.digest !== pack.digest);
+            current.reviews = current.reviews.filter(
+              (review) => review.sourceDigest !== pack.digest,
+            );
+          });
+        throw error;
+      }
+    },
     export(input: RecipeExportInput): RecipePackage {
       const version = repo.version(input.versionId);
       if (!version) throw new RecipeError('NOT_FOUND', 'Choose a local version to export.');

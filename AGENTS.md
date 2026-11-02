@@ -873,6 +873,14 @@ review can restore it after all reports are resolved. See the
 routes, trust limits and verification details. No generated capability or SDK version
 change is introduced.
 
+F27 install links (`/recipes/install?from=<origin>&digest=<sha256>`, or `#<digest>`) open a
+guided install in the signed-in console. Guarded `POST /api/recipes/install-preview` is
+read-only (digest-pinned edition, compatibility incl. consent/eligibility/command conflicts,
+authority diff); `POST /api/recipes/install-link` imports, verifies, rehearses and installs a
+candidate, removing an import it created when any step fails. Activation keeps the normal
+exact approval. Links from another directory are never fetched: the creator chooses the
+downloaded file and its digest must match. No table, env var or dependency was added.
+
 ## Production setup and inclusive participation — F39/F40
 
 Migration 0014 adds channel-scoped `production_state` and `participation_state` JSON rows.

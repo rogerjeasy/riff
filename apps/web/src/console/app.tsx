@@ -7,6 +7,8 @@ import { InsightsPanel } from './insights/panel.js';
 import { TwitchFeaturesPanel } from './twitch-features/panel.js';
 import { TwitchEventsPanel } from './twitch/event-triggers.js';
 import { RecipeLibrary } from './recipes/library.js';
+import { RecipeInstall } from './recipes/install.js';
+import { parseInstallLink, type InstallLink } from './recipes/install-link.js';
 import { DirectorPanel } from './director/panel.js';
 import { CollaborationPanel } from './collaboration/panel.js';
 import { CanvasEditor } from './canvas/editor.js';
@@ -156,6 +158,11 @@ export function App() {
   const [draft, setDraft] = useState(
     'Let viewers throw tomatoes with !tomato, limited to three throws per person in any rolling 60 seconds.',
   );
+  // F27: `/recipes/install?...` opens the guided install inside the signed-in console.
+  const [installLink, setInstallLink] = useState<InstallLink | null>(() =>
+    location.pathname === '/recipes/install' ? parseInstallLink(location) : null,
+  );
+  const [libraryEpoch, setLibraryEpoch] = useState(0);
   const notify = useCallback((message: string, kind: 'good' | 'bad' = 'good') => {
     const id = Date.now() + Math.random();
     setToasts((list) => [...list.slice(-2), { id, message, kind }]);
@@ -280,6 +287,28 @@ export function App() {
         </div>
       )}
       <main id="main" className="studio">
+        {installLink && (
+          <RecipeInstall
+            link={installLink}
+            onClose={() => {
+              history.replaceState(null, '', '/');
+              setInstallLink(null);
+            }}
+            onInstalled={() => {
+              setLibraryEpoch((n) => n + 1);
+              void refresh();
+            }}
+            onReview={(id) => {
+              history.replaceState(null, '', '/');
+              setInstallLink(null);
+              void refresh();
+              setSelectedId(id);
+              document
+                .getElementById('describe-heading')
+                ?.scrollIntoView({ behavior: 'instant', block: 'start' });
+            }}
+          />
+        )}
         <div className="intro">
           <h1>Describe it. Test it. Watch chat play it.</h1>
           <p>
@@ -335,6 +364,7 @@ export function App() {
         <ChannelPointsPanel />
         <PredictionsPanel />
         <RecipeLibrary
+          key={libraryEpoch}
           versions={allVersions}
           onReview={(id) => {
             void refresh();

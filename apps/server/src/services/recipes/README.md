@@ -71,6 +71,21 @@ Twitch `oauth:` tokens, Bearer tokens and URLs with `user:pass@`. Base64 `data:`
 refused as embedded assets. Ordinary words and plain URLs are allowed. The message names
 the field ("description looks like it contains a secret token").
 
+Install links (F27): `/recipes/install?from=<origin>&digest=<sha256>` (or `#<digest>`)
+opens a guided install in the console. Guarded POST `/api/recipes/install-preview`
+`{digest, package?}` is read-only: it takes the edition from this directory's published
+snapshot (or a creator-chosen file, which must carry exactly the linked digest), re-verifies
+the canonical digest and returns the public package, demo proof, `compatibility` (SDK,
+capabilities, Twitch consent with same-origin grant links, Affiliate/Partner eligibility,
+command conflicts; `blocked` checks stop install, `consent` does not), an authority `scope`
+diff against nothing installed or the installed edition of the same recipe, and `existing`
+(`none|imported|installed|other-revision`). POST `/api/recipes/install-link`
+`{digest, package?, profileRevision, targetVersionId?}` imports, adapts the exact source,
+rehearses and installs a candidate; an import it created is removed again if any step fails.
+An edition already installed returns `alreadyInstalled: true`. There is no remote URL fetch:
+links naming another directory ask the creator for the downloaded file. Pure checks live in
+`install.ts`.
+
 Public API: GET `/directory/recipes?q=...`, GET `/directory/recipes/:digest`, guarded
 POST `/directory/recipes/:digest/report`. Only published, non-withheld snapshots are
 visible. Publication verifies again and stores actual synthetic sandbox decisions for
