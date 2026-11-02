@@ -325,6 +325,11 @@ structure, keeping app services responsible for external I/O and authorization.
 - Compiler workspaces: restricted guest/tool reads and egress, separate trusted model
   transport, no inherited credentials, and deletion after the run. Test boundaries.
 - Dependencies: `pnpm audit --prod` is clean at submission; lockfile committed.
+  Transitive fixes without a patched parent release are pinned in the
+  `overrides:` block of `pnpm-workspace.yaml`; drop each once its parent catches up.
+- Secret scanning: the Gitleaks history and directory scans are clean. Credential-shaped
+  test fixtures are assembled at runtime; `.gitleaksignore` only pins findings in
+  already-published commits.
 
 ---
 
@@ -343,8 +348,8 @@ structure, keeping app services responsible for external I/O and authorization.
   (no module-level singletons for DB, Twitch or Codex clients; a `createApp(deps)`
   factory wires them).
 - Comments explain why, not what. `// UNVERIFIED:` marks any Twitch/Codex detail
-  not checked against docs or fixtures; CI counts them and the count must be 0
-  at release.
+  not checked against docs or fixtures; CI counts them (`pnpm check:unverified`) and
+  the count must be 0 at release (`RIFF_RELEASE=1 pnpm check:unverified` fails otherwise).
 - Keep generated-code examples in `packages/sdk/examples` idiomatic and minimal;
   Codex imitates them.
 
@@ -382,7 +387,7 @@ pnpm dev              server (:8787) and web (:5173)
 pnpm build            packages, server and three browser entries
 pnpm test             trusted host, runtime, private replay and DOM tests
 pnpm test:ci          fast key subset run by CI (contracts, sandbox boundary, host guards)
-pnpm test:tooling      workspace graph and source-boundary tests
+pnpm test:tooling      workspace graph, source-boundary and UNVERIFIED-counter tests
 pnpm test:e2e          Chromium/axe checks; requires local sockets
 pnpm lint             ESLint plus architecture boundary enforcement
 pnpm typecheck        strict source checks in all six workspaces
@@ -391,6 +396,9 @@ pnpm smoke            Fastify injection and SQLite foundation smoke test
 pnpm db:migrate       apply committed Drizzle migrations
 pnpm db:generate      generate migrations after a schema change
 pnpm check            lint, types, host/tooling tests and focused secret scan
+pnpm check:unverified list `// UNVERIFIED:` markers (file:line, count); fails only with RIFF_RELEASE=1
+pnpm security:audit   pnpm audit --prod (transitive fixes pinned in pnpm-workspace.yaml overrides)
+pnpm security:secrets Gitleaks history scan (.gitleaks.toml config, .gitleaksignore fingerprints)
 pnpm compile:live     one real Codex compile (+ --edit) through the full pipeline; never in CI
 pnpm run doctor       tool and dependency inventory (explicit run avoids pnpm built-in)
 ```
