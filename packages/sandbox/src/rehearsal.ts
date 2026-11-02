@@ -275,7 +275,7 @@ export async function runRehearsal(input: RunRehearsalInput): Promise<RehearsalR
                 name: fire.name,
                 at: fire.firedAt,
                 code: fire.decision.code,
-                effects: fire.decision.effects.length,
+                effects: fire.decision.effects.length + (fire.decision.actions?.length ?? 0),
               })),
             }
           : {}),

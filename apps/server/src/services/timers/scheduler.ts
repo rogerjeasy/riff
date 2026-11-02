@@ -173,7 +173,7 @@ export function createTimerScheduler(deps: {
             viewerId: `timer:${row.name}`,
             at,
             code: decision.code,
-            effects: decision.effects.length,
+            effects: decision.effects.length + (decision.actions?.length ?? 0),
           });
         repo.settleTimer(row.id, next);
         await onFire({ row, event, decision, target: live });

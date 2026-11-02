@@ -189,7 +189,7 @@ export async function runScenarios(
         const advanced = await timers.advance(engine, step.at);
         const fired = {
           fired: advanced.fires.length,
-          effects: advanced.fires.reduce((sum, fire) => sum + fire.decision.effects.length, 0),
+          effects: advanced.fires.reduce((sum, fire) => sum + outputCount(fire.decision), 0),
         };
         const decision = await engine.dispatch({
           id: step.id,

@@ -587,7 +587,7 @@ export function createLiveRuntime(deps: {
           viewerId: event.data.viewerId,
           at: event.data.at,
           code: decision.code,
-          effects: decision.effects.length,
+          effects: decision.effects.length + (decision.actions?.length ?? 0),
         });
     } catch {
       generation++;
