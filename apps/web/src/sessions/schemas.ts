@@ -1,17 +1,20 @@
 import { z } from 'zod';
 
 const command = z.string().regex(/^![a-z0-9_-]{1,32}$/);
-const label = z
-  .string()
-  .trim()
-  .min(1)
-  .max(60)
-  .refine(
-    (value) =>
-      !Array.from(value).some(
-        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
-      ),
-  );
+/** Trimmed, non-empty, control-free text of at most `max` characters. */
+const boundedText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .refine(
+      (value) =>
+        !Array.from(value).some(
+          (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        ),
+    );
+const label = boundedText(60);
 const teamId = z
   .string()
   .regex(/^[a-z0-9_-]{1,32}$/)
@@ -81,7 +84,8 @@ const MURAL_PALETTE = [
   'white',
   'black',
 ] as const;
-const text = (max: number) => label.max(max);
+// Built fresh: `label.max(n)` would keep label's own 60-character cap as well.
+const text = (max: number) => boundedText(max);
 const optionLabel = z
   .string()
   .trim()
@@ -148,7 +152,7 @@ const formatSchema = z.discriminatedUnion('kind', [
 export const experienceDefinitionSchema = z
   .object({
     version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
-    title: label.max(120),
+    title: boundedText(120),
     durationMs: z.number().int().min(1000).max(3600000),
     maxParticipants: z.number().int().min(1).max(256),
     teams: z.array(z.object({ id: teamId, label, joinCommand: command }).strict()).max(8),
