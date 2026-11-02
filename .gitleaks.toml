@@ -1,0 +1,9 @@
+# Gitleaks configuration: the default rules, minus gitignored third-party
+# package caches that `gitleaks dir` would otherwise scan (pnpm store and
+# installed node_modules contain vendor test fixtures, not Riff secrets).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Gitignored third-party dependency caches"
+paths = ['''(^|/)\.cache/''', '''(^|/)node_modules/''']

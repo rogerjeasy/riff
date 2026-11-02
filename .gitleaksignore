@@ -1,0 +1,4 @@
+# Fake AWS key id fixture in a historical commit (recipe export credential test).
+# The test now assembles the string at runtime; this entry only covers the
+# already-published commit, which cannot be rewritten on main.
+a785489fa3552385f0d09aecdd0a520c2603b90b:apps/server/test/recipes.test.ts:aws-access-token:359
