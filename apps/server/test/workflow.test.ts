@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { createOfflineTransport, type CompilerTransport } from '@riff/compiler';
 import { createApp, type RiffApp } from '../src/app.js';
 import type { VersionView } from '../src/services/automations/views.js';
 import type { LiveChatMessage } from '../src/services/live/runtime.js';
@@ -13,10 +14,39 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 
-async function boot() {
-  const app = await createApp({ logger: false });
+async function boot(transport?: CompilerTransport) {
+  const app = await createApp({ logger: false, ...(transport ? { transport } : {}) });
   apps.push(app);
   return app;
+}
+/**
+ * The offline compiler, except that every edit (a request with a base version) yields a
+ * candidate that cannot compile, on the first draft and on the single repair alike.
+ */
+function brokenEdits(): CompilerTransport & { turns: () => number } {
+  const offline = createOfflineTransport({ delayMs: 0 });
+  let turns = 0;
+  return {
+    kind: offline.kind,
+    model: offline.model,
+    turns: () => turns,
+    async open(request, files, options) {
+      const session = await offline.open(request, files, options);
+      if (!request.base) return session;
+      return {
+        threadId: session.threadId,
+        close: () => session.close(),
+        async turn(prompt, turnOptions) {
+          turns++;
+          const turn = await session.turn(prompt, turnOptions);
+          const output = turn.output as { kind?: string; source?: string };
+          return output.kind === 'candidate'
+            ? { ...turn, output: { ...output, source: `${output.source}\nexport const = ;` } }
+            : turn;
+        },
+      };
+    },
+  };
 }
 async function generate(app: App, intent: string, baseVersionId: string | null = null) {
   const started = await app.inject({
@@ -243,6 +273,57 @@ describe('describe → test → preview → approve → play', () => {
       'ACCEPTED',
     );
     expect(effects()).toHaveLength(5);
+  }, 60_000);
+
+  it('A12: a failed edit compile and repair leaves the live version, engine and chat untouched', async () => {
+    const transport = brokenEdits();
+    const app = await boot(transport);
+    const effects = fakeOverlay(app);
+    await generate(app, TOMATO);
+    const v1 = (await studio(app)).automations[0]!.versions[0]!;
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/versions/${v1.id}/approve`,
+          headers,
+          payload: { artifactId: v1.artifactId, expectedActiveVersionId: null },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await app.riff.runtime.handleChat(chat('l0', 'alice', '!tomato')))[0]?.code).toBe(
+      'ACCEPTED',
+    );
+    const running = app.riff.runtime.running();
+    expect(running).toEqual([
+      expect.objectContaining({ versionId: v1.id, artifactId: v1.artifactId }),
+    ]);
+
+    const edit = await generate(app, EDIT, v1.id);
+    expect(edit.result?.status).toBe('failed');
+    // Exactly one draft and one repair, both rejected by host verification.
+    expect(transport.turns()).toBe(2);
+    const failedRun = app.riff.repo.runs().find((r) => r.id === edit.id)!;
+    expect(failedRun.attempts as unknown[]).toHaveLength(2);
+
+    const automation = (await studio(app)).automations[0]!;
+    expect(automation.activeVersionId).toBe(v1.id);
+    expect(automation.status).toBe('live');
+    expect(automation.versions.find((v) => v.id === v1.id)?.status).toBe('active');
+    const failed = automation.versions.filter((v) => v.id !== v1.id);
+    expect(failed).toHaveLength(1);
+    expect(failed.every((v) => v.status !== 'active' && !v.evidence.verification.ok)).toBe(true);
+    // The very same engine keeps running the approved artifact.
+    expect(app.riff.runtime.running()).toEqual(running);
+
+    // Live chat still dispatches through v1: its command, its allowance, its effects.
+    const codes = [];
+    for (let i = 1; i < 4; i++)
+      codes.push((await app.riff.runtime.handleChat(chat(`l${i}`, 'alice', '!tomato')))[0]?.code);
+    codes.push((await app.riff.runtime.handleChat(chat('l4', 'bob', '!splat')))[0]?.code);
+    codes.push((await app.riff.runtime.handleChat(chat('l5', 'bob', '!tomato')))[0]?.code);
+    expect(codes).toEqual(['ACCEPTED', 'ACCEPTED', 'VIEWER_LIMIT', 'UNRELATED', 'ACCEPTED']);
+    expect(effects()).toHaveLength(4);
   }, 60_000);
 
   it('emergency stop works from chat and console, clears the overlay and survives until resumed', async () => {
