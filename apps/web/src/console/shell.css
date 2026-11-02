@@ -1,0 +1,207 @@
+/* Console shell: section rail (wide screens) or sticky strip (tablets and phones). */
+.app-frame {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: calc(100vh - var(--topbar-h));
+}
+
+.section-nav {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 15;
+  background: rgb(7 7 12 / 0.78);
+  backdrop-filter: saturate(160%) blur(16px);
+  -webkit-backdrop-filter: saturate(160%) blur(16px);
+  border-bottom: 1px solid var(--line);
+}
+.section-nav ul {
+  display: flex;
+  gap: 4px;
+  margin: 0 auto;
+  padding: 8px clamp(12px, 3vw, 32px);
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+@media (max-width: 1199px) {
+  .section-nav ul {
+    mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+    -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 40px), transparent);
+    padding-right: 40px;
+  }
+}
+.section-nav ul::-webkit-scrollbar {
+  display: none;
+}
+.section-nav li {
+  scroll-snap-align: start;
+  flex-shrink: 0;
+}
+.section-nav a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 11px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+.section-nav a:hover {
+  color: var(--text);
+  background: rgb(255 255 255 / 0.05);
+}
+.section-nav a[aria-current='location'] {
+  color: var(--text);
+  background: rgb(124 77 255 / 0.16);
+  box-shadow: inset 0 0 0 1px rgb(124 77 255 / 0.4);
+}
+.section-nav-icon {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--faint);
+  background: rgb(255 255 255 / 0.05);
+  transition:
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+.section-nav a[aria-current='location'] .section-nav-icon {
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  box-shadow: 0 4px 14px -4px var(--accent-glow);
+}
+.section-nav-hint {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  color: #062016;
+  background: var(--good);
+}
+
+@media (min-width: 1200px) {
+  .app-frame {
+    grid-template-columns: 232px minmax(0, 1fr);
+  }
+  .section-nav {
+    align-self: start;
+    height: calc(100vh - var(--topbar-h));
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: 0;
+    border-right: 1px solid var(--line);
+  }
+  .section-nav ul {
+    flex-direction: column;
+    gap: 2px;
+    padding: 28px 14px;
+    overflow: visible;
+  }
+  .section-nav a {
+    min-height: 42px;
+    padding: 9px 12px;
+  }
+  .section-nav-hint {
+    margin-left: auto;
+  }
+}
+
+/* Sections */
+.studio-section {
+  display: grid;
+  gap: 18px;
+  padding-top: 56px;
+  scroll-margin-top: calc(var(--topbar-h) + 64px);
+}
+@media (min-width: 1200px) {
+  .studio-section {
+    scroll-margin-top: calc(var(--topbar-h) + 12px);
+  }
+}
+.studio-section-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.studio-section-head h2 {
+  margin: 4px 0 0;
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 750;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.studio-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+}
+.studio-eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--coral));
+}
+.studio-section-lead {
+  margin: 8px 0 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.studio-section-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+/* Sections own vertical rhythm; panels never add their own outer margins here. */
+.app-frame .studio-section .studio-section-body > * {
+  margin-block: 0;
+}
+
+.live-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (min-width: 1100px) {
+  .live-grid {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-nav a,
+  .section-nav-icon {
+    transition: none;
+  }
+}

@@ -414,8 +414,13 @@ function RulesComparison(props: {
             return (
               <tr key={r.label} data-changed={changed || undefined}>
                 <th scope="row">{r.label}</th>
-                <td className={changed ? 'from' : undefined}>{r.before}</td>
-                <td>
+                <td
+                  className={changed ? 'from' : undefined}
+                  data-label={`Live v${props.activeNumber ?? '?'}`}
+                >
+                  {r.before}
+                </td>
+                <td data-label={`New v${props.next}`}>
                   {r.after}
                   {changed && <span className="badge warn">changed</span>}
                 </td>
@@ -435,8 +440,8 @@ function Rehearsal(props: {
 }) {
   const c = props.transition.evidence.comparison;
   const text = (id: string) => c.events.find((e) => e.id === id)?.text ?? id;
-  const cell = (d: { code: string; reason: string; effects: unknown[] }) => (
-    <td title={d.reason}>
+  const cell = (d: { code: string; reason: string; effects: unknown[] }, label: string) => (
+    <td title={d.reason} data-label={label}>
       <span className={`badge ${tone(d.code)}`}>{DECISION[d.code as DecisionCode] ?? d.code}</span>
       {d.effects.length > 0 && (
         <span className="muted small">
@@ -470,8 +475,8 @@ function Rehearsal(props: {
               <th scope="row" className="mono">
                 {text(step.eventId)}
               </th>
-              {cell(step.before)}
-              {cell(step.after)}
+              {cell(step.before, `Live v${props.activeNumber ?? '?'}`)}
+              {cell(step.after, `New v${props.next}`)}
             </tr>
           ))}
         </tbody>
@@ -556,11 +561,13 @@ function ProgressPanel(props: {
               return (
                 <tr key={id}>
                   <th scope="row">{id}</th>
-                  <td>{team(a) === team(b) ? team(b) : `${team(a)} → ${team(b)}`}</td>
-                  <td>
+                  <td data-label="Team">
+                    {team(a) === team(b) ? team(b) : `${team(a)} → ${team(b)}`}
+                  </td>
+                  <td data-label="Contributions">
                     <Delta from={a?.contributions} to={b?.contributions} />
                   </td>
-                  <td>
+                  <td data-label={`${capitalize(definition.resource.name)} left`}>
                     <Delta from={a?.remaining} to={b?.remaining} />
                   </td>
                 </tr>

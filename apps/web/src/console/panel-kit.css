@@ -3,22 +3,39 @@
   margin: 18px 0;
   padding: 0;
   overflow: hidden;
+  transition:
+    border-color 0.25s var(--ease),
+    box-shadow 0.25s var(--ease);
+}
+.card.panel-card:hover {
+  border-color: rgb(255 255 255 / 0.11);
+}
+.card.panel-card:has(> .panel-head .panel-toggle[aria-expanded='true']) {
+  border-color: rgb(124 77 255 / 0.32);
+  box-shadow:
+    var(--shadow-2),
+    0 0 0 1px rgb(124 77 255 / 0.08);
 }
 .panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 20px;
+  padding: 16px 20px;
+  transition: background-color 0.2s var(--ease);
+}
+.panel-head:hover {
+  background: rgb(255 255 255 / 0.018);
 }
 .panel-toggle {
   display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 10px;
-  row-gap: 2px;
-  align-items: baseline;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 14px;
+  row-gap: 3px;
+  align-items: center;
   flex: 1;
   min-width: 0;
+  min-height: 40px;
   padding: 0;
   text-align: left;
   color: inherit;
@@ -27,40 +44,85 @@
   cursor: pointer;
   font: inherit;
 }
+.panel-toggle:focus-visible {
+  outline-offset: 6px;
+  border-radius: 10px;
+}
 .panel-chevron {
   grid-row: 1 / span 2;
-  width: 0;
-  height: 0;
-  margin-top: 6px;
-  border-block: 5px solid transparent;
-  border-left: 6px solid var(--faint);
-  transition: transform 0.15s ease;
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition:
+    background-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+}
+.panel-chevron::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -5px 0 0 -5px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition:
+    transform 0.25s var(--ease),
+    border-color 0.2s var(--ease);
 }
 .panel-toggle[aria-expanded='true'] .panel-chevron {
-  transform: rotate(90deg);
+  background: rgb(124 77 255 / 0.16);
+  box-shadow: inset 0 0 0 1px rgb(124 77 255 / 0.45);
 }
-.panel-toggle:hover .panel-chevron {
-  border-left-color: var(--text);
+.panel-toggle[aria-expanded='true'] .panel-chevron::before {
+  transform: translate(1px, -2px) rotate(45deg);
+  border-color: var(--accent-soft);
+}
+.panel-toggle:hover .panel-chevron::before {
+  border-color: var(--text);
 }
 .panel-title {
-  font-weight: 750;
-  font-size: 16px;
+  font-weight: 700;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 .panel-subtitle {
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.45;
 }
 .panel-head-side {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
   flex-shrink: 0;
+}
+@keyframes panel-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 .panel-body {
   display: grid;
   gap: 20px;
-  padding: 18px 20px 22px;
+  padding: 20px 20px 24px;
   border-top: 1px solid var(--line);
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.12), transparent 140px);
+  animation: panel-open 0.3s var(--ease) both;
+  min-width: 0;
 }
 .panel-body[hidden] {
   display: none;
@@ -121,7 +183,7 @@
   padding: 9px 11px;
   border-radius: 10px;
   border: 1px solid var(--line-strong);
-  background: #110f17;
+  background: var(--bg-raised);
   color: var(--text);
   font-size: 14px;
   font-weight: 500;
@@ -131,7 +193,7 @@
 .panel-card textarea:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(255 122 69 / 0.18);
+  box-shadow: 0 0 0 4px rgb(124 77 255 / 0.2);
 }
 .panel-card input[aria-invalid='true'] {
   border-color: var(--bad);
@@ -242,9 +304,9 @@
   background: var(--line);
 }
 .panel-step[aria-current='step']::before {
-  background: rgb(255 122 69 / 0.18);
-  color: var(--accent-soft);
-  box-shadow: 0 0 0 3px rgb(255 122 69 / 0.08);
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  color: #fff;
+  box-shadow: 0 0 0 4px rgb(124 77 255 / 0.16);
 }
 .panel-step[data-done]::before {
   content: '✓';
@@ -267,10 +329,11 @@
   gap: 10px;
 }
 .panel-stat {
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: var(--surface);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.04), rgb(255 255 255 / 0.015));
   border: 1px solid var(--line);
+  min-width: 0;
 }
 .panel-stat dt {
   font-size: 11.5px;
@@ -338,19 +401,20 @@
 .panel-surface {
   display: grid;
   gap: 14px;
-  padding: 16px;
+  padding: 18px;
   border-radius: 14px;
-  background: var(--surface);
+  background: var(--surface-2);
   border: 1px solid var(--line);
   min-width: 0;
 }
 .panel-callout {
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgb(169 184 255 / 0.06);
-  color: var(--muted);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(157 180 255 / 0.18);
+  background: rgb(157 180 255 / 0.06);
+  color: #c9d3f5;
   font-size: 13px;
+  line-height: 1.5;
 }
 .panel-callout[data-tone='warn'] {
   border-color: rgb(245 196 81 / 0.35);
@@ -386,7 +450,7 @@
   overflow: auto;
   padding: 12px;
   border-radius: 10px;
-  background: #0b0a10;
+  background: #08080e;
   border: 1px solid var(--line);
   font-family: var(--mono);
   font-size: 12px;
@@ -427,9 +491,15 @@
 
 @media (max-width: 640px) {
   .panel-head {
-    align-items: flex-start;
-    flex-direction: column;
+    flex-wrap: wrap;
     padding: 14px 16px;
+  }
+  .panel-toggle {
+    flex: 1 1 100%;
+  }
+  .panel-head-side {
+    padding-left: 44px;
+    justify-content: flex-start;
   }
   .panel-body {
     padding: 16px;
@@ -439,8 +509,11 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .panel-chevron {
+  .panel-chevron,
+  .panel-chevron::before,
+  .panel-body {
     transition: none;
+    animation: none;
   }
 }
 .button.danger {
@@ -454,11 +527,13 @@
 }
 .panel-player {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   max-width: 760px;
+  min-width: 0;
 }
 .panel-player .stage {
-  min-height: 220px;
+  min-height: min(220px, 56vw);
 }
 .panel-player-bar {
   display: grid;
@@ -515,6 +590,12 @@
 .panel-tablist [role='tab'][aria-selected='true'] {
   color: var(--text);
   border-bottom-color: var(--accent);
+}
+.panel-tablist [role='tab'] {
+  min-height: 40px;
+  transition:
+    color 0.18s var(--ease),
+    border-color 0.18s var(--ease);
 }
 .panel-tabpanel {
   display: grid;

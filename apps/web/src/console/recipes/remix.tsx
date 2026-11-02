@@ -461,49 +461,51 @@ export function RemixTab({
                 </span>
               </fieldset>
             </div>
-            <label className="panel-checkbox">
-              <input
-                type="checkbox"
-                checked={profile.reducedMotion}
-                onChange={(e) => setProfile({ ...profile, reducedMotion: e.target.checked })}
-              />
-              <span>
-                Reduced motion for this installation
-                <span className="panel-hint"> · effects fade in place instead of flying</span>
-              </span>
-            </label>
-            <label className="panel-checkbox">
-              <input
-                type="checkbox"
-                checked={profile.highContrast === true}
-                onChange={(e) => setProfile({ ...profile, highContrast: e.target.checked })}
-              />
-              High contrast for this installation
-            </label>
-            <label className="panel-checkbox">
-              <input
-                type="checkbox"
-                checked={profile.effectLabels === true}
-                onChange={(e) => setProfile({ ...profile, effectLabels: e.target.checked })}
-              />
-              Text labels for effects
-            </label>
-            <button
-              type="button"
-              className="button small ghost"
-              disabled={!selected}
-              onClick={() =>
-                selected &&
-                setProfile({
-                  ...profile,
-                  ...selected.package.presentation,
-                  highContrast: selected.package.presentation.highContrast === true,
-                  effectLabels: selected.package.presentation.effectLabels === true,
-                })
-              }
-            >
-              Use source presentation preferences
-            </button>
+            <div className="recipe-presentation">
+              <label className="panel-checkbox">
+                <input
+                  type="checkbox"
+                  checked={profile.reducedMotion}
+                  onChange={(e) => setProfile({ ...profile, reducedMotion: e.target.checked })}
+                />
+                <span>
+                  Reduced motion for this installation
+                  <span className="panel-hint"> · effects fade in place instead of flying</span>
+                </span>
+              </label>
+              <label className="panel-checkbox">
+                <input
+                  type="checkbox"
+                  checked={profile.highContrast === true}
+                  onChange={(e) => setProfile({ ...profile, highContrast: e.target.checked })}
+                />
+                High contrast for this installation
+              </label>
+              <label className="panel-checkbox">
+                <input
+                  type="checkbox"
+                  checked={profile.effectLabels === true}
+                  onChange={(e) => setProfile({ ...profile, effectLabels: e.target.checked })}
+                />
+                Text labels for effects
+              </label>
+              <button
+                type="button"
+                className="button small ghost"
+                disabled={!selected}
+                onClick={() =>
+                  selected &&
+                  setProfile({
+                    ...profile,
+                    ...selected.package.presentation,
+                    highContrast: selected.package.presentation.highContrast === true,
+                    effectLabels: selected.package.presentation.effectLabels === true,
+                  })
+                }
+              >
+                Use source presentation preferences
+              </button>
+            </div>
             <div className="recipe-layout">
               <span className="director-label">Screen layout</span>
               <div className="panel-actions">

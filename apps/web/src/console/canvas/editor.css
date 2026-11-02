@@ -1,95 +1,172 @@
+/* Visual canvas: a small design tool for the overlay layout.
+   Artboard and inspector sit side by side when the card is wide, and stack otherwise. */
 .canvas-editor {
-  padding: 20px;
+  container: canvas / inline-size;
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 .canvas-editor .card-head {
-  padding: 0;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
 }
 .canvas-head-actions {
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 8px;
 }
 .canvas-status {
-  margin: 4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
   font-size: 13px;
-  color: var(--muted, #b9b3c9);
+  color: var(--muted);
+}
+.canvas-status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  flex: none;
 }
 .canvas-body {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+  min-width: 0;
 }
 .canvas-body[hidden] {
   display: none;
 }
-.canvas-problems ul {
-  margin: 4px 0 0;
-  padding-left: 18px;
-}
-.canvas-review h3 {
-  margin: 0 0 8px;
-  font-size: 15px;
-}
-.canvas-review-label {
-  margin: 8px 0 4px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.canvas-diff {
+.canvas-body > .note {
   margin: 0;
-  padding-left: 18px;
-  font-size: 13px;
 }
-.canvas-sharing {
-  border-left: 3px solid #ffb37a;
-  padding-left: 8px;
-}
-.canvas-review > details {
-  margin-top: 8px;
-  font-size: 13px;
-}
-.canvas-review > details > summary {
-  cursor: pointer;
-}
-.canvas-editor label.canvas-check {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
+
+/* ---------- toolbars ---------- */
 .canvas-toolbar {
   display: flex;
-  gap: 12px;
-  align-items: center;
   flex-wrap: wrap;
-}
-.canvas-editor label {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-}
-.canvas-toolbar label,
-.canvas-review > label {
-  display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
+  min-width: 0;
+}
+/* View options read as one tool strip. */
+.canvas-viewbar {
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-raised);
+}
+.canvas-viewbar > .button {
+  margin-left: auto;
+}
+.canvas-editor .canvas-viewbar > label,
+.canvas-editor .canvas-quick > .button {
+  min-height: 36px;
+}
+.canvas-editor .canvas-viewbar > label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 0.18s var(--ease),
+    color 0.18s var(--ease),
+    border-color 0.18s var(--ease);
+}
+.canvas-editor .canvas-viewbar > label:hover {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text);
+}
+.canvas-editor .canvas-viewbar > label:has(input:checked) {
+  background: var(--surface-3);
+  border-color: rgb(124 77 255 / 0.4);
+  color: var(--text);
 }
 .canvas-editor input[type='checkbox'] {
-  width: auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.canvas-revision {
+  font-family: var(--mono);
+  font-size: 12px !important;
+  color: var(--faint) !important;
+}
+.canvas-quick {
+  gap: 6px;
+}
+.canvas-quick > .note {
+  margin: 0 4px 0 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* ---------- workspace: artboard + inspector ---------- */
+.canvas-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+.canvas-stagecol,
+.canvas-inspector {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.canvas-stagecol > .note {
+  margin: 0;
+  font-size: 12.5px;
+}
+@container canvas (min-width: 820px) {
+  .canvas-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  }
+  .canvas-inspector {
+    position: sticky;
+    top: calc(var(--topbar-h) + 16px);
+  }
+}
+.canvas-artboard {
+  display: grid;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.07) 1px, transparent 1.4px) 0 0 / 16px
+      16px,
+    var(--bg-raised);
 }
 .canvas-board {
   position: relative;
-  aspect-ratio: 16/9;
+  aspect-ratio: 16 / 9;
   width: 100%;
-  background: #1c1a29;
-  border: 1px solid #5f5776;
-  border-radius: 12px;
   overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  box-shadow:
+    0 0 0 4px rgb(0 0 0 / 0.25),
+    0 24px 48px -24px rgb(0 0 0 / 0.8);
 }
 .canvas-board[data-mobile='true'] {
   max-width: 390px;
@@ -100,58 +177,106 @@
   position: absolute;
   inset: 0;
 }
+
+/* ---------- object handles ---------- */
 .canvas-handle {
+  --handle: var(--accent-soft);
   position: absolute;
   box-sizing: border-box;
   border: 1px dashed transparent;
+  border-radius: 2px;
   background: transparent;
-  touch-action: none;
-  cursor: grab;
   color: #fff;
+  cursor: grab;
+  touch-action: none;
+  transition:
+    border-color 0.15s var(--ease),
+    background-color 0.15s var(--ease);
 }
+.canvas-handle:hover:not(:disabled) {
+  border-color: rgb(185 163 255 / 0.55);
+  background: rgb(124 77 255 / 0.05);
+}
+.canvas-handle:active {
+  cursor: grabbing;
+}
+/* Selected: solid frame with square corner handles, like a design tool. */
 .canvas-handle[data-selected='true'] {
-  border: 2px solid #ffb37a;
+  border: 1.5px solid var(--handle);
+  background:
+    linear-gradient(var(--handle), var(--handle)) top left / 7px 7px no-repeat,
+    linear-gradient(var(--handle), var(--handle)) top right / 7px 7px no-repeat,
+    linear-gradient(var(--handle), var(--handle)) bottom left / 7px 7px no-repeat,
+    rgb(124 77 255 / 0.08);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35);
 }
 .canvas-handle:focus-visible {
-  outline: 3px solid #b8a8ff;
+  outline: 2px solid var(--accent-soft);
   outline-offset: -4px;
 }
 /* Name tags sit in the corner opposite the panel's anchor, so they never cover its text. */
 .canvas-handle-name {
   position: absolute;
-  background: #252132;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgb(17 17 27 / 0.92);
+  border: 1px solid var(--line-strong);
   font-size: 10px;
-  padding: 2px 5px;
-  border-radius: 4px;
+  font-weight: 650;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   pointer-events: none;
 }
+/* Names appear only when they help, so they never sit on top of panel text. */
+.canvas-handle-name {
+  opacity: 0;
+  transition: opacity 0.15s var(--ease);
+}
+.canvas-handle[data-selected='true'] .canvas-handle-name,
+.canvas-handle[data-invalid='true'] .canvas-handle-name,
+.canvas-handle:hover .canvas-handle-name,
+.canvas-handle:focus-visible .canvas-handle-name {
+  opacity: 1;
+}
+.canvas-handle[data-selected='true'] .canvas-handle-name {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
 .canvas-handle-name[data-x='end'] {
-  right: 2px;
+  right: 4px;
 }
 .canvas-handle-name[data-x='start'] {
-  left: 2px;
+  left: 4px;
 }
 .canvas-handle-name[data-y='end'] {
-  bottom: 2px;
+  bottom: 4px;
 }
 .canvas-handle-name[data-y='start'] {
-  top: 2px;
+  top: 4px;
+}
+.canvas-handle-name[data-x='end'][data-y='end'] {
+  right: 18px;
 }
 .canvas-handle[data-invalid='true'] {
-  border: 2px solid #ff6b6b;
-  background: rgb(255 107 107 / 0.12);
+  --handle: var(--bad);
+  border: 1.5px solid var(--bad);
+  background: var(--bad-bg);
 }
 .canvas-handle[data-invalid='true'] .canvas-handle-name {
-  background: #8a2b2b;
+  background: var(--bad);
+  color: #fff;
 }
 .canvas-resize {
   position: absolute;
   right: -1px;
   bottom: -1px;
-  width: 14px;
-  height: 14px;
-  background: #ffb37a;
-  border-radius: 3px 0 3px 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: #fff;
+  border: 2px solid var(--handle);
   cursor: nwse-resize;
   touch-action: none;
 }
@@ -159,48 +284,192 @@
 .canvas-region-grip {
   position: absolute;
   z-index: 2;
-  transform: translate(-50%, -50%);
-  padding: 1px 6px;
+  transform: translate(calc(-100% - 6px), -50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgb(17 17 27 / 0.94);
+  color: var(--text);
   font-size: 10px;
+  font-weight: 650;
   line-height: 1.5;
-  color: #f6f3ff;
-  background: rgb(37 33 50 / 0.92);
-  border: 1px solid #5f5776;
-  border-radius: 4px;
+  white-space: nowrap;
   cursor: grab;
   touch-action: none;
-  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+  transition:
+    background-color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+.canvas-region-grip:hover:not(:disabled) {
+  border-color: var(--accent-soft);
 }
 .canvas-region-grip[data-protected='true'] {
-  border-color: #ffb37a;
+  border-color: rgb(185 163 255 / 0.6);
+  color: var(--accent-soft);
 }
 .canvas-region-grip[data-selected='true'] {
-  background: #ffb37a;
-  color: #1c1a29;
+  background: var(--accent-soft);
+  border-color: var(--accent-soft);
+  color: var(--bg);
 }
 .canvas-region-grip:focus-visible {
-  outline: 3px solid #b8a8ff;
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
 }
 /* Region labels move to the grips; the picture keeps only the outline. */
 .canvas-picture .scene-guide-label {
   visibility: hidden;
 }
+.canvas-problems ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+/* ---------- sample round strip ---------- */
+.canvas-playbar {
+  gap: 10px 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.canvas-editor .canvas-playbar > label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 200px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.canvas-playbar input[type='range'] {
+  flex: 1 1 auto;
+  min-width: 80px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ---------- timing table ---------- */
+.canvas-tracks-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.canvas-tracks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  text-align: left;
+}
+.canvas-tracks caption {
+  padding: 10px 12px 6px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.canvas-tracks thead th {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--faint);
+  border-bottom: 1px solid var(--line);
+}
+.canvas-tracks tbody th,
+.canvas-tracks td {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.canvas-tracks tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.canvas-tracks tbody tr:hover {
+  background: rgb(255 255 255 / 0.025);
+}
+.canvas-tracks tbody th {
+  padding-left: 6px;
+}
+.canvas-tracks tbody th .button {
+  min-height: 32px;
+  color: var(--text);
+}
+
+/* ---------- inspector ---------- */
+.canvas-inspector {
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.canvas-inspector::before {
+  content: 'Inspector' / '';
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+}
 .canvas-properties {
   display: grid;
   gap: 12px;
+  min-width: 0;
+}
+.canvas-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  min-width: 0;
+}
+.canvas-editor label.canvas-check,
+.canvas-review > label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font-weight: 500;
 }
 .canvas-editor fieldset {
-  border: 1px solid #51485f;
-  border-radius: 10px;
-  padding: 12px;
   display: grid;
   gap: 10px;
   min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.canvas-editor legend {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
 }
 .canvas-numbers {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+}
+@container canvas (min-width: 820px) {
+  .canvas-inspector .canvas-numbers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.canvas-numbers input {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
 }
 .canvas-editor input,
 .canvas-editor select,
@@ -213,13 +482,17 @@
 .canvas-editor select,
 .canvas-editor textarea {
   width: 100%;
-  min-height: 36px;
+  min-height: 38px;
   padding: 7px 10px;
-  border-radius: 9px;
+  border-radius: 10px;
   border: 1px solid var(--line-strong);
-  background: #110f17;
+  background: var(--bg-raised);
   color: var(--text);
   font-size: 13.5px;
+  font-weight: 500;
+  transition:
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
 }
 .canvas-editor select {
   padding-right: 28px;
@@ -235,7 +508,7 @@
 .canvas-editor textarea:focus-visible {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(255 122 69 / 0.18);
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.18);
 }
 .canvas-editor input:disabled,
 .canvas-editor select:disabled,
@@ -243,28 +516,133 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+.canvas-savebar {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.canvas-savebar .button {
+  flex: 1 1 auto;
+}
+
+/* ---------- describe a change ---------- */
 .canvas-language {
   display: grid;
   gap: 10px;
-  border-top: 1px solid #51485f;
-  padding-top: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.canvas-language .note {
+  margin: 0;
 }
 .canvas-language textarea {
   min-height: 76px;
 }
+
+/* ---------- review and apply ---------- */
 .canvas-review {
-  border-top: 1px solid #51485f;
-  padding-top: 12px;
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid rgb(61 220 151 / 0.25);
+  background: linear-gradient(180deg, rgb(61 220 151 / 0.06), transparent 90px), var(--surface-2);
+}
+.canvas-review h3 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+.canvas-review h3 .mono.note {
+  margin: 0;
+  padding: 2px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.canvas-review > .note {
+  margin: 0;
+}
+.canvas-review-label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.canvas-diff {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.canvas-diff li {
+  position: relative;
+  padding: 6px 10px 6px 26px;
+  border-radius: 8px;
+  background: var(--bg-raised);
+  overflow-wrap: anywhere;
+}
+.canvas-diff li::before {
+  content: '±' / '';
+  position: absolute;
+  left: 10px;
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+.canvas-sharing {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent-soft);
+  border-radius: 0 8px 8px 0;
+  background: rgb(124 77 255 / 0.07);
+}
+.canvas-review > details {
+  font-size: 13px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.canvas-review > details > summary {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+.canvas-review > details > summary:hover {
+  color: var(--text);
+}
+.canvas-review > details ul {
+  margin: 6px 0 0;
+  padding-left: 22px;
+  color: var(--muted);
 }
 .canvas-review pre {
   max-height: 240px;
   overflow: auto;
   font-size: 12px;
 }
-.canvas-review > label,
-.canvas-review > button {
-  margin-top: 10px;
+.canvas-review > .button {
+  justify-self: start;
 }
+
 @media (max-width: 600px) {
   /* Small boards show only the selected object's name, so tags don't hide the preview. */
   .canvas-handle:not([data-selected='true']) .canvas-handle-name {
@@ -273,26 +651,22 @@
   .canvas-numbers {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .canvas-editor {
-    padding: 14px;
+  .canvas-artboard {
+    padding: 6px;
+    border-radius: 14px;
+  }
+  .canvas-viewbar > .button {
+    margin-left: 0;
+    flex: 1 1 100%;
+  }
+  .canvas-review > .button {
+    justify-self: stretch;
   }
 }
-.canvas-tracks {
-  width: 100%;
-  font-size: 12px;
-  border-collapse: collapse;
-  text-align: left;
-}
-.canvas-tracks caption {
-  text-align: left;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-.canvas-tracks td,
-.canvas-tracks th {
-  padding: 5px;
-  border-bottom: 1px solid #51485f;
-}
-.canvas-handle-name[data-x='end'][data-y='end'] {
-  right: 18px;
+@media (prefers-reduced-motion: reduce) {
+  .canvas-handle,
+  .canvas-region-grip,
+  .canvas-editor .canvas-viewbar > label {
+    transition: none;
+  }
 }

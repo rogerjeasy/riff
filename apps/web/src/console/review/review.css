@@ -1,0 +1,1296 @@
+/* Step 2 · Test: the evidence card reads as a verdict first, then the proof behind it.
+   Overrides the "evidence" and "F32" sections of studio.css; scoped to .evidence so the
+   same primitives elsewhere (dock, production) keep their own look. */
+
+.card.evidence {
+  container: evidence / inline-size;
+  position: relative;
+  padding: 24px;
+  background:
+    radial-gradient(520px 160px at 100% 0%, rgb(61 220 151 / 0.05), transparent 70%),
+    linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: var(--shadow-2);
+  animation: ev-in 0.4s var(--ease) both;
+}
+.card.evidence:has(.evidence-verdict[data-ok='false']) {
+  background:
+    radial-gradient(520px 160px at 100% 0%, rgb(255 93 108 / 0.07), transparent 70%),
+    linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+.evidence > .card-head {
+  margin-bottom: 14px;
+}
+.evidence > .card-head h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.evidence .version-tag {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: var(--surface-3);
+  border-color: var(--line);
+  letter-spacing: 0;
+}
+.evidence .chat-badge {
+  color: var(--accent-soft);
+  background: rgb(124 77 255 / 0.12);
+  font-size: 11.5px;
+}
+
+/* ---------- verdict ---------- */
+.evidence-verdict {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(61 220 151 / 0.28);
+  background: linear-gradient(90deg, rgb(61 220 151 / 0.1), rgb(61 220 151 / 0.03));
+}
+.evidence-verdict[data-ok='false'] {
+  border-color: rgb(255 93 108 / 0.35);
+  background: linear-gradient(90deg, rgb(255 93 108 / 0.12), rgb(255 93 108 / 0.03));
+}
+.evidence-verdict-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--good);
+  color: #062016;
+  font-size: 18px;
+  font-weight: 900;
+  box-shadow: 0 0 0 5px rgb(61 220 151 / 0.14);
+}
+.evidence-verdict-icon::before {
+  content: '✓';
+}
+.evidence-verdict[data-ok='false'] .evidence-verdict-icon {
+  background: var(--bad);
+  color: #fff;
+  box-shadow: 0 0 0 5px rgb(255 93 108 / 0.16);
+}
+.evidence-verdict[data-ok='false'] .evidence-verdict-icon::before {
+  content: '✕';
+}
+.evidence-verdict-body {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.evidence-verdict .pill {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+.evidence-verdict-meter {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 6px;
+}
+.evidence-verdict-meter > span {
+  flex: 1 1 0;
+  max-width: 40px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--good);
+  transform-origin: left center;
+  animation: ev-grow 0.5s var(--ease) both;
+}
+.evidence-verdict-meter > span:nth-child(2) {
+  animation-delay: 40ms;
+}
+.evidence-verdict-meter > span:nth-child(3) {
+  animation-delay: 80ms;
+}
+.evidence-verdict-meter > span:nth-child(4) {
+  animation-delay: 120ms;
+}
+.evidence-verdict-meter > span:nth-child(n + 5) {
+  animation-delay: 160ms;
+}
+.evidence-verdict-meter > span[data-status='failed'] {
+  background: var(--bad);
+}
+.evidence-verdict-meter > span[data-status='skipped'] {
+  background: var(--surface-hover);
+}
+.evidence-verdict-meter > i {
+  flex: none;
+  width: 8px;
+}
+
+/* ---------- approval facts: the hero ---------- */
+.evidence .facts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--line);
+  box-shadow: var(--shadow-1);
+}
+.evidence .facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--bg-raised);
+  min-width: 0;
+}
+.evidence .facts > div:last-child {
+  grid-column: 1 / -1;
+  background: linear-gradient(90deg, rgb(61 220 151 / 0.06), var(--bg-raised) 70%);
+}
+.evidence .facts dt {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.evidence .facts dd {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  overflow-wrap: anywhere;
+}
+.evidence .facts > div:last-child dd {
+  font-size: 14px;
+  color: var(--good);
+  font-variant-numeric: tabular-nums;
+}
+.evidence:has(.evidence-verdict[data-ok='false']) .facts > div:last-child dd {
+  color: var(--text);
+}
+.evidence .facts small {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ---------- section blocks ---------- */
+.evidence .block {
+  margin-top: 20px;
+  padding-top: 18px;
+}
+.evidence h3 {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  margin-bottom: 12px;
+}
+.evidence .note {
+  overflow-wrap: anywhere;
+}
+.evidence .block > .note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.025);
+  font-size: 12.5px;
+}
+
+/* ---------- intent table ---------- */
+.evidence .intent-table {
+  display: table;
+  white-space: normal;
+  font-size: 13.5px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.evidence .intent-table thead th {
+  padding: 0 10px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+  border-bottom: 1px solid var(--line-strong);
+}
+.evidence .intent-table tbody th,
+.evidence .intent-table tbody td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: baseline;
+  overflow-wrap: anywhere;
+}
+.evidence .intent-table thead th:first-child,
+.evidence .intent-table tbody th {
+  padding-left: 0;
+}
+.evidence .intent-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.evidence .intent-table tbody tr {
+  transition: background 0.15s;
+}
+.evidence .intent-table tbody tr:hover {
+  background: rgb(255 255 255 / 0.02);
+}
+.evidence .intent-table tbody th {
+  font-weight: 600;
+  color: var(--text);
+}
+.evidence .intent-table td.mono {
+  color: var(--accent-soft);
+}
+.evidence .intent-check {
+  text-align: right;
+  white-space: nowrap;
+}
+.evidence .intent-check .badge {
+  font-size: 11.5px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+}
+.evidence .intent-check .badge.good {
+  border-color: rgb(61 220 151 / 0.25);
+}
+.evidence .intent-check .badge.warn {
+  border-color: rgb(255 200 87 / 0.22);
+}
+.evidence .intent-check .badge.bad {
+  border-color: rgb(255 93 108 / 0.3);
+}
+
+/* ---------- changes from live ---------- */
+.evidence .changes {
+  grid-template-columns: minmax(100px, max-content) minmax(0, max-content) auto minmax(0, 1fr) auto;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.evidence .changes li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  gap: 10px 14px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  background: var(--bg-raised);
+}
+.evidence .changes li + li {
+  border-top: 1px solid var(--line);
+}
+.evidence .changes li[data-authority='more'] {
+  background: linear-gradient(90deg, var(--warn-bg), var(--bg-raised) 60%);
+}
+.evidence .changes .change-label {
+  min-width: 0;
+  font-weight: 600;
+  color: var(--muted);
+}
+.evidence .changes .from,
+.evidence .changes .to {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.evidence .changes .to {
+  color: var(--accent-soft);
+}
+.evidence .changes li > [aria-hidden='true'] {
+  color: var(--faint);
+}
+.evidence .changes .badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  justify-self: end;
+}
+.evidence .changes li > :last-child:not(.badge) {
+  grid-column: span 2;
+}
+
+/* ---------- verification pipeline: stepper ---------- */
+.evidence .pipeline {
+  gap: 0;
+}
+.evidence .pipeline li {
+  position: relative;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'dot label meta'
+    '. summary summary';
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 0 0 14px;
+  font-size: 13.5px;
+}
+.evidence .pipeline li:last-child {
+  padding-bottom: 0;
+}
+.evidence .pipeline li::before {
+  content: '';
+  position: absolute;
+  left: 10px;
+  top: 22px;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: rgb(61 220 151 / 0.35);
+}
+.evidence .pipeline li:last-child::before {
+  display: none;
+}
+.evidence .pipeline li[data-status='failed']::before,
+.evidence .pipeline li[data-status='skipped']::before {
+  background: var(--line-strong);
+}
+.evidence .pipe-dot {
+  grid-area: dot;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--good-bg);
+  border: 1.5px solid var(--good);
+  color: var(--good);
+  font-size: 11px;
+  font-weight: 900;
+}
+.evidence .pipe-dot::before {
+  content: '✓';
+}
+.evidence .pipeline li[data-status='failed'] .pipe-dot {
+  background: var(--bad);
+  border-color: var(--bad);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--bad-bg);
+}
+.evidence .pipeline li[data-status='failed'] .pipe-dot::before {
+  content: '✕';
+}
+.evidence .pipeline li[data-status='skipped'] .pipe-dot {
+  background: var(--surface-3);
+  border: 1.5px dashed var(--line-strong);
+  color: var(--faint);
+}
+.evidence .pipeline li[data-status='skipped'] .pipe-dot::before {
+  content: '–';
+}
+.evidence .pipe-label {
+  grid-area: label;
+  font-weight: 650;
+  min-width: 0;
+}
+.evidence .pipeline li[data-status='failed'] .pipe-label {
+  color: var(--bad);
+}
+.evidence .pipeline li[data-status='skipped'] .pipe-label {
+  color: var(--muted);
+}
+.evidence .pipe-meta {
+  grid-area: meta;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.evidence .pipe-summary {
+  grid-area: summary;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.evidence .findings {
+  list-style: none;
+  padding: 0;
+  margin: 14px 0 0;
+  display: grid;
+  gap: 6px;
+}
+.evidence .findings li {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border-left: 3px solid var(--warn);
+  background: var(--warn-bg);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.evidence .findings li[data-severity='error'] {
+  border-left-color: var(--bad);
+  background: var(--bad-bg);
+}
+
+/* ---------- disclosures ---------- */
+.evidence details.block > summary {
+  align-items: center;
+  min-height: 36px;
+  margin: -6px -10px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+.evidence details.block > summary:hover {
+  background: rgb(255 255 255 / 0.03);
+}
+.evidence details.block > summary::before {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  font-size: 10px;
+  color: var(--muted);
+}
+.evidence details.block > summary h3 {
+  color: var(--text);
+  font-size: 12px;
+}
+.evidence details.block > summary .muted {
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+.evidence details.block[open] > summary {
+  margin-bottom: 6px;
+}
+
+/* ---------- scenario results ---------- */
+.evidence .scenario-group {
+  margin-top: 16px;
+}
+.evidence .scenario-group h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.evidence .scenario-group ul {
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-raised);
+}
+.evidence .scenario-group li + li {
+  border-top: 1px solid var(--line);
+}
+.evidence .scenario-group li > details > summary {
+  position: relative;
+  display: block;
+  padding: 10px 12px 10px 62px;
+  line-height: 1.5;
+  min-height: 40px;
+  font-size: 13.5px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+  transition: background 0.15s;
+}
+.evidence .scenario-group li > details > summary::before {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+}
+.evidence .scenario-group li > details > summary .tick {
+  position: absolute;
+  left: 30px;
+  top: 10px;
+}
+.evidence .scenario-group li > details > summary:hover {
+  background: rgb(255 255 255 / 0.025);
+}
+.evidence .scenario-group li > details > summary .muted {
+  font-weight: 450;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.evidence .tick {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--good-bg);
+  font-size: 11px;
+}
+.evidence [data-passed='false'] > details > summary .tick {
+  background: var(--bad);
+  color: #fff;
+}
+.evidence .scenario-group li[data-passed='false'] {
+  background: linear-gradient(90deg, var(--bad-bg), transparent 60%);
+}
+.evidence .scenario-group li > details[open] {
+  padding-bottom: 12px;
+}
+.evidence .table-scroll {
+  margin: 0 12px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.evidence table.steps {
+  display: table;
+  white-space: normal;
+  min-width: 520px;
+  font-size: 12.5px;
+}
+.evidence table.steps th,
+.evidence table.steps td {
+  padding: 8px 10px;
+}
+.evidence table.steps thead th {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgb(255 255 255 / 0.02);
+}
+.evidence table.steps tbody tr:last-child td {
+  border-bottom: 0;
+}
+.evidence table.steps td.mono {
+  color: var(--accent-soft);
+}
+.evidence table.steps small {
+  color: var(--faint);
+}
+.evidence table.steps details > summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.evidence table.steps pre {
+  margin-top: 6px;
+  max-height: 200px;
+  font-size: 11.5px;
+}
+
+/* ---------- code & manifest ---------- */
+.evidence .code-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+.evidence .code-pane {
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: #09090f;
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+.evidence .code-pane::before {
+  content: attr(data-label) / '';
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--line);
+  background: rgb(255 255 255 / 0.025);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.evidence .code-pane pre {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: #d9d9ea;
+  max-height: 340px;
+  tab-size: 2;
+}
+.evidence .code .note {
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+/* ---------- regressions, incidents ---------- */
+.evidence .regression-evidence > summary {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text);
+}
+.evidence .regression-evidence > summary .badge {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.evidence .regression-evidence h3 {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13.5px;
+  color: var(--text);
+  flex-wrap: wrap;
+  margin: 0;
+}
+.evidence .regression-evidence li {
+  padding: 3px 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.evidence .regression-evidence .mono {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--faint);
+}
+.evidence .answer {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  overflow-wrap: anywhere;
+}
+
+/* ---------- approve: unmissable, but safe ---------- */
+.evidence .approve {
+  position: relative;
+  margin-top: 24px;
+  padding: 20px;
+  gap: 12px;
+  border-radius: 16px;
+  border: 1px solid rgb(61 220 151 / 0.22);
+  background:
+    radial-gradient(420px 140px at 0% 100%, rgb(61 220 151 / 0.08), transparent 70%),
+    var(--bg-raised);
+  box-shadow: var(--shadow-2);
+}
+.evidence:has(.evidence-verdict[data-ok='false']) .approve {
+  border-color: var(--line-strong);
+  background: var(--bg-raised);
+}
+.evidence .approve .step-label span {
+  background: rgb(61 220 151 / 0.16);
+  color: var(--good);
+}
+.evidence .approve .step-label {
+  color: var(--good);
+}
+.evidence .approve > .note {
+  margin: 0;
+}
+.evidence .approved-by {
+  color: var(--muted);
+}
+.evidence .live-note {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--good-bg);
+}
+.evidence .approve-actions {
+  align-items: center;
+  gap: 10px;
+}
+.evidence .approve .button.go {
+  min-height: 48px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  background: linear-gradient(180deg, #5ce6a8, var(--good));
+  border-color: rgb(61 220 151 / 0.9);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.35) inset,
+    0 10px 28px -10px rgb(61 220 151 / 0.6);
+  transition:
+    transform 0.15s var(--ease),
+    box-shadow 0.2s,
+    filter 0.2s;
+}
+.evidence .approve .button.go:hover:not(:disabled) {
+  background: linear-gradient(180deg, #6eeab4, #4fe0a0);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.35) inset,
+    0 14px 32px -10px rgb(61 220 151 / 0.7);
+}
+.evidence .approve .button.go:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+.evidence .approve .button.go:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+  filter: saturate(0.4);
+}
+.evidence .approve .button.ghost {
+  min-height: 48px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+.evidence .approve .button.ghost:hover:not(:disabled) {
+  color: var(--bad);
+  border-color: rgb(255 93 108 / 0.45);
+  background: var(--bad-bg);
+}
+.evidence .approve > .note.mono {
+  font-size: 11.5px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.evidence .blockers {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.evidence .blockers li {
+  padding: 9px 12px 9px 34px;
+  position: relative;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  border: 1px solid rgb(255 200 87 / 0.25);
+  font-size: 13.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.evidence .blockers li::before {
+  content: '!' / '';
+  position: absolute;
+  left: 11px;
+  top: 10px;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--warn);
+  color: #1d1400;
+  font-size: 11px;
+  font-weight: 900;
+}
+.evidence .confirm {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgb(255 200 87 / 0.3);
+  background: var(--warn-bg);
+  line-height: 1.5;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.evidence .confirm:has(input:checked) {
+  border-color: rgb(255 200 87 / 0.6);
+}
+.evidence .confirm input,
+.evidence .choice-card input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+.evidence .confirm input {
+  accent-color: var(--warn);
+}
+
+/* ---------- live round: keep progress vs fresh ---------- */
+.evidence .progress-choice {
+  margin-top: 4px;
+}
+.evidence .progress-choice legend {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 12px;
+}
+.evidence .choice-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+}
+.evidence .choice-card {
+  min-height: 44px;
+  padding: 14px;
+  gap: 12px;
+  border-color: var(--line-strong);
+  background: var(--surface);
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    box-shadow 0.2s,
+    transform 0.15s var(--ease);
+}
+.evidence .choice-card:hover:not([data-disabled]) {
+  border-color: rgb(185 163 255 / 0.5);
+  transform: translateY(-1px);
+}
+.evidence .choice-card[data-selected='true'] {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgb(124 77 255 / 0.14), rgb(124 77 255 / 0.05));
+  box-shadow:
+    0 0 0 1px var(--accent) inset,
+    0 8px 24px -12px var(--accent-glow);
+}
+.evidence .choice-card span {
+  min-width: 0;
+}
+.evidence .choice-card b {
+  font-size: 14px;
+  letter-spacing: -0.005em;
+}
+.evidence .choice-card small {
+  overflow-wrap: anywhere;
+}
+.evidence .why-reset {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+/* ---------- transition review ---------- */
+.evidence .transition-review {
+  container: tr / inline-size;
+  margin-top: 4px;
+  padding: 18px;
+  border-radius: 16px;
+  border: 1px solid rgb(124 77 255 / 0.3);
+  background:
+    radial-gradient(420px 120px at 100% 0%, rgb(124 77 255 / 0.1), transparent 70%), var(--surface);
+}
+.evidence .transition-review > h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+.evidence .transition-review > .note {
+  margin-top: 4px;
+}
+.evidence .tr-boundary {
+  margin-top: 16px;
+}
+.evidence .tr-boundary legend {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.evidence .tr-boundary .choice-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px;
+}
+.evidence .choice-card.compact {
+  padding: 12px;
+}
+.evidence .tr-actions .button.primary {
+  min-height: 42px;
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  border-color: rgb(255 255 255 / 0.14);
+  box-shadow: 0 8px 24px -10px var(--accent-glow);
+}
+.evidence .tr-actions .button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover), #b46cf8);
+  border-color: rgb(255 255 255 / 0.2);
+}
+.evidence .tr-actions .muted {
+  flex: 1 1 200px;
+  line-height: 1.45;
+}
+.evidence .tr-result {
+  display: flex;
+  gap: 8px;
+  border: 1px solid transparent;
+  line-height: 1.45;
+}
+.evidence .tr-result.good {
+  border-color: rgb(61 220 151 / 0.3);
+}
+.evidence .tr-result.bad {
+  border-color: rgb(255 93 108 / 0.35);
+}
+.evidence .tr-evidence {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+  animation: tr-in 0.35s var(--ease) both;
+}
+.evidence .tr-summary {
+  border-color: var(--line-strong);
+  gap: 1px;
+  background: var(--line);
+}
+.evidence .tr-summary > div {
+  grid-template-columns: 104px minmax(0, 1fr);
+  padding: 12px 14px;
+  background: var(--bg-raised);
+}
+.evidence .tr-summary dt {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+}
+.evidence .tr-summary > div[data-tone='good'] dt {
+  color: var(--good);
+}
+.evidence .tr-summary > div[data-tone='accent'] dt {
+  color: var(--accent-soft);
+}
+.evidence .tr-evidence > *,
+.evidence .tr-summary dd,
+.evidence .tr-chip {
+  min-width: 0;
+}
+.evidence .tr-chip {
+  max-width: 100%;
+  padding: 4px 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  border: 1px solid transparent;
+}
+.evidence .tr-chip.good {
+  border-color: rgb(61 220 151 / 0.22);
+}
+.evidence .tr-chip.accent {
+  border-color: rgb(185 163 255 / 0.25);
+  flex-wrap: wrap;
+}
+.evidence .tr-block h4,
+.evidence .transition-review h4 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: var(--faint);
+  margin-bottom: 10px;
+}
+.evidence .tr-rules tr[data-changed] th,
+.evidence .tr-rules tr[data-changed] td {
+  background: rgb(124 77 255 / 0.07);
+}
+.evidence .tr-rules tr[data-changed] th {
+  box-shadow: 2px 0 0 var(--accent) inset;
+  padding-left: 10px;
+}
+.evidence .tr-progress {
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border-color: var(--line-strong);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+.evidence .tr-progress > summary {
+  display: block;
+  min-height: 44px;
+  padding: 12px 14px;
+  font-size: 14px;
+}
+.evidence .tr-progress > :not(summary) {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+.evidence .tr-progress > :last-child {
+  margin-bottom: 14px;
+}
+.evidence .tr-scoreboard {
+  margin-top: 2px;
+}
+.evidence .score-chip {
+  display: inline-flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 14px;
+}
+.evidence .score-chip > .muted:first-child {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.evidence .tr-players .badge,
+.evidence .tr-rules .badge {
+  font-variant-numeric: tabular-nums;
+}
+.evidence .tr-reason {
+  color: var(--faint);
+}
+.evidence .tr-approve {
+  gap: 12px 16px;
+}
+.evidence .tr-approve .button.go {
+  min-height: 48px;
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  background: linear-gradient(180deg, #5ce6a8, var(--good));
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.35) inset,
+    0 10px 28px -10px rgb(61 220 151 / 0.6);
+}
+.evidence .tr-approve .button.go:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+.evidence .tr-advanced > summary {
+  min-height: 36px;
+  align-items: center;
+}
+.evidence .tr-advanced label {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.evidence .transition-review textarea {
+  background: var(--bg-raised);
+  border-radius: 10px;
+}
+.evidence .transition-review textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.18);
+}
+.evidence .tr-advanced pre {
+  border: 1px solid var(--line);
+  background: #09090f;
+}
+
+/* Tables inside the review share one refined look. */
+.evidence .transition-review .intent-table {
+  font-size: 13px;
+}
+.evidence .transition-review .intent-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- narrow containers: tables become stacked rows ---------- */
+@container evidence (max-width: 440px) {
+  .card.evidence {
+    padding: 18px;
+  }
+  .evidence .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evidence .facts dd {
+    font-size: 14.5px;
+  }
+  .evidence .changes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evidence .changes li {
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  }
+  .evidence .changes .change-label {
+    grid-column: 1 / -1;
+  }
+  .evidence .changes .badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+  .evidence .approve {
+    padding: 16px;
+  }
+  .evidence .approve-actions .button {
+    flex: 1 1 auto;
+  }
+  .evidence .approve .button.go {
+    flex-basis: 100%;
+  }
+  .evidence .transition-review {
+    padding: 14px;
+  }
+}
+
+@container evidence (max-width: 560px) {
+  .evidence .block > .intent-table {
+    display: block;
+    overflow: visible;
+  }
+  .evidence .block > .intent-table thead {
+    display: none;
+  }
+  .evidence .block > .intent-table tbody {
+    display: grid;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-sm);
+    background: var(--bg-raised);
+    overflow: hidden;
+  }
+  .evidence .block > .intent-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: 12px 14px;
+  }
+  .evidence .block > .intent-table tr + tr {
+    border-top: 1px solid var(--line);
+  }
+  .evidence .block > .intent-table tbody th,
+  .evidence .block > .intent-table tbody td {
+    padding: 0;
+    border: 0;
+  }
+  .evidence .block > .intent-table .intent-check {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+  }
+  .evidence .block > .intent-table td[data-label] {
+    grid-column: 1 / -1;
+    position: relative;
+    padding-left: 84px;
+  }
+  .evidence .block > .intent-table td[data-label]::before {
+    content: attr(data-label) / '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--faint);
+  }
+  .evidence .intent-check .badge {
+    white-space: normal;
+    text-align: left;
+  }
+}
+
+@container tr (max-width: 600px) {
+  .evidence .tr-boundary .choice-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container tr (max-width: 400px) {
+  .evidence .tr-summary > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .evidence .transition-review .intent-table,
+  .evidence .transition-review .intent-table tbody {
+    display: block;
+    overflow: visible;
+    white-space: normal;
+  }
+  .evidence .transition-review .intent-table thead {
+    display: none;
+  }
+  .evidence .transition-review .intent-table caption {
+    display: block;
+  }
+  .evidence .transition-review .intent-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-raised);
+  }
+  .evidence .transition-review .tr-players tr {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .evidence .transition-review .intent-table tr > th {
+    grid-column: 1 / -1;
+  }
+  .evidence .transition-review .intent-table tr > th,
+  .evidence .transition-review .intent-table tr > td,
+  .evidence .transition-review .tr-rules tr[data-changed] > th,
+  .evidence .transition-review .tr-rules tr[data-changed] > td {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+  .evidence .transition-review .tr-rules tr[data-changed] {
+    border-color: rgb(124 77 255 / 0.4);
+    background: rgb(124 77 255 / 0.07);
+  }
+  .evidence .transition-review .intent-table td[data-label]::before {
+    content: attr(data-label) / '';
+    display: block;
+    margin-bottom: 2px;
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--faint);
+  }
+  .evidence .tr-rules td.from {
+    text-decoration: none;
+  }
+  .evidence .tr-approve .button.go {
+    width: 100%;
+  }
+}
+
+@keyframes ev-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes ev-grow {
+  from {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.evidence,
+  .evidence-verdict-meter > span,
+  .evidence .tr-evidence {
+    animation: none;
+  }
+  .evidence .choice-card,
+  .evidence .approve .button.go,
+  .evidence .intent-table tbody tr,
+  .evidence details.block > summary {
+    transition: none;
+  }
+  .evidence .choice-card:hover:not([data-disabled]),
+  .evidence .approve .button.go:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+.evidence .tr-block > .note + .intent-table {
+  margin-top: 12px;
+}
+.evidence:has(.evidence-verdict[data-ok='false']) .approve .step-label {
+  color: var(--muted);
+}
+.evidence:has(.evidence-verdict[data-ok='false']) .approve .step-label span {
+  background: var(--surface-3);
+  color: var(--muted);
+}
+.evidence .block > .intent-table thead th:last-child {
+  text-align: right;
+}

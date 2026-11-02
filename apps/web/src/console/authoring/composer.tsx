@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Run, Version } from '../../lib/types.js';
 import { VoiceInput } from './voice.js';
+import './composer.css';
 
 const EXAMPLES = [
   {
@@ -99,31 +100,33 @@ export function Composer(props: {
         <label className="sr-only" htmlFor="intent">
           Describe the interaction in one or two sentences
         </label>
-        <textarea
-          id="intent"
-          value={draft}
-          maxLength={1200}
-          rows={3}
-          placeholder={
-            base
-              ? 'e.g. Change the command to !splat and make it subscribers only'
-              : 'e.g. Let viewers throw tomatoes with !tomato, three per person per minute'
-          }
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void submit();
-          }}
-          disabled={busy}
-        />
-        <VoiceInput
-          disabled={busy}
-          onUse={(text, how) => {
-            setDraft(
-              how === 'append' && draft.trim() ? `${draft.trim()} ${text}`.slice(0, 1200) : text,
-            );
-            document.getElementById('intent')?.focus();
-          }}
-        />
+        <div className="composer-field" data-busy={busy || undefined}>
+          <textarea
+            id="intent"
+            value={draft}
+            maxLength={1200}
+            rows={3}
+            placeholder={
+              base
+                ? 'e.g. Change the command to !splat and make it subscribers only'
+                : 'e.g. Let viewers throw tomatoes with !tomato, three per person per minute'
+            }
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void submit();
+            }}
+            disabled={busy}
+          />
+          <VoiceInput
+            disabled={busy}
+            onUse={(text, how) => {
+              setDraft(
+                how === 'append' && draft.trim() ? `${draft.trim()} ${text}`.slice(0, 1200) : text,
+              );
+              document.getElementById('intent')?.focus();
+            }}
+          />
+        </div>
         <div className="chips" aria-label={base ? 'Suggested changes' : 'Examples'}>
           {(base ? EDITS.map((text) => ({ label: text, text })) : EXAMPLES).map((example) => (
             <button
@@ -157,13 +160,18 @@ export function Composer(props: {
             className="button primary"
             disabled={busy || submitting || draft.trim().length < 8}
           >
+            {busy && <span className="composer-spinner" aria-hidden="true" />}
             {busy ? 'Working…' : base ? 'Generate change' : 'Generate'} <kbd>⌘↵</kbd>
           </button>
         </div>
       </form>
 
       {run && (
-        <div className={`run run-${run.stage}`} aria-live="polite">
+        <div
+          className={`run run-${run.stage}`}
+          data-outcome={run.result?.status}
+          aria-live="polite"
+        >
           <ol className="run-stages">
             {STAGES.map((stage, index) => (
               <li
@@ -178,6 +186,7 @@ export function Composer(props: {
                       : 'todo'
                 }
               >
+                <span className="run-node" aria-hidden="true" />
                 {index === STAGES.length - 1 && run.result
                   ? resultLabel(run.result.status)
                   : stage.label}
@@ -197,6 +206,13 @@ export function Composer(props: {
               s{run.transport === 'codex' ? ' · Codex' : ' · offline'}
             </span>
           </div>
+          {busy && thoughts.length === 0 && (
+            <div className="thoughts-idle" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
           {busy && thoughts.length > 0 && (
             <ul className="thoughts" aria-label="Compiler progress">
               {thoughts.map((thought) => (

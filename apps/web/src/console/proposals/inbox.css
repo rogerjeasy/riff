@@ -1,0 +1,622 @@
+/* Audience inbox (F33). Loads after studio.css and refines its "F33 audience ideas" block:
+   compact and inviting when empty, a calm two-column triage view when full. */
+
+.proposal-inbox {
+  container-type: inline-size;
+  container-name: inbox;
+}
+.proposal-inbox .card-head {
+  align-items: center;
+  margin-bottom: 14px;
+}
+.proposal-inbox .card-head h2 {
+  margin-top: 6px;
+}
+.proposal-inbox > .hint {
+  max-width: 72ch;
+  margin-bottom: 4px;
+}
+
+/* ---------- empty (quiet) state ---------- */
+.proposal-inbox.quiet {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  grid-template-rows: auto 1fr auto auto;
+  column-gap: 24px;
+  row-gap: 12px;
+  align-items: start;
+  padding-block: clamp(16px, 2.2vw, 22px);
+}
+/* Wide cards: the empty state grows to meet the vote column, so there is no dead space. */
+.proposal-inbox.quiet .inbox-empty-state {
+  align-self: stretch;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 28px;
+  text-align: center;
+  background:
+    radial-gradient(360px 180px at 50% 0%, rgb(124 77 255 / 0.14), transparent 75%),
+    var(--surface-2);
+}
+.proposal-inbox.quiet .inbox-empty-state .inbox-empty {
+  max-width: 54ch;
+}
+.proposal-inbox.quiet > .card-head {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+}
+.proposal-inbox.quiet > .inbox-grid {
+  display: contents;
+}
+.proposal-inbox.quiet > *:not(.card-head, .inbox-grid),
+.proposal-inbox.quiet .inbox-ideas {
+  grid-column: 1;
+  min-width: 0;
+}
+.proposal-inbox.quiet .inbox-side {
+  grid-column: 2;
+  grid-row: 2 / span 4;
+}
+.inbox-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid rgb(124 77 255 / 0.22);
+  background:
+    radial-gradient(420px 140px at 0% 0%, rgb(124 77 255 / 0.12), transparent 70%), var(--surface-2);
+}
+.inbox-empty-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgb(124 77 255 / 0.3), rgb(168 85 247 / 0.14));
+  box-shadow: inset 0 0 0 1px rgb(124 77 255 / 0.4);
+  color: var(--accent-soft);
+}
+.inbox-empty-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.proposal-inbox .inbox-empty-state .inbox-empty {
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  min-width: 0;
+}
+.proposal-inbox .inbox-empty code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(124 77 255 / 0.12);
+  white-space: nowrap;
+}
+.proposal-inbox.quiet .proposal-guidance {
+  margin: 0;
+}
+/* With nothing to filter, the state tabs read as a quiet summary rather than a toolbar. */
+.proposal-inbox.quiet .inbox-tabs {
+  opacity: 0.72;
+}
+.proposal-inbox.quiet .proposal-list {
+  display: none;
+}
+
+/* ---------- guidance disclosure ---------- */
+.proposal-inbox .proposal-guidance {
+  margin: 4px 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgb(255 255 255 / 0.015);
+}
+.proposal-inbox .proposal-guidance > summary {
+  padding: 2px 0;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.proposal-inbox .proposal-guidance > summary:hover,
+.proposal-inbox .proposal-guidance[open] > summary {
+  color: var(--text);
+}
+.proposal-inbox .guidance-grid {
+  margin: 12px 0 10px;
+  gap: 10px 18px;
+}
+.proposal-inbox .guidance-grid dd {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ---------- layout ---------- */
+.proposal-inbox .inbox-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 24px;
+}
+.proposal-inbox .inbox-ideas {
+  min-width: 0;
+}
+
+/* State filter: a segmented control that scrolls on narrow cards instead of wrapping. */
+.proposal-inbox .inbox-tabs {
+  flex-wrap: nowrap;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.proposal-inbox .inbox-tabs::-webkit-scrollbar {
+  display: none;
+}
+.proposal-inbox .inbox-tab {
+  flex: none;
+  min-height: 34px;
+  white-space: nowrap;
+  transition:
+    color 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.proposal-inbox .inbox-tab[aria-selected='true'] .tab-count {
+  background: rgb(124 77 255 / 0.22);
+  color: var(--accent-soft);
+}
+.proposal-inbox .tab-count {
+  color: var(--faint);
+}
+
+/* ---------- idea rows ---------- */
+.proposal-inbox .proposal-list {
+  gap: 8px;
+  margin-top: 14px;
+  max-height: 620px;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+}
+.proposal-inbox .proposal-row {
+  position: relative;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px 16px 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+  transition:
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.proposal-inbox .proposal-row:hover {
+  border-color: var(--line-strong);
+}
+/* State accent: a slim inset rail instead of a heavy left border. */
+.proposal-inbox .proposal-row::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--line-strong);
+}
+.proposal-inbox .proposal-row[data-state] {
+  border-left: 1px solid var(--line);
+}
+.proposal-inbox .proposal-row[data-state='pending']::before {
+  background: var(--warn);
+}
+.proposal-inbox .proposal-row[data-state='shortlisted']::before {
+  background: var(--accent);
+}
+.proposal-inbox .proposal-row[data-state='selected']::before {
+  background: var(--good);
+}
+.proposal-inbox .proposal-row[data-state='hidden'] {
+  opacity: 0.6;
+}
+.proposal-inbox .idea-main {
+  min-width: 0;
+}
+.proposal-inbox .idea-number {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.proposal-inbox .idea-meta .hint {
+  color: var(--faint);
+}
+.proposal-inbox .proposal-text {
+  margin: 8px 0 2px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  line-height: 1.45;
+}
+.proposal-inbox .idea-main > .hint:last-child {
+  color: var(--faint);
+}
+.proposal-inbox .proposal-row .proposal-actions {
+  justify-content: flex-start;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.proposal-inbox .proposal-row .proposal-actions > .button.ghost:nth-last-child(2) {
+  margin-left: auto;
+}
+.proposal-inbox .proposal-choice {
+  min-height: 32px;
+  padding: 0 11px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+  transition:
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease),
+    color 0.18s var(--ease);
+}
+.proposal-inbox .proposal-choice:hover:not(:has(input:disabled)) {
+  color: var(--text);
+  border-color: rgb(255 255 255 / 0.24);
+}
+.proposal-inbox .proposal-choice.on {
+  color: var(--accent-soft);
+}
+.proposal-inbox .proposal-choice input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.proposal-inbox .inbox-ideas > .inbox-empty {
+  margin-top: 14px;
+  padding: 22px 18px;
+  text-align: center;
+  border-style: dashed;
+  background: rgb(255 255 255 / 0.015);
+}
+.proposal-inbox .proposal-pagination {
+  padding-top: 4px;
+}
+
+/* ---------- side column ---------- */
+.proposal-inbox .inbox-side {
+  gap: 12px;
+  min-width: 0;
+}
+.proposal-inbox .side-card {
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.proposal-inbox .side-card > h3 {
+  margin-bottom: 8px;
+}
+.proposal-inbox .side-card > .hint {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.proposal-inbox .vote-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--line-strong);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-inbox .vote-picks {
+  list-style: none;
+  counter-reset: pick;
+  margin: 12px 0;
+  padding: 0;
+  gap: 6px;
+}
+.proposal-inbox .vote-picks li {
+  counter-increment: pick;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  font-size: 13.5px;
+}
+.proposal-inbox .vote-picks li::before {
+  content: counter(pick);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: rgb(124 77 255 / 0.2);
+  color: var(--accent-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+.proposal-inbox .vote-picks li .button {
+  margin: 0;
+  min-height: 28px;
+  padding: 2px 8px;
+}
+.proposal-inbox .duration {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+  margin: 14px 0 14px;
+}
+.proposal-inbox .duration legend {
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.proposal-inbox .duration label {
+  display: inline-grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transition:
+    color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.proposal-inbox .duration label:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.proposal-inbox .duration label.on {
+  background: rgb(124 77 255 / 0.14);
+  border-color: rgb(124 77 255 / 0.6);
+  color: var(--text);
+}
+.proposal-inbox .inbox-side .button.wide {
+  min-height: 42px;
+  padding: 10px 14px;
+  font-size: 14.5px;
+}
+/* Until ideas are picked, the vote button waits quietly instead of shouting in purple. */
+.proposal-inbox .inbox-side .button.primary:disabled {
+  opacity: 1;
+  background: var(--surface-3);
+  border-color: var(--line);
+  color: var(--faint);
+  box-shadow: none;
+}
+.proposal-inbox .recent-votes {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.proposal-inbox .recent-votes h4 {
+  margin: 0 0 2px;
+}
+.proposal-inbox .proposal-ballot {
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+}
+.proposal-inbox .proposal-ballot[data-active='true'] {
+  background:
+    radial-gradient(300px 120px at 100% 0%, rgb(124 77 255 / 0.12), transparent 70%), var(--surface);
+}
+.proposal-inbox .ballot-options li {
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'key text use'
+    'key votes use';
+  column-gap: 10px;
+  row-gap: 2px;
+  min-height: 40px;
+  padding: 8px 8px 8px 10px;
+  background: var(--surface-3);
+}
+.proposal-inbox .ballot-options .opt-key {
+  grid-area: key;
+}
+.proposal-inbox .ballot-options .opt-text {
+  grid-area: text;
+  line-height: 1.4;
+}
+.proposal-inbox .ballot-options .opt-votes {
+  grid-area: votes;
+}
+.proposal-inbox .ballot-options .button {
+  grid-area: use;
+  min-height: 30px;
+}
+.proposal-inbox .ballot-options li::before {
+  width: 100%;
+  background: linear-gradient(90deg, rgb(124 77 255 / 0.3), rgb(168 85 247 / 0.18));
+  transform-origin: left center;
+  scale: var(--share, 0%) 100%;
+  transition: scale 0.5s var(--ease);
+}
+.proposal-inbox .opt-text {
+  overflow-wrap: anywhere;
+}
+.proposal-inbox .opt-votes {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.proposal-inbox .ballot-head b {
+  font-size: 14.5px;
+}
+.proposal-inbox .selection-list li {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.proposal-inbox .selection-list li p:first-child {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.proposal-inbox .selection-list .button {
+  margin-top: 8px;
+}
+
+/* Moderators disclosure: one quiet line until opened. */
+.proposal-inbox details.side-card {
+  margin-top: 0;
+  padding: 12px 16px;
+}
+.proposal-inbox details.side-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  min-height: 28px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.proposal-inbox details.side-card > summary:hover,
+.proposal-inbox details.side-card[open] > summary {
+  color: var(--text);
+}
+.proposal-inbox details.side-card[open] {
+  display: grid;
+  gap: 10px;
+  padding-bottom: 16px;
+}
+.proposal-inbox .grant-form {
+  gap: 8px;
+}
+.proposal-inbox .grant-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+.proposal-inbox .grant-form input {
+  margin-top: 0;
+  min-height: 36px;
+}
+.proposal-inbox .grant-form .button {
+  min-height: 38px;
+}
+.proposal-inbox .grant-list li {
+  padding: 6px 6px 6px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+/* History drawer under the list. */
+.proposal-inbox .inbox-ideas > .proposal-detail {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.proposal-inbox .proposal-detail h3 {
+  margin: 0;
+}
+.proposal-inbox .history-list {
+  margin: 0;
+  gap: 6px;
+}
+.proposal-inbox .history-list li {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* Brief editor */
+.proposal-inbox .proposal-editor {
+  gap: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 16px 40px -24px var(--accent-glow);
+}
+.proposal-inbox .proposal-editor > label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.proposal-inbox .proposal-editor textarea {
+  font-size: 14.5px;
+}
+
+@container inbox (max-width: 760px) {
+  .proposal-inbox .inbox-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .proposal-inbox.quiet {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+  .proposal-inbox.quiet .inbox-empty-state {
+    flex-direction: row;
+    text-align: left;
+    padding: 16px 18px;
+  }
+  .proposal-inbox.quiet .inbox-side {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .proposal-inbox .inbox-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .inbox-empty-state {
+    align-items: flex-start;
+    padding: 16px;
+    gap: 12px;
+  }
+  .inbox-empty-icon {
+    width: 38px;
+    height: 38px;
+  }
+  .proposal-inbox .inbox-empty code {
+    white-space: normal;
+  }
+  .proposal-inbox .proposal-row .proposal-actions > .button.ghost:nth-last-child(2) {
+    margin-left: 0;
+  }
+  .proposal-inbox .proposal-row .proposal-actions > * {
+    min-height: 36px;
+  }
+  .proposal-inbox .proposal-text {
+    font-size: 14.5px;
+  }
+  /* Phones scroll the page, not a nested list. */
+  .proposal-inbox .proposal-list {
+    max-height: none;
+    overflow: visible;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proposal-inbox .proposal-row,
+  .proposal-inbox .inbox-tab,
+  .proposal-inbox .duration label,
+  .proposal-inbox .proposal-choice,
+  .proposal-inbox .ballot-options li::before {
+    transition: none;
+  }
+}

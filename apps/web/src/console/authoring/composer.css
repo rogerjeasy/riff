@@ -1,0 +1,708 @@
+/* Step 1 · Describe: a premium prompt surface and a live generation timeline.
+   Overrides the "composer" section of studio.css; everything is scoped to .composer. */
+
+.card.composer {
+  container: composer / inline-size;
+  position: relative;
+  padding: 24px;
+  background:
+    radial-gradient(560px 200px at 0% 0%, rgb(124 77 255 / 0.12), transparent 70%),
+    linear-gradient(180deg, var(--surface-2), var(--surface));
+  border-color: rgb(185 163 255 / 0.16);
+  box-shadow: var(--shadow-2);
+}
+.composer > .card-head {
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.composer > .card-head > div:first-child {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+.composer > .card-head h2 {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.composer .segmented {
+  background: var(--bg-raised);
+  border-color: var(--line-strong);
+  border-radius: 11px;
+}
+.composer .segmented button {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.composer .segmented button:hover {
+  color: var(--text);
+}
+.composer .segmented button[aria-pressed='true'] {
+  background: var(--surface-hover);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---------- prompt field ---------- */
+.composer-field {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 40%), var(--bg-raised);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.03) inset,
+    0 1px 2px rgb(0 0 0 / 0.4);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.3s var(--ease);
+}
+.composer-field:hover {
+  border-color: rgb(255 255 255 / 0.2);
+}
+.composer-field:focus-within {
+  border-color: rgb(124 77 255 / 0.75);
+  box-shadow:
+    0 0 0 4px rgb(124 77 255 / 0.16),
+    0 16px 48px -16px var(--accent-glow);
+}
+.composer-field > textarea {
+  display: block;
+  width: 100%;
+  min-height: 132px;
+  padding: 18px 18px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 17px;
+  line-height: 1.55;
+  letter-spacing: -0.005em;
+  resize: vertical;
+}
+.composer-field > textarea:focus,
+.composer-field > textarea:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+.composer-field > textarea::placeholder {
+  color: var(--faint);
+}
+.composer-field > textarea:disabled {
+  opacity: 0.6;
+}
+/* While Codex works, a light sweeps along the top edge of the field. */
+.composer-field[data-busy]::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-soft), var(--cyan), transparent);
+  animation: composer-sweep 1.6s var(--ease) infinite;
+}
+.composer-field .voice {
+  margin: 0;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: rgb(0 0 0 / 0.12);
+}
+.composer-field .voice-row {
+  gap: 8px 12px;
+}
+.composer-field .voice-talk {
+  min-height: 36px;
+  border-radius: 999px;
+  padding: 6px 14px 6px 12px;
+  background: var(--surface-2);
+}
+.composer-field .voice-hint {
+  flex: 1 1 220px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.composer-field .voice-unavailable {
+  font-size: 12px;
+  color: var(--faint);
+}
+.composer-field .voice-review textarea {
+  min-height: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  font-size: 14px;
+}
+.composer-field .voice-review textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.18);
+}
+
+/* ---------- example chips ---------- */
+.composer .chips {
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.composer .chips[aria-label]::before {
+  content: attr(aria-label);
+  margin-right: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+.composer .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 13px 6px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.03);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s var(--ease);
+}
+.composer .chip::before {
+  content: '✦' / '';
+  flex: none;
+  font-size: 10px;
+  color: var(--accent-soft);
+  opacity: 0.75;
+}
+.composer .chip:hover:not(:disabled) {
+  color: var(--text);
+  border-color: rgb(185 163 255 / 0.45);
+  background: rgb(124 77 255 / 0.1);
+  transform: translateY(-1px);
+}
+.composer .chip:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+.composer .chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Suggested edits are whole sentences: a soft card shape reads better when they wrap. */
+.composer .chips[aria-label='Suggested changes'] .chip {
+  border-radius: 12px;
+  text-align: left;
+}
+
+/* ---------- footer: compiler note and Generate ---------- */
+.composer-foot {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.composer-foot .hint {
+  font-size: 12.5px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.composer-foot .hint b {
+  font-weight: 650;
+}
+.composer-foot .button.primary {
+  flex: none;
+  min-height: 46px;
+  padding: 11px 16px 11px 20px;
+  border-radius: 12px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  background: linear-gradient(135deg, var(--accent), #a855f7);
+  color: var(--accent-ink);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.28) inset,
+    0 10px 28px -10px var(--accent-glow);
+  transition:
+    transform 0.15s var(--ease),
+    box-shadow 0.25s var(--ease),
+    filter 0.2s,
+    opacity 0.2s;
+}
+.composer-foot .button.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover), #b46cf8);
+  border-color: rgb(255 255 255 / 0.22);
+  transform: translateY(-1px);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.3) inset,
+    0 16px 36px -12px rgb(124 77 255 / 0.7);
+}
+.composer-foot .button.primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.2) inset,
+    0 4px 14px -6px var(--accent-glow);
+}
+.composer-foot .button.primary:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  filter: saturate(0.6);
+}
+/* Working is not the same as unavailable: keep it lit while Codex runs. */
+.composer-foot .button.primary:has(.composer-spinner) {
+  opacity: 0.9;
+  filter: none;
+  cursor: progress;
+}
+.composer-foot .button.primary kbd {
+  margin-left: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border-color: rgb(255 255 255 / 0.2);
+  background: rgb(0 0 0 / 0.18);
+  color: rgb(255 255 255 / 0.85);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.composer-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-top-color: #fff;
+  animation: composer-spin 0.7s linear infinite;
+}
+
+/* ---------- live generation timeline ---------- */
+.composer .run {
+  margin-top: 18px;
+  padding: 18px;
+  gap: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  background:
+    radial-gradient(400px 120px at 100% 0%, rgb(157 180 255 / 0.06), transparent 70%),
+    var(--bg-raised);
+  animation: composer-in 0.35s var(--ease) both;
+}
+.composer .run[data-outcome='ready'] {
+  border-color: rgb(61 220 151 / 0.3);
+}
+.composer .run[data-outcome='failed'],
+.composer .run[data-outcome='cancelled'] {
+  border-color: rgb(255 93 108 / 0.32);
+}
+.composer .run[data-outcome='question'],
+.composer .run[data-outcome='unsupported'] {
+  border-color: rgb(255 200 87 / 0.3);
+}
+.composer .run-stages {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+}
+.composer .run-stages li {
+  position: relative;
+  min-width: 0;
+  padding: 30px 6px 0 0;
+  border: 0;
+  border-image: none;
+  animation: none;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+/* Connector to the next stage. */
+.composer .run-stages li::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  left: 28px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--surface-3);
+}
+.composer .run-stages li:last-child::before {
+  display: none;
+}
+.composer .run-stages li[data-state='done']::before {
+  background: rgb(61 220 151 / 0.55);
+}
+.composer .run-stages li[data-state='active']::before {
+  background: linear-gradient(90deg, var(--accent), var(--surface-3));
+}
+.composer .run-node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--surface-hover);
+  background: var(--bg-raised);
+  color: #062016;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+.composer .run-stages li[data-state='done'],
+.composer .run-stages li[data-state='ready'] {
+  color: var(--text);
+}
+.composer .run-stages li[data-state='done'] .run-node,
+.composer .run-stages li[data-state='ready'] .run-node {
+  border-color: var(--good);
+  background: var(--good);
+}
+.composer .run-stages li[data-state='done'] .run-node::before,
+.composer .run-stages li[data-state='ready'] .run-node::before {
+  content: '✓';
+}
+.composer .run-stages li[data-state='ready'] {
+  color: var(--good);
+}
+.composer .run-stages li[data-state='active'] {
+  color: var(--accent-soft);
+}
+.composer .run-stages li[data-state='active'] .run-node {
+  border-color: var(--accent);
+  background: rgb(124 77 255 / 0.2);
+}
+.composer .run-stages li[data-state='active'] .run-node::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  animation: composer-pulse 1.1s ease-in-out infinite;
+}
+.composer .run-stages li[data-state='active'] .run-node::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgb(124 77 255 / 0.5);
+  animation: composer-ring 1.6s var(--ease) infinite;
+}
+.composer .run-stages li[data-state='failed'],
+.composer .run-stages li[data-state='cancelled'] {
+  color: var(--bad);
+}
+.composer .run-stages li[data-state='failed'] .run-node,
+.composer .run-stages li[data-state='cancelled'] .run-node {
+  border-color: var(--bad);
+  background: var(--bad);
+  color: #fff;
+}
+.composer .run-stages li[data-state='failed'] .run-node::before,
+.composer .run-stages li[data-state='cancelled'] .run-node::before {
+  content: '✕';
+}
+.composer .run-stages li[data-state='question'],
+.composer .run-stages li[data-state='unsupported'] {
+  color: var(--warn);
+}
+.composer .run-stages li[data-state='question'] .run-node,
+.composer .run-stages li[data-state='unsupported'] .run-node {
+  border-color: var(--warn);
+  background: var(--warn);
+  color: #1d1400;
+}
+.composer .run-stages li[data-state='question'] .run-node::before {
+  content: '?';
+}
+.composer .run-stages li[data-state='unsupported'] .run-node::before {
+  content: '!';
+}
+
+.composer .run-meta {
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+.composer .run-meta > span:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+  color: var(--muted);
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.composer .run-meta > .mono {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The compiler's thinking stream: newest line bright, older lines settle back. */
+.composer .thoughts {
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgb(157 180 255 / 0.16);
+  background: rgb(157 180 255 / 0.045);
+  font-size: 13px;
+}
+.composer .thoughts::before {
+  content: attr(aria-label);
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--codex);
+}
+.composer .thoughts li {
+  padding-left: 20px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  animation: composer-thought 0.4s var(--ease) both;
+}
+.composer .thoughts li::before {
+  left: 5px;
+  top: 0.62em;
+  width: 6px;
+  height: 6px;
+  background: rgb(157 180 255 / 0.55);
+}
+.composer .thoughts li:nth-last-child(4) {
+  opacity: 0.5;
+}
+.composer .thoughts li:nth-last-child(3) {
+  opacity: 0.68;
+}
+.composer .thoughts li:nth-last-child(2) {
+  opacity: 0.85;
+}
+.composer .thoughts li:last-child::before {
+  background: var(--codex);
+  box-shadow: 0 0 0 3px rgb(157 180 255 / 0.18);
+}
+.composer .thoughts li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--codex);
+  animation: composer-caret 1s steps(2, start) infinite;
+}
+.composer .thoughts li[data-kind='thinking'] {
+  font-style: italic;
+}
+.composer .thoughts li[data-kind='command'] {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.composer .thoughts li[data-kind='command']::before {
+  content: '$';
+  top: 0;
+  left: 4px;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--codex);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.composer .thoughts-idle {
+  display: flex;
+  gap: 5px;
+  padding: 4px 2px;
+}
+.composer .thoughts-idle span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--codex);
+  animation: composer-bounce 1.2s ease-in-out infinite;
+}
+.composer .thoughts-idle span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.composer .thoughts-idle span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+.composer .run > .button.ghost {
+  justify-self: start;
+  min-height: 36px;
+  color: var(--muted);
+}
+.composer .run > .button.ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+
+/* Outcomes that need the creator: question, unsupported, failure. */
+.composer .answer {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgb(255 200 87 / 0.3);
+  border-left: 3px solid var(--warn);
+  background: linear-gradient(90deg, var(--warn-bg), transparent 80%);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.composer .answer.bad {
+  border-color: rgb(255 93 108 / 0.32);
+  border-left-color: var(--bad);
+  background: linear-gradient(90deg, var(--bad-bg), transparent 80%);
+}
+.composer .answer b {
+  color: var(--warn);
+}
+.composer .answer .chips {
+  margin: 0;
+}
+.composer .answer > .chip,
+.composer .answer .chip {
+  justify-self: start;
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(255 255 255 / 0.05);
+  color: var(--text);
+}
+
+/* ---------- narrow containers ---------- */
+@container composer (max-width: 440px) {
+  .card.composer {
+    padding: 18px;
+  }
+  .composer > .card-head h2 {
+    font-size: 20px;
+  }
+  .composer-field > textarea {
+    min-height: 120px;
+    padding: 14px 14px 12px;
+    font-size: 16px;
+  }
+  .composer .chip {
+    min-height: 36px;
+  }
+  .composer .chips[aria-label]::before {
+    flex-basis: 100%;
+  }
+  .composer-foot {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .composer-foot .button.primary {
+    width: 100%;
+    min-height: 48px;
+  }
+  .composer .run {
+    padding: 14px;
+  }
+  .composer .run-stages li {
+    font-size: 11.5px;
+  }
+}
+
+@keyframes composer-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes composer-thought {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes composer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes composer-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(260%);
+  }
+}
+@keyframes composer-pulse {
+  50% {
+    transform: scale(0.6);
+    opacity: 0.6;
+  }
+}
+@keyframes composer-ring {
+  from {
+    transform: scale(0.7);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1.15);
+    opacity: 0;
+  }
+}
+@keyframes composer-caret {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes composer-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer .run,
+  .composer .thoughts li,
+  .composer-field[data-busy]::after,
+  .composer-spinner,
+  .composer .thoughts-idle span,
+  .composer .run-stages li[data-state='active'] .run-node::before,
+  .composer .run-stages li[data-state='active'] .run-node::after,
+  .composer .thoughts li:last-child::after {
+    animation: none;
+  }
+  .composer-field,
+  .composer .chip,
+  .composer-foot .button.primary {
+    transition: none;
+  }
+  .composer .chip:hover:not(:disabled),
+  .composer-foot .button.primary:hover:not(:disabled) {
+    transform: none;
+  }
+}

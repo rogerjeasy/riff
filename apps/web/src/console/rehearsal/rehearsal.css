@@ -1,0 +1,1040 @@
+/* Private rehearsal stage and scenario studio.
+   Loads after studio.css; every rule is scoped to the rehearsal card (or the shared
+   stage player) so it refines, rather than redefines, the lead's primitives. */
+
+.card.rehearsal {
+  container: rehearsal / inline-size;
+  --monitor-line: rgb(124 77 255 / 0.34);
+  --tone-good: var(--good);
+  --tone-warn: var(--warn);
+  --tone-bad: var(--bad);
+  --tone-muted: var(--faint);
+}
+
+/* ---------- mode switch: Quick proof / Scenario studio ---------- */
+.rehearsal .rehearsal-modes {
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 18px;
+  border-radius: 14px;
+  background: var(--bg-raised);
+  border-color: var(--line);
+}
+.rehearsal .rehearsal-modes button {
+  position: relative;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    color 0.18s var(--ease);
+}
+.rehearsal .rehearsal-modes button:hover:not(:disabled):not([aria-selected='true']) {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text);
+}
+.rehearsal .rehearsal-modes button strong {
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.rehearsal .rehearsal-modes button[aria-selected='true'] {
+  background:
+    linear-gradient(180deg, rgb(124 77 255 / 0.16), rgb(124 77 255 / 0.06)), var(--surface-3);
+  border-color: rgb(124 77 255 / 0.42);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 6px 18px -10px var(--accent-glow);
+}
+.rehearsal .rehearsal-modes button[aria-selected='true'] strong {
+  color: var(--text);
+}
+.rehearsal .rehearsal-modes button[aria-selected='true'] small {
+  color: var(--accent-soft);
+}
+
+/* ---------- the private monitor ---------- */
+.rehearsal .stage-frame,
+.panel-player .stage-frame {
+  position: relative;
+  overflow: visible;
+  padding: 6px;
+  border-radius: 16px;
+  border: 1px solid var(--monitor-line, rgb(124 77 255 / 0.34));
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 30%), var(--bg-raised);
+  box-shadow:
+    0 0 0 4px rgb(124 77 255 / 0.05),
+    0 22px 48px -26px rgb(124 77 255 / 0.55),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+.rehearsal .stage-frame .stage,
+.panel-player .stage-frame .stage {
+  border-radius: 11px;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+}
+/* The PRIVATE notch sits on the bezel, outside the 16:9 picture. */
+.rehearsal .stage-frame::before {
+  content: 'Private' / '';
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 19px;
+  border-radius: 999px;
+  border: 1px solid rgb(124 77 255 / 0.5);
+  background:
+    radial-gradient(circle at 10px 50%, var(--accent-soft) 0 3px, transparent 3.5px), var(--surface);
+  box-shadow: 0 0 14px -4px var(--accent-glow);
+  color: var(--accent-soft);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  pointer-events: none;
+}
+/* Monitor footer: clock and tallies under the picture. */
+.rehearsal .stage-frame .scene-preview-status,
+.rehearsal .stage-frame .scene-score-summary {
+  align-items: center;
+  padding: 8px 6px 2px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.rehearsal .stage-frame .scene-preview-status .mono {
+  color: var(--text);
+  font-weight: 600;
+}
+.rehearsal .stage-frame .scene-score-summary {
+  justify-content: flex-start;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+}
+.rehearsal .stage-frame .scene-score-summary > span:not(.badge) {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  text-transform: capitalize;
+}
+.rehearsal .stage-frame .scene-score-summary strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.rehearsal .stage-frame .scene-score-summary > .mono:last-child {
+  margin-left: auto;
+}
+
+/* Round HUD under the monitor: framed as a console readout. */
+.rehearsal .session-preview {
+  margin-top: 14px;
+}
+
+/* ---------- session participation (team rounds) ---------- */
+.rehearsal .rehearsal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.rehearsal .rehearsal-actions .note {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--faint);
+}
+
+/* ---------- synthetic viewers ---------- */
+.rehearsal .personas {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+@container rehearsal (min-width: 700px) {
+  .rehearsal .personas {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+.rehearsal .persona {
+  position: relative;
+  min-height: 56px;
+  min-width: 0;
+  column-gap: 10px;
+  row-gap: 5px;
+  padding: 9px 12px 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text);
+  transition:
+    background-color 0.18s var(--ease),
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease),
+    transform 0.12s var(--ease);
+}
+.rehearsal .persona:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--surface-3);
+}
+.rehearsal .persona:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.rehearsal .persona:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.rehearsal .persona[aria-pressed='true'] {
+  border-color: rgb(124 77 255 / 0.6);
+  background:
+    linear-gradient(180deg, rgb(124 77 255 / 0.16), rgb(124 77 255 / 0.05)), var(--surface-2);
+  box-shadow:
+    0 0 0 3px rgb(124 77 255 / 0.12),
+    0 10px 24px -16px var(--accent-glow);
+}
+.rehearsal .avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--bg);
+  background: linear-gradient(135deg, var(--accent-soft), var(--accent));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35);
+  transition: box-shadow 0.18s var(--ease);
+}
+.rehearsal .avatar[data-persona='bob'] {
+  background: linear-gradient(135deg, var(--cyan), var(--codex));
+}
+.rehearsal .avatar[data-persona='sam'] {
+  background: linear-gradient(135deg, var(--coral), #a855f7);
+}
+.rehearsal .avatar[data-persona='mo'] {
+  background: linear-gradient(135deg, var(--good), var(--cyan));
+}
+.rehearsal .persona[aria-pressed='true'] .avatar {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 0 0 2px var(--surface-2),
+    0 0 0 4px var(--accent-soft);
+}
+.rehearsal .persona-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.rehearsal .persona-name small {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.06);
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.rehearsal .persona:has([data-persona='sam']) .persona-name small {
+  color: var(--coral);
+  background: rgb(255 107 91 / 0.12);
+}
+.rehearsal .persona:has([data-persona='mo']) .persona-name small {
+  color: var(--good);
+  background: var(--good-bg);
+}
+.rehearsal .meter {
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.rehearsal .meter i {
+  width: 12px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+  transition: background-color 0.25s var(--ease);
+}
+.rehearsal .meter i[data-on='true'] {
+  background: linear-gradient(90deg, var(--accent), #a855f7);
+  box-shadow: 0 0 6px -1px var(--accent-glow);
+}
+.rehearsal .meter-note {
+  font-size: 11px;
+  color: var(--faint);
+  font-style: italic;
+}
+
+/* ---------- chat composer ---------- */
+.rehearsal .chat-input {
+  min-height: 48px;
+  margin-top: 12px;
+  padding: 5px 5px 5px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  transition:
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
+}
+.rehearsal .chat-input:focus-within {
+  border-color: rgb(124 77 255 / 0.65);
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.16);
+}
+.rehearsal .chat-input .as {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--accent-soft);
+  white-space: nowrap;
+}
+.rehearsal .chat-input .as[data-persona='bob'] {
+  color: var(--cyan);
+}
+.rehearsal .chat-input .as[data-persona='sam'] {
+  color: var(--coral);
+}
+.rehearsal .chat-input .as[data-persona='mo'] {
+  color: var(--good);
+}
+.rehearsal .chat-input input {
+  font-size: 13.5px;
+  color: var(--text);
+}
+.rehearsal .chat-input .button {
+  min-height: 36px;
+  padding-inline: 16px;
+}
+.rehearsal .chat-input .send {
+  border-color: rgb(124 77 255 / 0.45);
+  background: rgb(124 77 255 / 0.16);
+  color: var(--text);
+  box-shadow: none;
+}
+.rehearsal .chat-input .send:hover:not(:disabled) {
+  background: rgb(124 77 255 / 0.26);
+  border-color: rgb(124 77 255 / 0.65);
+}
+
+/* ---------- run controls ---------- */
+.rehearsal .rehearsal-actions.run-controls {
+  margin-top: 12px;
+}
+.rehearsal .run-controls .proof-run {
+  padding-inline: 16px;
+}
+.rehearsal .run-controls .run-reset {
+  margin-left: auto;
+}
+/* On a column-width card the proof run leads on its own row; the clock tools share the next. */
+@container rehearsal (max-width: 699px) {
+  .rehearsal .run-controls .proof-run {
+    flex: 1 1 100%;
+    min-height: 40px;
+  }
+  .rehearsal .run-controls .button.ghost {
+    flex: 1 1 auto;
+  }
+  .rehearsal .run-controls .run-reset {
+    margin-left: 0;
+  }
+}
+
+/* ---------- host decision feed ---------- */
+.rehearsal .decisions {
+  margin: 16px 0 0;
+  padding: 6px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg-raised);
+}
+.rehearsal .decisions:empty {
+  padding: 0;
+  border: 0;
+}
+.rehearsal .decisions:not(:empty)::before {
+  content: 'Host decisions · newest first' / '';
+  padding: 6px 8px 8px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.rehearsal .decisions li {
+  --tone: var(--tone-muted);
+  position: relative;
+  grid-template-columns: minmax(0, 116px) minmax(0, 1fr) auto;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: baseline;
+  padding: 9px 10px 9px 14px;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 13.5px;
+  line-height: 1.5;
+  animation: decision-in 0.32s var(--ease) both;
+}
+.rehearsal .decisions li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--tone);
+  opacity: 0.85;
+}
+.rehearsal .decisions li:first-of-type {
+  background: rgb(255 255 255 / 0.035);
+}
+.rehearsal .decisions li:hover {
+  background: rgb(255 255 255 / 0.05);
+}
+.rehearsal .decisions li[data-tone='good'] {
+  --tone: var(--tone-good);
+}
+.rehearsal .decisions li[data-tone='warn'] {
+  --tone: var(--tone-warn);
+}
+.rehearsal .decisions li[data-tone='bad'] {
+  --tone: var(--tone-bad);
+}
+.rehearsal .decisions li > .badge {
+  grid-column: 1;
+  grid-row: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rehearsal .decisions li > span:nth-child(2) {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.rehearsal .decisions li > .session-evidence {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.rehearsal .decisions li > .mono:last-child {
+  grid-column: 3;
+  grid-row: 1;
+  font-size: 11.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+@keyframes decision-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.rehearsal .replay-proof {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 10px 2px 0;
+  font-size: 11.5px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.rehearsal .replay-proof::before {
+  content: '✓' / '';
+  color: var(--good);
+  font-weight: 800;
+}
+
+@media (max-width: 720px) {
+  .rehearsal .decisions li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 10px;
+  }
+  .rehearsal .decisions li > .badge {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+  .rehearsal .decisions li > .mono:last-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .rehearsal .decisions li > span:nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .rehearsal .decisions li > .session-evidence {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+}
+@media (max-width: 560px) {
+  .rehearsal .persona {
+    padding: 8px 10px 8px 8px;
+    column-gap: 8px;
+  }
+  .rehearsal .stage-frame::before {
+    right: 12px;
+  }
+}
+
+/* =====================================================================
+   Scenario studio
+   ===================================================================== */
+.rehearsal .interactive-studio {
+  container: studio / inline-size;
+  gap: 16px;
+}
+.rehearsal .interactive-studio label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.rehearsal .interactive-studio input:not([type='checkbox']):not([type='range']),
+.rehearsal .interactive-studio select,
+.rehearsal .interactive-studio textarea {
+  min-height: 38px;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  transition:
+    border-color 0.18s var(--ease),
+    box-shadow 0.18s var(--ease);
+}
+.rehearsal .interactive-studio input:not([type='checkbox']):not([type='range']):focus-visible,
+.rehearsal .interactive-studio select:focus-visible,
+.rehearsal .interactive-studio textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.18);
+}
+
+/* Scenario bar */
+.rehearsal .studio-bar {
+  padding: 14px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 14px;
+  background: var(--surface-2);
+  gap: 12px;
+}
+.rehearsal .studio-save {
+  gap: 8px;
+  padding-top: 2px;
+}
+.rehearsal .save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+}
+.rehearsal .save-state::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.rehearsal .studio-more > summary {
+  display: inline-grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  letter-spacing: 0.1em;
+  transition: background-color 0.18s var(--ease);
+}
+.rehearsal .studio-more > summary:hover {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--text);
+}
+.rehearsal .studio-menu {
+  border-radius: 12px;
+  padding: 6px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  animation: menu-in 0.16s var(--ease) both;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Start from: preset or recorded round */
+.rehearsal .studio-start {
+  gap: 10px 12px;
+  padding: 14px !important;
+  border-radius: 14px;
+  border-color: var(--line-strong) !important;
+  background: rgb(255 255 255 / 0.015);
+}
+
+/* Player */
+.rehearsal .player {
+  gap: 14px;
+  padding: 16px;
+  border-radius: 16px;
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgb(124 77 255 / 0.05), transparent 120px), var(--surface-2);
+}
+.rehearsal .player-stage h4 {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-soft);
+  margin-bottom: 10px;
+}
+.rehearsal .player-stages.split .stage-frame::before {
+  display: none;
+}
+
+/* Transport */
+.rehearsal .transport {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+.rehearsal .transport .button.ghost {
+  flex: 1 1 auto;
+  min-height: 36px;
+  color: var(--muted);
+}
+.rehearsal .transport .button.ghost:hover:not(:disabled) {
+  color: var(--text);
+}
+.rehearsal .transport .play {
+  flex: 0 0 auto;
+  min-width: 108px;
+  min-height: 36px;
+}
+
+/* Timeline: coloured step track with the cursor thumb riding on top. */
+.rehearsal .scrubber {
+  position: relative;
+  display: block;
+  height: 28px;
+  padding: 0;
+}
+.rehearsal .scrubber .track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 10px;
+  transform: translateY(-50%);
+  gap: 3px;
+  padding: 0 9px;
+  pointer-events: none;
+}
+.rehearsal .scrubber .track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  box-shadow: inset 0 0 0 1px var(--line);
+  z-index: -1;
+}
+.rehearsal .scrubber .track i {
+  position: relative;
+  margin: 2px 0;
+  border-radius: 3px;
+  opacity: 0.32;
+  transition:
+    opacity 0.25s var(--ease),
+    transform 0.25s var(--ease);
+}
+.rehearsal .scrubber .track i[data-past='true'] {
+  opacity: 1;
+}
+.rehearsal .scrubber .track i[data-tone='unknown'] {
+  background: var(--surface-hover);
+}
+.rehearsal .scrubber label {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.rehearsal .scrubber input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.rehearsal .scrubber input[type='range']:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.rehearsal .scrubber input[type='range']::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+.rehearsal .scrubber input[type='range']::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+.rehearsal .scrubber input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--accent);
+  box-shadow:
+    0 0 0 4px rgb(124 77 255 / 0.22),
+    0 4px 10px rgb(0 0 0 / 0.5);
+  transition: transform 0.15s var(--ease);
+}
+.rehearsal .scrubber input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--accent);
+  box-shadow:
+    0 0 0 4px rgb(124 77 255 / 0.22),
+    0 4px 10px rgb(0 0 0 / 0.5);
+}
+.rehearsal .scrubber input[type='range']:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+.rehearsal .scrubber input[type='range']:focus-visible {
+  outline: none;
+}
+.rehearsal .scrubber input[type='range']:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 5px rgb(185 163 255 / 0.55),
+    0 4px 10px rgb(0 0 0 / 0.5);
+}
+.rehearsal .scrubber input[type='range']:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 5px rgb(185 163 255 / 0.55);
+}
+.rehearsal .player-status {
+  justify-content: space-between;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.rehearsal .player-status strong {
+  font-weight: 650;
+}
+.rehearsal .player-empty {
+  padding: 22px 16px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.015);
+  line-height: 1.55;
+}
+
+/* Verdict */
+.rehearsal .verdict {
+  /* review.css also defines a global .verdict; keep the rehearsal one a stacked card. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 6px;
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  animation: decision-in 0.3s var(--ease) both;
+}
+.rehearsal .verdict-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rehearsal .verdict-title > span[aria-hidden='true'] {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.08);
+  font-size: 12px;
+}
+.rehearsal .verdict.good .verdict-title > span[aria-hidden='true'] {
+  background: var(--good);
+  color: var(--bg);
+}
+.rehearsal .verdict.bad .verdict-title > span[aria-hidden='true'] {
+  background: var(--bad);
+  color: var(--bg);
+}
+.rehearsal .verdict li {
+  flex-wrap: wrap;
+}
+.rehearsal .verdict li > span {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* Step list and inspector */
+.rehearsal .player-body {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.rehearsal .step-list {
+  max-height: 300px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg-raised);
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-hover) transparent;
+  overscroll-behavior: contain;
+}
+.rehearsal .step-list li + li {
+  margin-top: 2px;
+}
+.rehearsal .step-list button {
+  min-height: 40px;
+  padding: 7px 10px 7px 8px;
+  border-radius: 10px;
+  transition:
+    background-color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+.rehearsal .step-list li[aria-current='step'] button {
+  border-color: rgb(124 77 255 / 0.55);
+  background:
+    linear-gradient(90deg, rgb(124 77 255 / 0.18), rgb(124 77 255 / 0.04)), var(--surface-2);
+}
+.rehearsal .step-list li[aria-current='step'] .step-n {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.rehearsal .step-list li[data-future] .step-n {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.rehearsal .step-what {
+  font-weight: 550;
+}
+.rehearsal .inspector {
+  gap: 12px;
+  padding: 14px;
+  border-radius: 14px;
+  background: var(--surface);
+  border-color: var(--line);
+}
+.rehearsal .inspector h3 {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: var(--text);
+}
+.rehearsal .inspector h3 .note {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.rehearsal .inspector-input {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.rehearsal .inspector-input small {
+  font-family: inherit;
+}
+.rehearsal .outcome p:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.rehearsal .inspector .state-view summary,
+.rehearsal .inspector .compare-state summary {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.rehearsal .state-view table {
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.rehearsal .state-view th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Disclosures: compare, edit inputs, fix, regressions, advanced */
+.rehearsal .studio-edit,
+.rehearsal .studio-fix,
+.rehearsal .studio-regressions,
+.rehearsal .studio-advanced,
+.rehearsal .studio-compare {
+  padding: 0;
+  border-radius: 14px;
+  border-color: var(--line);
+  background: var(--surface);
+  transition:
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.rehearsal .studio-edit[open],
+.rehearsal .studio-fix[open],
+.rehearsal .studio-regressions[open],
+.rehearsal .studio-advanced[open],
+.rehearsal .studio-compare[open] {
+  padding: 0 16px 16px;
+  border-color: var(--line-strong);
+  background: var(--surface-2);
+}
+.rehearsal
+  .interactive-studio
+  details:is(.studio-edit, .studio-fix, .studio-regressions, .studio-advanced, .studio-compare)
+  > summary {
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  color: var(--text);
+}
+.rehearsal
+  .interactive-studio
+  details:is(
+    .studio-edit,
+    .studio-fix,
+    .studio-regressions,
+    .studio-advanced,
+    .studio-compare
+  )[open]
+  > summary {
+  margin: 0 -16px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+}
+.rehearsal
+  .interactive-studio
+  details:is(.studio-edit, .studio-fix, .studio-regressions, .studio-advanced, .studio-compare)
+  > summary:hover {
+  background: rgb(255 255 255 / 0.03);
+}
+.rehearsal .interactive-studio details > summary .note,
+.rehearsal .interactive-studio details > summary small {
+  margin: 0;
+  font-weight: 500;
+  color: var(--faint);
+}
+.rehearsal .player .studio-compare {
+  background: var(--bg-raised);
+}
+.rehearsal .rehearsal-inputs {
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.rehearsal .rehearsal-inputs > li > details {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+.rehearsal .expectation-list li {
+  flex-wrap: wrap;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.rehearsal .regression-card {
+  border-radius: 14px;
+  background: var(--bg-raised);
+}
+.rehearsal .evidence-line {
+  overflow-wrap: anywhere;
+  padding: 0 2px;
+}
+
+/* Wide studio (container ≥ 640px): step list beside the inspector. */
+@container studio (min-width: 640px) {
+  .rehearsal .player-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .rehearsal .step-list {
+    max-height: 420px;
+  }
+}
+/* Narrow studio: the play button leads, the other controls share a 2×2 grid. */
+@container studio (max-width: 520px) {
+  .rehearsal .transport {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rehearsal .transport .play {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+  .rehearsal .transport .button.danger {
+    grid-column: 1 / -1;
+  }
+  .rehearsal .studio-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rehearsal .studio-start {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rehearsal .studio-start .preset-detail {
+    grid-row: auto;
+  }
+  .rehearsal .start-or {
+    display: none;
+  }
+  .rehearsal .player {
+    padding: 12px;
+  }
+  .rehearsal .step-list {
+    max-height: 260px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rehearsal .decisions li,
+  .rehearsal .verdict,
+  .rehearsal .studio-menu {
+    animation: none;
+  }
+  .rehearsal .persona,
+  .rehearsal .meter i,
+  .rehearsal .scrubber .track i,
+  .rehearsal .scrubber input[type='range']::-webkit-slider-thumb {
+    transition: none;
+  }
+}

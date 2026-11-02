@@ -1,7 +1,8 @@
 /* F22 Channel Points and Predictions panels; built on panel-kit tokens. */
 .points-layout {
   display: grid;
-  gap: 20px;
+  gap: 24px;
+  min-width: 0;
 }
 .points-access {
   display: grid;
@@ -22,9 +23,12 @@
   font-size: 15px;
 }
 .points-empty {
-  padding: 14px 16px;
+  padding: 18px 20px;
   border: 1px dashed var(--line-strong);
-  border-radius: 12px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.015);
+  color: var(--muted);
+  text-align: center;
 }
 .points-label {
   font-size: 13px;
@@ -43,11 +47,11 @@
 .points-reward,
 .predict-card {
   display: grid;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 14px;
+  padding: 16px 18px;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--surface-2);
   min-width: 0;
 }
 .points-reward-head {
@@ -116,13 +120,14 @@
 }
 .points-redemption {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 12px;
-  padding: 10px 14px;
+  gap: 10px 12px;
+  padding: 12px 16px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--surface-2);
 }
 .points-redemption > div:first-child {
   display: grid;
@@ -131,7 +136,13 @@
 }
 .points-redemption[data-status='queued'],
 .points-redemption[data-status='failed'] {
-  border-color: rgb(245 196 81 / 0.35);
+  border-color: rgb(255 200 87 / 0.32);
+}
+.points-form {
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
 }
 .points-redemption-side {
   display: flex;
@@ -165,11 +176,19 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  min-height: 40px;
   padding: 8px 12px;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: var(--surface-2);
+  background: var(--surface);
   cursor: pointer;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease);
+}
+.predict-outcome:hover {
+  border-color: var(--line-strong);
 }
 .predict-outcome:focus-within {
   outline: 2px solid var(--accent-soft);
@@ -177,7 +196,7 @@
 }
 .predict-outcome[data-selected='true'] {
   border-color: var(--accent);
-  background: rgb(255 122 69 / 0.08);
+  background: rgb(124 77 255 / 0.08);
 }
 .predict-outcome[data-winner='true'] {
   border-color: rgb(79 211 148 / 0.5);
@@ -208,7 +227,21 @@
   flex: 1;
   min-width: 0;
 }
+@media (max-width: 640px) {
+  .points-reward,
+  .predict-card,
+  .points-form {
+    padding: 14px;
+  }
+  .points-edit input {
+    width: 100%;
+  }
+  .points-edit > * {
+    flex: 1 1 140px;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .predict-outcome,
   .predict-bar > span {
     transition: none;
   }

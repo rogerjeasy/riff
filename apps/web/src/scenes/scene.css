@@ -1,12 +1,40 @@
+/*
+ * Scene renderer: shared by the OBS overlay (1920×1080, transparent, composited over any
+ * game) and the console's private stage previews. OBS browser sources cannot see the
+ * game behind them, so "glass" is an opaque-enough tinted gradient plus a hairline, never
+ * backdrop-filter. Motion is transform/opacity only and switches off for reduced motion.
+ * Tokens fall back to the studio values because the overlay entry has no studio.css.
+ */
 .riff-scene {
+  --sc-accent: var(--accent, #7c4dff);
+  --sc-accent-soft: var(--accent-soft, #b9a3ff);
+  --sc-coral: var(--coral, #ff6b5b);
+  --sc-gold: #ffd166;
+  --sc-good: #34c778;
+  --sc-ink: #f6f3ff;
+  --sc-ink-2: rgb(246 243 255 / 0.78);
+  --sc-glass: linear-gradient(180deg, rgb(38 33 58 / 0.93), rgb(15 13 25 / 0.91));
+  --sc-hairline: rgb(255 255 255 / 0.13);
+  --sc-shadow:
+    0 1px 0 rgb(255 255 255 / 0.08) inset, 0 4px 10px rgb(0 0 0 / 0.32), 0 1px 3px rgb(0 0 0 / 0.3);
+  --sc-text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  --sc-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sc-spring: cubic-bezier(0.3, 1.5, 0.5, 1);
   position: relative;
   width: 100%;
   height: 100%;
   aspect-ratio: 16/9;
   overflow: hidden;
-  color: #fff;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: var(--sc-ink);
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   container-type: inline-size;
+  -webkit-font-smoothing: antialiased;
 }
 .scene-node,
 .scene-guide {
@@ -36,39 +64,510 @@
 .scene-node[data-align-y='end'] {
   justify-content: flex-end;
 }
+
+/* ---- Panel ------------------------------------------------------------------------- */
 .scene-panel {
+  /* The renderer sets --fs (fitted base size) and --pad (the padding its maths assumes). */
+  --pad-x: calc(var(--pad, clamp(3px, 0.8cqw, 16px)) * 1.2);
+  position: relative;
   box-sizing: border-box;
-  max-width: 100%;
-  max-height: 100%;
+  margin: var(--inset, 0px);
+  max-width: calc(100% - 2 * var(--inset, 0px));
+  max-height: calc(100% - 2 * var(--inset, 0px));
   overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  background: rgb(19 18 27 / 0.86);
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-radius: 10px;
-  padding: clamp(3px, 0.7cqw, 14px) clamp(4px, 1cqw, 18px);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  font-size: var(--fs, clamp(12px, 2cqw, 32px));
+  padding: var(--pad, clamp(3px, 0.8cqw, 16px)) var(--pad-x);
+  color: var(--sc-ink);
+  background: var(--sc-glass);
+  border: 1px solid var(--sc-hairline);
+  border-radius: calc(var(--pad, 10px) * 0.75 + 6px);
+  box-shadow: var(--sc-shadow);
+  text-shadow: var(--sc-text-shadow);
+  isolation: isolate;
+  animation: scene-panel-in 420ms var(--sc-ease) both;
+}
+/* Content never squeezes; the renderer shrinks the base size until it fits instead. */
+.scene-panel > * {
+  flex-shrink: 0;
+}
+@keyframes scene-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 .scene-placeholder {
   color: rgb(255 255 255 / 0.55);
   font-weight: 500;
+  text-shadow: none;
 }
 .scene-text,
 .scene-clock,
 .scene-score,
 .scene-winner {
   margin: 0;
-  font-size: clamp(12px, 2cqw, 32px);
   line-height: 1.18;
   font-weight: 650;
 }
+/* Text kept for assistive tech and copy/paste but not drawn ("Red: 14" → Red ▸ 14). */
+.scene-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- Instructions: brand rail, commands as chips -------------------------------------- */
+.scene-instructions .scene-panel {
+  font-size: var(--fs, clamp(12px, 1.7cqw, 28px));
+}
 .scene-instructions .scene-text {
-  font-size: clamp(12px, 1.7cqw, 28px);
+  font-size: 1em;
+  letter-spacing: -0.005em;
+}
+.scene-cmd {
+  padding: 0 0.12em;
+  border-radius: 0.28em;
+  background: rgb(124 77 255 / 0.34);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.45);
+  color: #e9e1ff;
+  font-weight: 800;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+/* F29: a remix's reviewed accent marks its instruction panel edge (contrast-checked ≥ 3:1). */
+[data-scene-kind='instructions'] .scene-panel {
+  border-left: 4px solid var(--scene-accent, var(--sc-accent));
+  animation-name: scene-fade-in;
+}
+@keyframes scene-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---- Scoreboard ------------------------------------------------------------------------ */
+.scene-board {
+  gap: 0.26em;
+  min-width: min(100%, 12em);
+  padding-top: calc(var(--pad, 10px) + 2px);
+}
+/* Brand rail across the top edge. */
+.scene-board::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--sc-accent), #a855f7 55%, var(--sc-coral));
+  pointer-events: none;
+}
+.scene-board[data-phase='finished']::before {
+  background: linear-gradient(90deg, var(--sc-gold), #ffb347 60%, var(--sc-coral));
+}
+.scene-board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+  min-width: 0;
+}
+.scene-board-title {
+  min-width: 0;
+  font-size: 0.5em;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sc-ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .scene-clock {
-  color: #ffb37a;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  flex-shrink: 0;
+  padding: 0.2em 0.65em 0.2em 0.55em;
+  border-radius: 999px;
+  background: rgb(124 77 255 / 0.3);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.4);
+  color: #ece6ff;
+  font-size: 0.6em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.scene-clock-dot {
+  position: relative;
+  width: 0.55em;
+  height: 0.55em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+.scene-clock-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  animation: scene-ping 1.6s ease-out infinite;
+}
+@keyframes scene-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+[data-phase='paused'] .scene-clock {
+  background: rgb(255 204 61 / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(255 204 61 / 0.45);
+  color: #ffe9a8;
+}
+[data-phase='paused'] .scene-clock-dot {
+  background: #ffcc3d;
+}
+[data-phase='finished'] .scene-clock {
+  background: rgb(255 209 102 / 0.2);
+  box-shadow: inset 0 0 0 1px rgb(255 209 102 / 0.5);
+  color: #ffe6ad;
+}
+[data-phase='finished'] .scene-clock-dot {
+  background: var(--sc-gold);
+}
+[data-phase='paused'] .scene-clock-dot::after,
+[data-phase='finished'] .scene-clock-dot::after {
+  animation: none;
+  opacity: 0;
+}
+
+/* Meters: a track and a transform-only fill that glides between redraws. */
+.scene-meter {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  height: max(3px, 0.16em);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.13);
+  overflow: hidden;
+}
+.scene-meter-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--sc-accent), var(--sc-accent-soft));
+  transition: transform 260ms linear;
+}
+.scene-timebar {
+  margin: 0.04em 0 0.12em;
+}
+.scene-tug {
+  height: max(4px, 0.22em);
+  margin-top: 0.06em;
+  background: var(--team-b, rgb(255 255 255 / 0.2));
+}
+.scene-tug .scene-meter-fill {
+  background: var(--team-a, var(--sc-accent));
+  box-shadow: 2px 0 0 rgb(10 8 18 / 0.9);
+  transition: transform 520ms var(--sc-ease);
+}
+
+/* Team rows: colour swatch, name, big tabular score. */
+.scene-team {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.42em;
+  min-width: 0;
+  padding: 0.06em 0.1em 0.06em 0;
+  font-size: 1em;
+  font-weight: 750;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  isolation: isolate;
+}
+.scene-team-swatch {
+  width: 0.3em;
+  height: 0.9em;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--team, var(--sc-accent));
+  box-shadow: 0 0 0.5em var(--team, var(--sc-accent));
+}
+.scene-team-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scene-team-value {
+  display: inline-block;
+  min-width: 1.4em;
+  margin-left: auto;
+  padding-left: 0.6em;
+  text-align: right;
+  font-size: 1.12em;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+.scene-team[data-leading='true'] .scene-team-value,
+.scene-team[data-winner='true'] .scene-team-value {
+  color: var(--team, #fff);
+}
+.scene-team[data-winner='true']::before {
+  content: '';
+  position: absolute;
+  inset: 0 -0.3em 0 -0.25em;
+  z-index: -1;
+  border-radius: 0.3em;
+  background: linear-gradient(90deg, var(--team, var(--sc-gold)), transparent 85%);
+  opacity: 0.28;
+}
+/* Long labels keep ellipsis inside score rows only; every other line wraps. */
+.scene-clock,
+.scene-score:not(.scene-mechanics) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Version 2/3 lines: wrap rather than ellipsize, sized from the panel base. */
+.scene-mechanics {
+  font-size: 0.7em;
+  font-weight: 650;
+  line-height: 1.25;
+  color: var(--sc-ink);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.scene-round,
+.scene-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  margin-top: 0.3em;
+  font-size: 0.56em;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #d6c9ff;
+  font-variant-numeric: tabular-nums;
+}
+.scene-steps {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.scene-step-dot {
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.22);
+  transition: transform 300ms var(--sc-ease);
+}
+.scene-step-dot[data-state='done'] {
+  background: var(--sc-accent-soft);
+}
+.scene-step-dot[data-state='current'] {
+  background: #fff;
+  transform: scale(1.3);
+  box-shadow: 0 0 0.6em rgb(185 163 255 / 0.9);
+}
+.scene-side {
+  padding-left: 0.45em;
+  border-left: 0.2em solid var(--team, var(--sc-accent));
+  font-variant-numeric: tabular-nums;
+}
+.scene-health {
+  height: max(4px, 0.2em);
+  margin: 0.04em 0 0.1em 0.2em;
+}
+.scene-health .scene-meter-fill {
+  background: var(--team, var(--sc-good));
+  transition: transform 420ms var(--sc-ease);
+}
+.scene-health[data-tone='low'] .scene-meter-fill {
+  background: linear-gradient(90deg, #ff6b5b, #ffb36b);
+}
+.scene-progress .scene-meter-fill {
+  background: linear-gradient(90deg, #ff6b5b, #ffcc3d, #35d07f, #4b9dff, #b48cff);
+}
+.scene-answer-time {
+  height: max(3px, 0.12em);
+}
+.scene-answer-time .scene-meter-fill {
+  background: linear-gradient(90deg, var(--sc-coral), #ffcc3d);
+}
+/* Teamless formats: the question leads; the shared count steps back. */
+.scene-board[data-format] .scene-team {
+  font-size: 0.78em;
+}
+.scene-prompt {
+  font-size: 0.92em;
+  font-weight: 750;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+  animation: scene-rise 480ms var(--sc-ease) both;
+}
+
+/* Answer / stage options as vote chips with a share bar. */
+.scene-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-top: 0.1em;
+  font-size: 0.74em;
+}
+.scene-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.26em 0.6em 0.26em 0.28em;
+  border-radius: 0.55em;
+  background: rgb(255 255 255 / 0.07);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  overflow: hidden;
+  isolation: isolate;
+  white-space: nowrap;
+  animation: scene-rise 420ms var(--sc-ease) both;
+}
+.scene-chip:nth-of-type(2) {
+  animation-delay: 60ms;
+}
+.scene-chip:nth-of-type(3) {
+  animation-delay: 120ms;
+}
+.scene-chip:nth-of-type(4) {
+  animation-delay: 180ms;
+}
+.scene-chip-fill {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transform-origin: left center;
+  transform: scaleX(var(--share, 0));
+  background: linear-gradient(90deg, rgb(124 77 255 / 0.5), rgb(168 85 247 / 0.32));
+  transition: transform 520ms var(--sc-ease);
+}
+.scene-chip[data-leading='true'] {
+  box-shadow: inset 0 0 0 1.5px rgb(185 163 255 / 0.85);
+}
+.scene-chip-key {
+  flex-shrink: 0;
+  padding: 0.04em 0.36em;
+  border-radius: 0.36em;
+  background: var(--sc-accent-soft);
+  color: #170f2e;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-weight: 800;
+  text-shadow: none;
+}
+.scene-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+.scene-chip-count {
+  flex-shrink: 0;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  color: #e6ddff;
+}
+
+/* Quiz reveal: the answer lands, then the explanation (wraps; never cut with "…"). */
+.scene-answer {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin-top: 0.12em;
+  padding: 0.32em 0.65em 0.32em 0.4em;
+  border-radius: 0.55em;
+  background: linear-gradient(90deg, rgb(52 199 120 / 0.42), rgb(52 199 120 / 0.14));
+  box-shadow: inset 0 0 0 1px rgb(79 211 148 / 0.6);
+  color: #e3ffef;
+  font-size: 0.82em;
+  font-weight: 800;
+  animation: scene-reveal 620ms var(--sc-spring) both;
+}
+.scene-answer-icon {
+  position: relative;
+  width: 1.15em;
+  height: 1.15em;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--sc-good);
+  box-shadow: 0 0 0.8em rgb(52 199 120 / 0.8);
+}
+.scene-answer-icon::after {
+  content: '';
+  position: absolute;
+  left: 0.4em;
+  top: 0.2em;
+  width: 0.28em;
+  height: 0.52em;
+  border: solid #06210f;
+  border-width: 0 0.14em 0.14em 0;
+  transform: rotate(45deg);
+}
+.scene-explanation {
+  font-size: 0.66em;
+  font-weight: 560;
+  line-height: 1.34;
+  color: var(--sc-ink-2);
+  animation: scene-rise 520ms 220ms var(--sc-ease) both;
+}
+@keyframes scene-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+@keyframes scene-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+}
+
+/* Compact previews: one readable size, no pills. */
+.scene-panel[data-compact='true'] > *,
+.scene-panel[data-compact='true'] .scene-clock {
+  font-size: 1em;
+}
+.scene-panel[data-compact='true'] .scene-clock {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--sc-accent-soft);
+}
+.scene-panel[data-compact='true'] .scene-clock-dot {
+  display: none;
+}
+
+/* ---- Celebration: round-over moment ------------------------------------------------------ */
 .scene-node.scene-celebration {
   align-items: center;
   justify-content: center;
@@ -76,15 +575,126 @@
 .scene-celebration .scene-panel {
   flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 0.45em;
+}
+.scene-celebrate {
+  padding: calc(var(--pad, 10px) * 0.7) calc(var(--pad, 10px) * 1.6);
+  border-radius: 999px;
+  border: 0;
+  box-shadow:
+    inset 0 0 0 2px var(--team, var(--sc-gold)),
+    0 0 1.2em -0.3em var(--team, var(--sc-gold)),
+    0 4px 10px rgb(0 0 0 / 0.38);
+  animation: scene-pop 680ms var(--sc-spring) both;
+}
+.scene-celebrate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: radial-gradient(120% 160% at 15% 50%, var(--team, var(--sc-gold)), transparent 62%);
+  opacity: 0.4;
+}
+.scene-celebrate::after {
+  /* One sheen sweep across the badge as it lands. */
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  z-index: -1;
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.28), transparent);
+  transform: translateX(-120%) skewX(-12deg);
+  animation: scene-sheen 1.1s 450ms var(--sc-ease) both;
+}
+@keyframes scene-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+@keyframes scene-sheen {
+  to {
+    transform: translateX(320%) skewX(-12deg);
+  }
+}
+.scene-winner {
+  font-size: 1em;
+  font-weight: 850;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  text-shadow:
+    0 2px 0 rgb(0 0 0 / 0.25),
+    0 2px 10px rgb(0 0 0 / 0.45);
 }
 .scene-celebration-sprite {
-  width: 14%;
+  width: 1.5em;
   max-width: 64px;
   flex-shrink: 0;
+  filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.4));
+  animation: scene-hop 900ms 350ms var(--sc-ease) 2 both;
 }
+.scene-celebration-sprite svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+@keyframes scene-hop {
+  40% {
+    transform: translateY(-28%) rotate(-10deg);
+  }
+  70% {
+    transform: translateY(0) scale(1.08, 0.92);
+  }
+}
+.scene-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.scene-celebrate {
+  z-index: 1;
+}
+.scene-confetti-bit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 14px;
+  margin: -7px 0 0 -4px;
+  border-radius: 2px;
+  background: var(--c, var(--sc-gold));
+  opacity: 0;
+  animation: scene-confetti 1700ms var(--d, 0ms) cubic-bezier(0.15, 0.7, 0.3, 1) both;
+}
+.scene-confetti-bit[data-shape='dot'] {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+@keyframes scene-confetti {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.4);
+  }
+  55% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--x), calc(var(--y) + 40px)) rotate(calc(var(--r) * 1.6)) scale(0.9);
+  }
+}
+
+/* ---- Guides (private previews only) ------------------------------------------------------ */
 .scene-guide {
   border: 1px dashed rgb(255 255 255 / 0.3);
+  border-radius: 4px;
   pointer-events: none;
 }
 .scene-guide[data-protected='true'] {
@@ -92,14 +702,38 @@
     135deg,
     transparent,
     transparent 10px,
-    rgb(255 179 122 / 0.08) 10px,
-    rgb(255 179 122 / 0.08) 20px
+    rgb(185 163 255 / 0.08) 10px,
+    rgb(185 163 255 / 0.08) 20px
   );
-  border-color: #ffb37a;
+  border-color: #b9a3ff;
 }
 .scene-guide-label {
+  max-width: calc(100% - 8px);
   margin: 4px;
-  font-size: clamp(10px, 1.1cqw, 16px);
+  overflow: hidden;
+  font-size: clamp(9px, 1.1cqw, 16px);
+  line-height: 1.25;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgb(255 255 255 / 0.62);
+}
+.scene-guide[data-protected='true'] .scene-guide-label {
+  color: var(--sc-accent-soft);
+}
+/* Small previews: open areas explain themselves through their panels, so only the
+   protected labels stay (one truncated line each), and they never collide with text. */
+@container (max-width: 600px) {
+  .scene-guide[data-protected='false'] .scene-guide-label {
+    display: none;
+  }
+  .scene-guide-label {
+    margin: 2px 3px;
+  }
+}
+@container (max-width: 300px) {
+  .scene-guide-label {
+    display: none;
+  }
 }
 /* Intrinsic clipping is also the animation safety boundary, including sprite shadows. */
 .riff-scene .riff-projectile {
@@ -114,16 +748,28 @@
   height: 100%;
   display: block;
 }
-@media (prefers-reduced-motion: reduce) {
-  .riff-scene * {
-    scroll-behavior: auto;
-  }
+/* Effect pieces (trail puffs, impact ring and particles) are positioned by transforms. */
+.riff-trail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
 }
-.scene-clock,
-.scene-score {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.riff-ring {
+  position: absolute;
+  inset: 0;
+  border: 3px solid;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+}
+.riff-particle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
 }
 .scene-preview-status,
 .scene-score-summary {
@@ -139,18 +785,39 @@
   .scene-panel {
     padding: 3px 5px;
     border-radius: 6px;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.3);
+  }
+  .scene-board {
+    padding-top: 5px;
+  }
+  .scene-board::before {
+    height: 2px;
+  }
+  [data-scene-kind='instructions'] .scene-panel {
+    border-left-width: 3px;
+  }
+  .scene-celebrate {
+    padding: 3px 8px;
+    border-radius: 999px;
   }
 }
 
-/* F29: a remix's reviewed accent marks its instruction panel edge (contrast-checked ≥ 3:1). */
-[data-scene-kind='instructions'] .scene-panel {
-  border-left: 4px solid var(--scene-accent, rgb(255 255 255 / 0.08));
-}
 [data-high-contrast='true'] .scene-panel {
   color: #fff;
   background: #000;
   border: 2px solid #fff;
+  box-shadow: none;
   text-shadow: none;
+}
+[data-high-contrast='true'] .scene-panel::before,
+[data-high-contrast='true'] .scene-panel::after {
+  display: none;
+}
+[data-high-contrast='true'] .scene-cmd,
+[data-high-contrast='true'] .scene-clock {
+  background: #000;
+  box-shadow: inset 0 0 0 1px #fff;
+  color: #fff;
 }
 
 /* `!riff help`: the instruction panel announces itself for the help window. */
@@ -158,18 +825,45 @@
   /* Nodes clip their overflow, so the emphasis is drawn inside the panel. */
   outline: 3px solid #ffd166;
   outline-offset: -3px;
+}
+[data-help='true'] [data-scene-kind='instructions'] .scene-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgb(255 209 102 / 0.2);
+  opacity: 0;
   animation: scene-help-pulse 1.2s ease-in-out 3;
 }
 @keyframes scene-help-pulse {
   50% {
-    box-shadow: inset 0 0 0 999px rgb(255 209 102 / 0.18);
+    opacity: 1;
   }
 }
-[data-reduced-motion='true'][data-help='true'] [data-scene-kind='instructions'] .scene-panel {
-  animation: none;
+
+/* Reduced motion: the broadcast setting, the overlay URL flag and the OS preference. */
+.riff-scene[data-reduced-motion='true'] *,
+.riff-scene[data-reduced-motion='true'] *::before,
+.riff-scene[data-reduced-motion='true'] *::after,
+[data-motion='reduced'] .riff-scene *,
+[data-motion='reduced'] .riff-scene *::before,
+[data-motion='reduced'] .riff-scene *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.riff-scene[data-reduced-motion='true'] .scene-confetti,
+[data-motion='reduced'] .riff-scene .scene-confetti {
+  display: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-help='true'] [data-scene-kind='instructions'] .scene-panel {
-    animation: none;
+  .riff-scene *,
+  .riff-scene *::before,
+  .riff-scene *::after {
+    scroll-behavior: auto;
+    animation: none !important;
+    transition: none !important;
+  }
+  .riff-scene .scene-confetti {
+    display: none;
   }
 }

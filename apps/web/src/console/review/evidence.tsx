@@ -5,6 +5,7 @@ import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
 import { approvalLine, CODE_LABEL, shortHash, triggerSummary } from '../format.js';
 import type { RegressionEvidence } from '../rehearsal/contracts.js';
 import { describeCheck } from '../rehearsal/labels.js';
+import './review.css';
 
 const INTENT_BADGE: Record<string, [string, string]> = {
   match: ['✓ Matches what you said', 'good'],
@@ -89,12 +90,30 @@ function EvidenceCard(props: EvidenceProps) {
             )}
           </h2>
         </div>
-        <span className={`pill ${verification.ok ? 'good' : 'bad'}`}>
-          {verification.ok
-            ? `Verified · ${passedScenarios}/${scenarios.length} checks`
-            : 'Did not pass'}
-        </span>
       </header>
+
+      <div className="evidence-verdict" data-ok={verification.ok}>
+        <span className="evidence-verdict-icon" aria-hidden="true" />
+        <div className="evidence-verdict-body">
+          <span className={`pill ${verification.ok ? 'good' : 'bad'}`}>
+            {verification.ok
+              ? `Verified · ${passedScenarios}/${scenarios.length} checks`
+              : 'Did not pass'}
+          </span>
+          <span className="evidence-verdict-meter" aria-hidden="true">
+            {verification.stages.map((stage) => (
+              <span key={stage.id} data-status={stage.status} />
+            ))}
+            {scenarios.length > 0 && <i />}
+            {scenarios.map((result) => (
+              <span
+                key={`${result.origin}-${result.name}`}
+                data-status={result.passed ? 'passed' : 'failed'}
+              />
+            ))}
+          </span>
+        </div>
+      </div>
 
       <dl className="facts" aria-label="What this version does">
         <div>
@@ -154,9 +173,13 @@ function EvidenceCard(props: EvidenceProps) {
                 return (
                   <tr key={check.aspect}>
                     <th scope="row">{check.label}</th>
-                    <td>{check.stated ?? <span className="muted">—</span>}</td>
-                    <td className="mono">{check.actual}</td>
-                    <td>
+                    <td data-label="You said">
+                      {check.stated ?? <span className="muted">—</span>}
+                    </td>
+                    <td className="mono" data-label="Will run">
+                      {check.actual}
+                    </td>
+                    <td className="intent-check">
                       <span className={`badge ${toneName}`}>{label}</span>
                     </td>
                   </tr>
@@ -237,12 +260,16 @@ function EvidenceCard(props: EvidenceProps) {
           <span className="muted mono">artifact {shortHash(version.artifactId)}</span>
         </summary>
         <div className="code-grid">
-          <pre aria-label="Handler source">
-            <code>{version.source}</code>
-          </pre>
-          <pre aria-label="Permission manifest">
-            <code>{JSON.stringify(version.manifest, null, 2)}</code>
-          </pre>
+          <div className="code-pane" data-label="Handler source">
+            <pre aria-label="Handler source">
+              <code>{version.source}</code>
+            </pre>
+          </div>
+          <div className="code-pane" data-label="Permission manifest">
+            <pre aria-label="Permission manifest">
+              <code>{JSON.stringify(version.manifest, null, 2)}</code>
+            </pre>
+          </div>
         </div>
         <p className="note">
           Origin:{' '}
@@ -433,61 +460,65 @@ function ScenarioList({ title, results }: { title: string; results: ScenarioResu
                   · {result.kind} · {result.steps.length} messages · {result.durationMs} ms
                 </span>
               </summary>
-              <table className="steps">
-                <thead>
-                  <tr>
-                    <th scope="col">At</th>
-                    <th scope="col">Viewer</th>
-                    <th scope="col">Message</th>
-                    <th scope="col">Expected</th>
-                    <th scope="col">Actual</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.steps.map((step, i) => (
-                    <tr key={i} data-passed={step.passed}>
-                      <td className="mono">{(step.at / 1000).toFixed(step.at % 1000 ? 3 : 0)}s</td>
-                      <td>
-                        {step.viewer}
-                        <small> {step.roles.filter((r) => r !== 'viewer').join(' ')}</small>
-                      </td>
-                      <td className="mono">{step.text}</td>
-                      <td>
-                        {CODE_LABEL[step.expect]}
-                        {step.expectEffects === null ? ' (≥1)' : ` (${step.expectEffects})`}
-                        {step.expectSession && (
-                          <details>
-                            <summary>Expected session</summary>
-                            <pre aria-label="Expected session evidence">
-                              {JSON.stringify(step.expectSession, null, 2)}
-                            </pre>
-                          </details>
-                        )}
-                      </td>
-                      <td>
-                        {CODE_LABEL[step.actual]} ({step.actualEffects})
-                        {step.session && (
-                          <details>
-                            <summary>{step.session.phase} · session evidence</summary>
-                            <pre aria-label="Actual session evidence">
-                              {JSON.stringify(
-                                {
-                                  phase: step.session.phase,
-                                  scores: step.session.scores,
-                                  remainingMs: step.session.remainingMs,
-                                  participants: step.session.participants,
-                                },
-                                null,
-                                2,
-                              )}
-                            </pre>
-                          </details>
-                        )}
-                      </td>
+              <div className="table-scroll">
+                <table className="steps">
+                  <thead>
+                    <tr>
+                      <th scope="col">At</th>
+                      <th scope="col">Viewer</th>
+                      <th scope="col">Message</th>
+                      <th scope="col">Expected</th>
+                      <th scope="col">Actual</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.steps.map((step, i) => (
+                      <tr key={i} data-passed={step.passed}>
+                        <td className="mono">
+                          {(step.at / 1000).toFixed(step.at % 1000 ? 3 : 0)}s
+                        </td>
+                        <td>
+                          {step.viewer}
+                          <small> {step.roles.filter((r) => r !== 'viewer').join(' ')}</small>
+                        </td>
+                        <td className="mono">{step.text}</td>
+                        <td>
+                          {CODE_LABEL[step.expect]}
+                          {step.expectEffects === null ? ' (≥1)' : ` (${step.expectEffects})`}
+                          {step.expectSession && (
+                            <details>
+                              <summary>Expected session</summary>
+                              <pre aria-label="Expected session evidence">
+                                {JSON.stringify(step.expectSession, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                        </td>
+                        <td>
+                          {CODE_LABEL[step.actual]} ({step.actualEffects})
+                          {step.session && (
+                            <details>
+                              <summary>{step.session.phase} · session evidence</summary>
+                              <pre aria-label="Actual session evidence">
+                                {JSON.stringify(
+                                  {
+                                    phase: step.session.phase,
+                                    scores: step.session.scores,
+                                    remainingMs: step.session.remainingMs,
+                                    participants: step.session.participants,
+                                  },
+                                  null,
+                                  2,
+                                )}
+                              </pre>
+                            </details>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
           </li>
         ))}

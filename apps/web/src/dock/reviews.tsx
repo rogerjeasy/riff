@@ -18,11 +18,14 @@ export function DockReviews({
   const [selected, setSelected] = useState('');
   const version = candidates.find((v) => v.id === selected) ?? candidates[0];
   const automation = version ? automations.find((a) => a.id === version.automationId) : undefined;
-  if (!version) return <p className="note">No candidates waiting for review.</p>;
+  if (!version) return <p className="note dock-review-empty">No candidates waiting for review.</p>;
   return (
     <details className="dock-review">
-      <summary>Review candidates · {candidates.length}</summary>
-      <label>
+      <summary>
+        <span className="dock-review-dot" aria-hidden="true" />
+        Review candidates · {candidates.length}
+      </summary>
+      <label className="dock-review-picker">
         Candidate version
         <select value={version.id} onChange={(e) => setSelected(e.target.value)}>
           {candidates.map((v) => (

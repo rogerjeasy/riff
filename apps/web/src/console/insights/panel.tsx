@@ -1,5 +1,5 @@
 import './panel.css';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { request } from '../../lib/api.js';
 import { PanelCard, Segmented, Stat, type Tone } from '../panel-kit.js';
 import {
@@ -252,17 +252,39 @@ function Dashboard({ insights }: { insights: Insights }) {
   );
 }
 
-const W = 640;
-const H = 168;
-const PAD = { top: 12, right: 8, bottom: 22, left: 34 };
+const PAD = { top: 14, right: 10, bottom: 26, left: 36 };
+
+/** Draws the chart at the box's real pixel width, so axis text stays 11px on every screen. */
+function useChartWidth(fallback = 640) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const measure = (value: number) => {
+      const next = Math.max(260, Math.round(value));
+      setWidth((current) => (Math.abs(current - next) > 1 ? next : current));
+    };
+    measure(el.clientWidth || fallback);
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry) measure(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [fallback]);
+  return [ref, width] as const;
+}
 
 function ParticipationChart({ insights }: { insights: Insights }) {
   const { series } = insights.participation;
   const [active, setActive] = useState<number | null>(null);
   const titleId = useId();
+  const [chartRef, W] = useChartWidth();
+  const H = W < 520 ? 180 : 220;
   const max = Math.max(1, ...series.map((b) => (b.admitted ?? 0) + (b.blocked ?? 0)));
   const slot = (W - PAD.left - PAD.right) / Math.max(1, series.length);
-  const barW = Math.max(2, slot - 2);
+  const barW = Math.max(2, Math.min(28, slot - Math.max(2, slot * 0.22)));
+  const barInset = (slot - barW) / 2;
   const plotH = H - PAD.top - PAD.bottom;
   const y = (value: number) => (value / max) * plotH;
   const point = active !== null ? series[active] : undefined;
@@ -305,6 +327,7 @@ function ParticipationChart({ insights }: { insights: Insights }) {
         . Use the arrow keys on the chart to read each interval.
       </p>
       <div
+        ref={chartRef}
         className="insights-chart"
         tabIndex={0}
         role="group"
@@ -332,7 +355,7 @@ function ParticipationChart({ insights }: { insights: Insights }) {
         onBlur={() => setActive(null)}
         onMouseLeave={() => setActive(null)}
       >
-        <svg viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
+        <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-hidden="true">
           <defs>
             <pattern
               id={`${titleId}-hatch`}
@@ -364,7 +387,7 @@ function ParticipationChart({ insights }: { insights: Insights }) {
             </g>
           ))}
           {series.map((b, i) => {
-            const x = PAD.left + i * slot + 1;
+            const x = PAD.left + i * slot + barInset;
             const base = PAD.top + plotH;
             const admitted = y(b.admitted ?? 0);
             const blocked = y(b.blocked ?? 0);
@@ -389,7 +412,7 @@ function ParticipationChart({ insights }: { insights: Insights }) {
                         y={base - admitted}
                         width={barW}
                         height={admitted}
-                        rx={Math.min(2, barW / 2)}
+                        rx={Math.min(3, barW / 2)}
                       />
                     )}
                     {blocked > 0 && (
@@ -399,7 +422,7 @@ function ParticipationChart({ insights }: { insights: Insights }) {
                         y={base - admitted - blocked - (admitted > 0 ? 2 : 0)}
                         width={barW}
                         height={blocked}
-                        rx={Math.min(2, barW / 2)}
+                        rx={Math.min(3, barW / 2)}
                       />
                     )}
                   </>
@@ -446,35 +469,37 @@ function ParticipationChart({ insights }: { insights: Insights }) {
       </div>
       <details className="insights-table-toggle">
         <summary>Show chart data as a table</summary>
-        <table className="insights-table">
-          <caption className="sr-only">Participation per interval</caption>
-          <thead>
-            <tr>
-              <th scope="col">Interval starting</th>
-              <th scope="col">Admitted</th>
-              <th scope="col">Blocked</th>
-              <th scope="col">People</th>
-            </tr>
-          </thead>
-          <tbody>
-            {series
-              .filter((b) => b.suppressed || (b.admitted ?? 0) + (b.blocked ?? 0) > 0)
-              .map((b) => (
-                <tr key={b.start}>
-                  <th scope="row">{timeLabel(b.start, insights.range)}</th>
-                  {b.suppressed ? (
-                    <td colSpan={3}>Hidden — fewer than {insights.minimumGroup} people</td>
-                  ) : (
-                    <>
-                      <td>{b.admitted}</td>
-                      <td>{b.blocked}</td>
-                      <td>{b.participants}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-          </tbody>
-        </table>
+        <div className="insights-scroll insights-scroll-tall">
+          <table className="insights-table">
+            <caption className="sr-only">Participation per interval</caption>
+            <thead>
+              <tr>
+                <th scope="col">Interval starting</th>
+                <th scope="col">Admitted</th>
+                <th scope="col">Blocked</th>
+                <th scope="col">People</th>
+              </tr>
+            </thead>
+            <tbody>
+              {series
+                .filter((b) => b.suppressed || (b.admitted ?? 0) + (b.blocked ?? 0) > 0)
+                .map((b) => (
+                  <tr key={b.start}>
+                    <th scope="row">{timeLabel(b.start, insights.range)}</th>
+                    {b.suppressed ? (
+                      <td colSpan={3}>Hidden — fewer than {insights.minimumGroup} people</td>
+                    ) : (
+                      <>
+                        <td>{b.admitted}</td>
+                        <td>{b.blocked}</td>
+                        <td>{b.participants}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
       </details>
     </section>
   );

@@ -524,11 +524,11 @@ export function CollaborationPanel({
           : { text: 'Not sharing', tone: 'muted' };
   const bodyId = 'shared-channels-body';
   return (
-    <section className="card shared-panel" aria-label="Shared channels">
-      <header className="shared-head">
+    <section className="card panel-card shared-panel" aria-label="Shared channels">
+      <header className="panel-head shared-head">
         <button
           type="button"
-          className="shared-toggle"
+          className="panel-toggle shared-toggle"
           aria-expanded={open}
           aria-controls={bodyId}
           onClick={() => {
@@ -536,14 +536,19 @@ export function CollaborationPanel({
             setOpen((v) => !v);
           }}
         >
-          <span className="shared-title">Shared channels</span>
-          <span className="shared-subtitle">Play one cooperative round with other streamers</span>
+          <span className="panel-chevron" aria-hidden="true" />
+          <span className="panel-title shared-title">Shared channels</span>
+          <span className="panel-subtitle shared-subtitle">
+            Play one cooperative round with other streamers
+          </span>
         </button>
-        <span className={`pill ${summary.tone}`}>{summary.text}</span>
+        <div className="panel-head-side">
+          <span className={`pill ${summary.tone}`}>{summary.text}</span>
+        </div>
       </header>
       <section
         id={bodyId}
-        className="shared-body"
+        className="panel-body shared-body"
         aria-label="Shared channels workspace"
         hidden={!open}
       >

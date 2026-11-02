@@ -1,3 +1,9 @@
+/*
+ * On-stream overlay (OBS browser source, 1920×1080, transparent). The page cannot see the
+ * game behind it, so cards use tinted gradients and hairlines instead of backdrop blur, and
+ * every text block carries a soft shadow so it reads over any footage. Motion is
+ * transform/opacity only and stops for `?motion=reduced` or the OS preference.
+ */
 html,
 body,
 #overlay-root {
@@ -6,19 +12,42 @@ body,
   margin: 0;
   overflow: hidden;
   background: transparent;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#overlay-root {
+  --ov-accent: #7c4dff;
+  --ov-accent-soft: #b9a3ff;
+  --ov-coral: #ff6b5b;
+  --ov-good: #4fd394;
+  --ov-gold: #ffd166;
+  --ov-ink: #f6f3ff;
+  --ov-ink-2: rgb(246 243 255 / 0.76);
+  --ov-glass: linear-gradient(180deg, rgb(38 33 58 / 0.94), rgb(15 13 25 / 0.93));
+  --ov-hairline: rgb(255 255 255 / 0.13);
+  --ov-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08), 0 10px 28px rgb(0 0 0 / 0.4), 0 2px 6px rgb(0 0 0 / 0.3);
+  --ov-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ov-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
 }
 .overlay-stage {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
+
+/* ---- Projectiles ------------------------------------------------------------------------ */
 .riff-projectile {
   position: absolute;
   left: 0;
   top: 0;
   will-change: transform, opacity;
-  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 0.35));
 }
 .riff-sprite,
 .riff-projectile svg {
@@ -28,15 +57,21 @@ body,
 }
 .riff-projectile-label {
   position: absolute;
-  top: 100%;
+  top: calc(100% + 4px);
   left: 50%;
   transform: translateX(-50%);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgb(15 13 25 / 0.82);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
   white-space: nowrap;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 750;
   color: #fff;
-  text-shadow: 0 1px 3px rgb(0 0 0 / 0.8);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.6);
 }
+
+/* ---- Legacy instruction pills and the test-frame toast ------------------------------------ */
 .overlay-instructions {
   position: absolute;
   left: 32px;
@@ -46,30 +81,56 @@ body,
 }
 .overlay-instructions p {
   margin: 0;
-  padding: 10px 16px;
+  padding: 10px 18px;
   border-radius: 999px;
-  background: rgb(15 14 20 / 0.78);
-  color: #fff;
+  background: var(--ov-glass);
+  box-shadow: var(--ov-shadow);
+  border: 1px solid var(--ov-hairline);
+  color: var(--ov-ink);
   font-size: 20px;
   font-weight: 650;
   letter-spacing: -0.01em;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
 }
 .overlay-instructions b {
-  color: #ffb37a;
+  padding: 0 0.2em;
+  border-radius: 0.3em;
+  background: rgb(124 77 255 / 0.34);
+  color: #ece6ff;
 }
 .overlay-notice {
   position: absolute;
   top: 32px;
   right: 32px;
-  padding: 14px 20px;
+  padding: 14px 22px 14px 20px;
   border-radius: 14px;
-  background: #1e1b28;
-  color: #f4f2ff;
+  background: var(--ov-glass);
+  border: 1px solid rgb(79 211 148 / 0.55);
+  box-shadow:
+    var(--ov-shadow),
+    0 0 24px -6px rgb(79 211 148 / 0.6);
+  color: var(--ov-ink);
   font-size: 20px;
-  font-weight: 650;
-  border: 2px solid #7ee2a8;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  animation: ov-toast 3.5s var(--ov-ease) both;
 }
+@keyframes ov-toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  10%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 /* Audience co-creation: bottom-right, clear of the session HUD (top-left) and the
    interaction instructions (bottom-left). Quiet invite when idle, a card while voting. */
 .overlay-community {
@@ -78,27 +139,62 @@ body,
   bottom: 32px;
   width: min(520px, calc(100% - 64px));
   box-sizing: border-box;
-  padding: 18px 20px;
-  border-radius: 20px;
-  background: rgb(18 16 26 / 0.92);
-  border: 1px solid rgb(255 255 255 / 0.08);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  padding: 16px 18px 16px 20px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgb(38 33 58 / 0.94), rgb(15 13 25 / 0.93));
+  border: 1px solid rgb(255 255 255 / 0.13);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 10px 28px rgb(0 0 0 / 0.4),
+    0 2px 6px rgb(0 0 0 / 0.3);
   color: #f6f3ff;
-  font-size: 17px;
+  font-size: 16px;
   line-height: 1.35;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.45);
   overflow-wrap: anywhere;
   display: grid;
-  gap: 10px;
+  gap: 7px;
+  animation: ov-card-in 480ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+/* Brand rail down the leading edge (drawn inside: the card itself never clips). */
+.overlay-community::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--ov-accent), #a855f7 60%, var(--ov-coral));
+}
+.overlay-community {
+  transition:
+    opacity 280ms var(--ov-ease),
+    transform 280ms var(--ov-ease);
+}
+.overlay-community[data-yield='true'] {
+  opacity: 0;
+  transform: translateY(10px) scale(0.98);
+}
+@keyframes ov-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
 }
 .overlay-community[hidden] {
   display: none;
 }
 .overlay-community[data-mode='invite'] {
   width: auto;
-  max-width: min(520px, calc(100% - 64px));
-  padding: 12px 18px;
+  max-width: min(420px, calc(100% - 64px));
+  padding: 12px 16px 12px 18px;
   border-radius: 16px;
-  gap: 4px;
+  gap: 6px;
+}
+.overlay-community[data-mode='invite']::before {
+  top: 12px;
+  bottom: 12px;
 }
 .overlay-community p,
 .overlay-community h2 {
@@ -107,13 +203,20 @@ body,
 .overlay-community small {
   display: block;
   font-size: 13px;
-  line-height: 1.35;
-  color: #c9c3dc;
+  line-height: 1.4;
+  color: var(--ov-ink-2);
 }
 .overlay-community code {
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgb(124 77 255 / 0.3);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.4);
+  font-family: var(--ov-mono);
+  font-size: 0.94em;
   font-weight: 700;
-  color: #ffb37a;
+  color: #ece6ff;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .cc-head {
   display: flex;
@@ -122,140 +225,218 @@ body,
   gap: 12px;
 }
 .cc-kicker {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #ffb37a;
+  color: var(--ov-accent-soft);
 }
 .overlay-community small.cc-kicker {
-  color: #ffb37a;
+  color: var(--ov-accent-soft);
 }
 .cc-timer {
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: #ff7a45;
-  color: #1a0f08;
+  background: rgb(124 77 255 / 0.32);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.45);
+  color: #ece6ff;
+  font-size: 14px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
+.cc-timer[data-urgent='true'] {
+  background: rgb(255 107 91 / 0.28);
+  box-shadow: inset 0 0 0 1px rgb(255 107 91 / 0.7);
+  color: #ffe0dc;
+  animation: ov-pulse 1s ease-in-out infinite;
+}
+@keyframes ov-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
 .cc-timer.done {
-  background: rgb(255 255 255 / 0.12);
-  color: #f6f3ff;
+  background: rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  color: var(--ov-ink);
 }
 .cc-title {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1.2;
-  font-weight: 750;
-  letter-spacing: -0.01em;
+  font-weight: 760;
+  letter-spacing: -0.015em;
 }
 .cc-options {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .community-option {
   position: relative;
   display: grid;
-  grid-template-columns: 30px 1fr auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 12px;
+  gap: 10px;
+  padding: 7px 12px 7px 9px;
+  border-radius: 11px;
+  font-size: 15px;
+  line-height: 1.3;
   background: rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
   overflow: hidden;
   isolation: isolate;
 }
+/* Vote share grows with a transform; `--share-n` is the same share as a 0–1 factor. */
 .community-option::before {
   content: '';
   position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--share, 0%);
-  background: rgb(255 122 69 / 0.22);
+  inset: 0;
   z-index: -1;
-  transition: width 0.6s ease;
+  transform-origin: left center;
+  transform: scaleX(var(--share-n, 0));
+  background: linear-gradient(90deg, rgb(124 77 255 / 0.42), rgb(168 85 247 / 0.24));
+  transition: transform 0.6s var(--ov-ease);
 }
 .community-option[data-leading] {
-  box-shadow: inset 0 0 0 2px rgb(255 179 122 / 0.7);
+  box-shadow: inset 0 0 0 1.5px rgb(185 163 255 / 0.8);
+}
+.overlay-community[data-mode='results'] .community-option[data-leading='true'] {
+  box-shadow: inset 0 0 0 1.5px rgb(255 209 102 / 0.85);
+}
+.overlay-community[data-mode='results'] .community-option[data-leading='true'] .cc-key {
+  background: var(--ov-gold);
 }
 .cc-key {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  background: #ffb37a;
-  color: #1a0f08;
-  font-weight: 800;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--ov-accent-soft);
+  color: #170f2e;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+.cc-body {
+  min-width: 0;
 }
 .community-excerpt {
   font-weight: 650;
 }
+/* Credit rides on the excerpt's last line to keep the card short. */
+.cc-body .community-excerpt,
+.overlay-community .cc-body small.community-credit {
+  display: inline;
+}
+.overlay-community .cc-body small.community-credit {
+  margin-left: 8px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
 .cc-votes {
-  font-weight: 750;
+  display: inline-block;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .community-vote {
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 600;
 }
 .community-selection {
   display: grid;
-  gap: 2px;
-  padding: 10px 12px;
+  gap: 1px;
+  padding: 8px 12px;
   border-radius: 12px;
-  background: rgb(126 226 168 / 0.1);
-  border: 1px solid rgb(126 226 168 / 0.35);
+  background: rgb(79 211 148 / 0.1);
+  box-shadow: inset 0 0 0 1px rgb(79 211 148 / 0.38);
+}
+.community-selection .cc-kicker,
+.overlay-community .community-selection small.cc-kicker {
+  color: #9cebc4;
 }
 .community-selection[data-status='applied'] {
-  background: rgb(126 226 168 / 0.18);
+  background: rgb(79 211 148 / 0.18);
+}
+.cc-invite {
+  display: grid;
+  gap: 4px;
 }
 .cc-invite p {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 15px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .community-option::before {
-    transition: none;
-  }
+.cc-invite .cc-note {
+  font-size: 12.5px;
+  color: rgb(246 243 255 / 0.68);
 }
 
 /* F36 shared round card */
 .overlay-community[data-shared='true'] .shared-partners {
-  margin-top: -2px;
+  margin-top: -4px;
   font-size: 14px;
-  color: #c9c3dc;
+  color: var(--ov-ink-2);
 }
 .overlay-community[data-shared='true'] .shared-cta {
-  font-size: 26px;
+  justify-self: start;
+  padding: 4px 12px;
+  border-radius: 10px;
+  background: rgb(124 77 255 / 0.3);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.5);
+  font-size: 24px;
   font-weight: 800;
-  line-height: 1.15;
-  color: #ffb37a;
-  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  line-height: 1.2;
+  color: #ece6ff;
+  font-family: var(--ov-mono);
 }
 .overlay-community[data-shared='true'] .shared-meter {
   height: 10px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.12);
   overflow: hidden;
 }
+/* The inline width stays for assistive tooling; the drawn fill grows with a transform. */
 .overlay-community[data-shared='true'] .shared-meter span {
   display: block;
+  width: 100% !important;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #ff7a45, #ffb37a);
-  transition: width 0.6s ease;
+  transform-origin: left center;
+  transform: scaleX(var(--fill, 0));
+  background: linear-gradient(90deg, var(--ov-accent), var(--ov-accent-soft));
+  transition: transform 0.6s var(--ov-ease);
+}
+.overlay-community[data-shared='true'][data-mode='finished'] .shared-meter span {
+  background: linear-gradient(90deg, var(--ov-good), #a8efc1);
 }
 .overlay-community[data-shared='true'] .community-excerpt {
   font-variant-numeric: tabular-nums;
 }
 .overlay-community[data-shared='true'] .community-vote {
   font-size: 14px;
-  color: #c9c3dc;
+  font-weight: 500;
+  color: var(--ov-ink-2);
+}
+
+/* Reduced motion: the overlay URL flag and the OS preference. */
+[data-motion='reduced'] .overlay-community,
+[data-motion='reduced'] .overlay-community *,
+[data-motion='reduced'] .overlay-community::before,
+[data-motion='reduced'] .community-option::before,
+[data-motion='reduced'] .overlay-notice {
+  animation: none !important;
+  transition: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
+  .overlay-community,
+  .overlay-community *,
+  .community-option::before,
+  .overlay-notice,
   .overlay-community[data-shared='true'] .shared-meter span {
-    transition: none;
+    animation: none !important;
+    transition: none !important;
   }
 }

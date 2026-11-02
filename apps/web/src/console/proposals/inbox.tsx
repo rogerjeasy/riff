@@ -1,3 +1,4 @@
+import './inbox.css';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { api, ApiError } from '../../lib/api.js';
 import type { Run, Studio } from '../../lib/types.js';
@@ -351,10 +352,18 @@ export function ProposalInbox({
         </div>
       </header>
       {quiet ? (
-        <p className="inbox-empty">
-          No ideas yet. Viewers type <code>!riff suggest &lt;idea&gt;</code> in chat; ideas stay
-          private here until you shortlist them.
-        </p>
+        <div className="inbox-empty-state">
+          <span className="inbox-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22">
+              <path d="M5 5.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-7l-4.5 3.5V16.5H5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z" />
+              <path d="M8 10h8M8 13h5" />
+            </svg>
+          </span>
+          <p className="inbox-empty">
+            No ideas yet. Viewers type <code>!riff suggest &lt;idea&gt;</code> in chat; ideas stay
+            private here until you shortlist them.
+          </p>
+        </div>
       ) : (
         <p className="hint">
           Viewers suggest and vote; you decide. Nothing is built or goes live until you generate,

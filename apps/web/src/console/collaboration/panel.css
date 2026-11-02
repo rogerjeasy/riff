@@ -1,57 +1,8 @@
 /* F36 shared channels: one compact card, a guided host checklist and a plain invitation review. */
-.card.shared-panel {
-  margin: 18px 0;
-  padding: 0;
-  overflow: hidden;
-}
-.shared-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 20px;
-}
-.shared-toggle {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 10px;
-  row-gap: 2px;
-  align-items: baseline;
-  flex: 1;
-  min-width: 0;
-  padding: 0;
-  text-align: left;
-  color: inherit;
-  background: none;
-  border: 0;
-  cursor: pointer;
-  font: inherit;
-}
-.shared-toggle::before {
-  content: '▸' / '';
-  grid-row: 1 / span 2;
-  color: var(--faint);
-  transition: transform 0.15s ease;
-}
-.shared-toggle[aria-expanded='true']::before {
-  transform: rotate(90deg);
-}
-.shared-title {
-  font-weight: 750;
-  font-size: 16px;
-}
-.shared-subtitle {
-  color: var(--muted);
-  font-size: 13px;
-}
+/* The header reuses the PanelCard shell classes (panel-head, panel-toggle, panel-chevron,
+   panel-title, panel-subtitle, panel-body) so it matches every other collapsible card. */
 .shared-body {
-  display: grid;
-  gap: 18px;
-  padding: 4px 20px 20px;
-  border-top: 1px solid var(--line);
-}
-.shared-body[hidden] {
-  display: none;
+  gap: 20px;
 }
 .shared-panel h3,
 .shared-panel h4,
@@ -65,7 +16,7 @@
   line-height: 1.5;
 }
 .card.shared-panel h3 {
-  font-size: 17px;
+  font-size: 15.5px;
   line-height: 1.3;
   font-weight: 700;
   letter-spacing: normal;
@@ -87,17 +38,19 @@
 /* Readiness checklist */
 .shared-ready {
   list-style: none;
-  margin: 12px 0 0;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 .shared-ready li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  position: relative;
+  display: block;
+  min-height: 32px;
+  padding: 6px 14px 6px 30px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -105,11 +58,19 @@
 }
 .shared-ready li::before {
   content: '✓';
+  position: absolute;
+  left: 12px;
+  top: 6px;
   color: var(--good);
   font-weight: 800;
 }
+.shared-ready li .button {
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .shared-ready li[data-ok='false'] {
-  border-color: rgb(245 196 81 / 0.4);
+  border-radius: 12px;
+  border-color: rgb(255 200 87 / 0.32);
   background: var(--warn-bg);
 }
 .shared-ready li[data-ok='false']::before {
@@ -118,25 +79,10 @@
 }
 
 /* Forms */
-.shared-panel label {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--muted);
-}
-.shared-panel input:not([type='checkbox']),
-.shared-panel select,
-.shared-panel textarea {
-  box-sizing: border-box;
-  width: 100%;
+/* Forms follow the PanelCard form language (labels, fields, focus ring) from panel-kit. */
+.shared-panel input:not([type='checkbox'], [type='radio']),
+.shared-panel select {
   min-height: 40px;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
-  padding: 8px 11px;
-  font: inherit;
-  font-size: 14px;
 }
 .shared-panel textarea {
   font-family: var(--mono);
@@ -145,45 +91,61 @@
 }
 .shared-panel .shared-check {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  gap: 10px;
   color: var(--text);
+  font-weight: 500;
+  line-height: 1.45;
+  cursor: pointer;
 }
 .shared-check input {
   flex: 0 0 auto;
-  margin: 0;
+  margin: 2px 0 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
 }
 .shared-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
 }
 .shared-column {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
-  padding: 16px;
+  padding: 20px;
   border-radius: 14px;
   background: var(--surface-2);
   border: 1px solid var(--line);
 }
-.shared-role {
+.card.panel-card .shared-role {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   margin: 0;
-  padding: 12px;
-  border: 1px solid var(--line-strong);
+  padding: 16px;
+  border: 1px solid var(--line);
   border-radius: 12px;
+  background: var(--surface);
   min-width: 0;
 }
 .shared-role[data-invalid] {
-  border-color: rgb(245 196 81 / 0.55);
+  border-color: rgb(255 200 87 / 0.4);
 }
-.shared-role legend {
-  padding: 0 6px;
-  font-size: 13px;
+/* Floated, the legend sits inside the box as a heading instead of cutting its border. */
+.card.panel-card .shared-role legend {
+  float: left;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  font-size: 13.5px;
   font-weight: 700;
+  color: var(--text);
+}
+.shared-role > .button {
+  justify-self: start;
 }
 .shared-role-grid {
   display: grid;
@@ -194,17 +156,79 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
+  gap: 8px;
+}
+.shared-role-options > label:not(.shared-check) {
+  flex: 1 1 200px;
+}
+/* "Overlay shows:" starts its own row of field chips. */
+.shared-role-options > .note {
+  flex-basis: 100%;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.shared-role-options > .note ~ .shared-check {
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 12px 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--muted);
+  transition:
+    border-color 0.18s var(--ease),
+    background-color 0.18s var(--ease),
+    color 0.18s var(--ease);
+}
+.shared-role-options > .note ~ .shared-check input {
+  margin: 0;
+}
+.shared-role-options > .note ~ .shared-check:has(input:checked) {
+  border-color: rgb(124 77 255 / 0.55);
+  background: rgb(124 77 255 / 0.1);
+  color: var(--text);
+}
+.shared-role-options > .note ~ .shared-check:has(input:focus-visible) {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 2px;
+}
+.shared-problem {
+  padding-left: 10px;
+  border-left: 2px solid var(--warn);
 }
 .shared-problem {
   color: var(--warn);
   font-size: 13px;
+  line-height: 1.45;
+}
+/* Raid handoff: an opt-in row, set apart from the role boxes. */
+.shared-column > .shared-check {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.shared-column > h3 + .note {
+  margin-top: -6px;
+}
+.shared-column .note {
+  color: var(--muted);
+  font-size: 13.5px;
 }
 .shared-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  padding-top: 4px;
+}
+.shared-column > .button {
+  align-self: flex-start;
 }
 
 /* Current round, review and leave */
@@ -295,7 +319,7 @@
   border: 1px solid var(--line);
 }
 .shared-roster li[data-mine] {
-  border-color: rgb(255 179 122 / 0.5);
+  border-color: rgb(185 163 255 / 0.5);
 }
 .shared-roster span {
   color: var(--muted);
@@ -441,8 +465,8 @@
   margin-top: 6px;
   padding: 12px;
   border-radius: 10px;
-  border: 1px solid rgb(255 179 122 / 0.4);
-  background: rgb(255 122 69 / 0.06);
+  border: 1px solid rgb(185 163 255 / 0.4);
+  background: rgb(124 77 255 / 0.06);
 }
 .shared-invitation input {
   font-family: var(--mono);
@@ -460,7 +484,7 @@
   overflow: auto;
 }
 .shared-panel :focus-visible {
-  outline: 3px solid var(--accent-soft);
+  outline: 2px solid var(--accent-soft);
   outline-offset: 2px;
 }
 @media (max-width: 860px) {
@@ -469,19 +493,29 @@
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 540px) {
-  .shared-head,
-  .shared-body {
-    padding-left: 14px;
-    padding-right: 14px;
+@media (max-width: 640px) {
+  .shared-column {
+    padding: 16px;
   }
-  .shared-subtitle {
-    display: none;
+  .card.panel-card .shared-role {
+    padding: 14px;
+  }
+  .shared-actions {
+    justify-content: stretch;
+  }
+  .shared-actions > .button,
+  .shared-column > .button {
+    flex: 1 1 auto;
+    align-self: stretch;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .shared-bar span,
-  .shared-toggle::before {
+  .shared-role-options > .note ~ .shared-check {
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shared-bar span {
     transition: none;
   }
 }

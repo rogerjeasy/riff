@@ -403,7 +403,7 @@ export function CanvasEditor({
           Drag objects and areas, or describe a change. Rehearsal and the live overlay draw this
           same layout. Camera and caption areas stay protected.
         </p>
-        <div className="canvas-toolbar">
+        <div className="canvas-toolbar canvas-viewbar">
           <label>
             <input type="checkbox" checked={mobile} onChange={(e) => setMobile(e.target.checked)} />{' '}
             Phone-size preview
@@ -431,14 +431,14 @@ export function CanvasEditor({
         </div>
         {state && draft ? (
           <>
-            <p className="note">
+            <p className="note canvas-revision">
               Layout revision {state.revision} · behavior v{version.number}
               {state.appliedRevision !== null && state.appliedRevision !== state.revision
                 ? ` · revision ${state.appliedRevision} is applied`
                 : ''}
             </p>
             {hasStandardAreas(draft) && (
-              <div className="canvas-toolbar" role="group" aria-label="Quick layouts">
+              <div className="canvas-toolbar canvas-quick" role="group" aria-label="Quick layouts">
                 <span className="note">Quick layouts</span>
                 <button
                   type="button"
@@ -458,376 +458,394 @@ export function CanvasEditor({
                 </button>
               </div>
             )}
-            <div className="canvas-board" data-mobile={mobile} ref={board}>
-              <div className="canvas-picture" ref={stage} />
-              <div className="canvas-handles" aria-label="Scene objects">
-                {draft.nodes.map((n) => (
-                  <button
-                    type="button"
-                    key={n.id}
-                    className="canvas-handle"
-                    data-selected={selected === n.id}
-                    data-invalid={invalidIds.has(n.id) || undefined}
-                    style={positionStyle(n.rect)}
-                    aria-label={`Select ${n.kind}`}
-                    aria-pressed={selected === n.id}
-                    disabled={busy}
-                    onClick={() => setSelected(n.id)}
-                    onKeyDown={(e) => nudge(e, 'node', n.id, n.rect)}
-                    onPointerDown={(e) => startDrag(e, 'node', 'move', n.id, n.rect)}
-                    onPointerMove={moveDrag}
-                    onPointerUp={endDrag}
-                    onPointerCancel={endDrag}
-                  >
-                    <span
-                      className="canvas-handle-name"
-                      data-x={n.rect.x + n.rect.width / 2 > 500 ? 'start' : 'end'}
-                      data-y={n.rect.y + n.rect.height / 2 > 500 ? 'start' : 'end'}
-                    >
-                      {invalidIds.has(n.id) ? '⚠ ' : ''}
-                      {KIND_NAME[n.kind]}
-                    </span>
-                    {selected === n.id && (
-                      <span
-                        className="canvas-resize"
-                        aria-hidden="true"
-                        onPointerDown={(e) => startDrag(e, 'node', 'resize', n.id, n.rect)}
-                        onPointerMove={moveDrag}
-                        onPointerUp={endDrag}
-                        onPointerCancel={endDrag}
-                      />
-                    )}
-                  </button>
-                ))}
-                {draft.regions.map((r) => (
-                  <button
-                    type="button"
-                    key={r.id}
-                    className="canvas-region-grip"
-                    data-selected={selected === r.id}
-                    data-protected={r.protected}
-                    style={{
-                      left: `${(r.rect.x + r.rect.width / 2) / 10}%`,
-                      top: `${r.rect.y / 10}%`,
-                    }}
-                    aria-label={`Move ${r.label} area`}
-                    aria-pressed={selected === r.id}
-                    disabled={busy}
-                    onClick={() => setSelected(r.id)}
-                    onKeyDown={(e) => nudge(e, 'region', r.id, r.rect)}
-                    onPointerDown={(e) => startDrag(e, 'region', 'move', r.id, r.rect)}
-                    onPointerMove={moveDrag}
-                    onPointerUp={endDrag}
-                    onPointerCancel={endDrag}
-                  >
-                    ⠿ {r.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {problems.length > 0 && (
-              <div role="alert" className="answer bad canvas-problems">
-                <strong>Fix before saving:</strong>
-                <ul>
-                  {problems.map((p) => (
-                    <li key={p}>{p}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <p className="note">
-              Sample round for layout only, not test evidence. Drag to move; drag the corner to
-              resize. Arrow keys move the selected item 10 units (Shift: 1); Alt + arrows resize.
-            </p>
-            <div className="canvas-toolbar">
-              <button
-                className="button small"
-                disabled={!valid?.success}
-                onClick={() => {
-                  if (stage.current)
-                    launchSceneEffect(
-                      stage.current,
-                      { asset: 'tomato', x: 0.5 },
-                      {
-                        reducedMotion:
-                          reduced ||
-                          (typeof matchMedia === 'function' &&
-                            matchMedia('(prefers-reduced-motion: reduce)').matches),
-                      },
-                    );
-                }}
-              >
-                Preview tomato
-              </button>
-              <label>
-                Sample round · {(clock / 1000).toFixed(1)} s
-                <input
-                  aria-label="Visual sample time"
-                  type="range"
-                  min="0"
-                  max={duration + 120000}
-                  step="100"
-                  value={clock}
-                  onChange={(e) => setClock(Number(e.target.value))}
-                />
-              </label>
-              <button
-                className="button small ghost"
-                disabled={!definition}
-                onClick={() => setClock(duration)}
-              >
-                Show round end
-              </button>
-            </div>
-            <table className="canvas-tracks">
-              <caption>When each object shows</caption>
-              <thead>
-                <tr>
-                  <th>Object</th>
-                  <th>Shows</th>
-                  <th>Delay</th>
-                  <th>Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {draft.nodes.map((n) => (
-                  <tr key={n.id}>
-                    <th>
-                      <button className="button small ghost" onClick={() => setSelected(n.id)}>
-                        {KIND_NAME[n.kind]}
-                      </button>
-                    </th>
-                    <td>{TRIGGER[n.timing.trigger]}</td>
-                    <td>{n.timing.trigger === 'always' ? '—' : seconds(n.timing.delayMs)}</td>
-                    <td>
-                      {n.timing.trigger === 'always' ? 'Continuous' : seconds(n.timing.durationMs)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <div className="canvas-properties">
-              <label>
-                Selected object or area
-                <select
-                  value={selected}
-                  disabled={busy}
-                  onChange={(e) => setSelected(e.target.value)}
-                >
-                  {draft.nodes.map((n) => (
-                    <option key={n.id} value={n.id}>
-                      {KIND_NAME[n.kind]}
-                    </option>
-                  ))}
-                  {draft.regions.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label} area{r.protected ? ' (protected)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                className="button small ghost"
-                disabled={busy || draft.regions.length >= 12}
-                onClick={() => {
-                  const ids = new Set([...draft.regions, ...draft.nodes].map((x) => x.id));
-                  let i = 1;
-                  while (ids.has(`area-${i}`)) i++;
-                  const id = `area-${i}`;
-                  edit({
-                    ...draft,
-                    regions: [
-                      ...draft.regions,
-                      {
-                        id,
-                        label: `Area ${i}`,
-                        kind: 'custom',
-                        protected: false,
-                        rect: { x: 20, y: 20, width: 100, height: 100 },
-                      },
-                    ],
-                  });
-                  setSelected(id);
-                }}
-              >
-                Add named area
-              </button>
-              {item && (
-                <fieldset disabled={busy}>
-                  <legend>{itemName} position and size · 0–1000</legend>
-                  <div className="canvas-numbers">
-                    {(['x', 'y', 'width', 'height'] as const).map((f) => (
-                      <label key={f}>
-                        {f === 'x'
-                          ? 'X position'
-                          : f === 'y'
-                            ? 'Y position'
-                            : f === 'width'
-                              ? 'Width'
-                              : 'Height'}
-                        <input
-                          type="number"
-                          min={f === 'x' || f === 'y' ? 0 : 1}
-                          max="1000"
-                          step="1"
-                          value={item.rect[f]}
-                          onChange={(e) => field(f, Number(e.target.value))}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  {region && (
-                    <p className="note">Moving an area also moves the objects inside it.</p>
-                  )}
-                </fieldset>
-              )}
-              {region && (
-                <RegionFields
-                  region={region}
-                  busy={busy}
-                  onChange={(next) =>
-                    edit({
-                      ...draft,
-                      regions: draft.regions.map((r) => (r.id === region.id ? next : r)),
-                    })
-                  }
-                />
-              )}
-              {node && (
-                <fieldset disabled={busy}>
-                  <legend>{KIND_NAME[node.kind]} placement and timing</legend>
-                  <label>
-                    Area
-                    <select
-                      value={node.regionId}
-                      onChange={(e) =>
-                        edit({
-                          ...draft,
-                          nodes: draft.nodes.map((n) =>
-                            n.id === node.id ? { ...n, regionId: e.target.value } : n,
-                          ),
-                        })
-                      }
-                    >
+            <div className="canvas-workspace">
+              <div className="canvas-stagecol">
+                <div className="canvas-artboard">
+                  <div className="canvas-board" data-mobile={mobile} ref={board}>
+                    <div className="canvas-picture" ref={stage} />
+                    <div className="canvas-handles" aria-label="Scene objects">
+                      {draft.nodes.map((n) => (
+                        <button
+                          type="button"
+                          key={n.id}
+                          className="canvas-handle"
+                          data-selected={selected === n.id}
+                          data-invalid={invalidIds.has(n.id) || undefined}
+                          style={positionStyle(n.rect)}
+                          aria-label={`Select ${n.kind}`}
+                          aria-pressed={selected === n.id}
+                          disabled={busy}
+                          onClick={() => setSelected(n.id)}
+                          onKeyDown={(e) => nudge(e, 'node', n.id, n.rect)}
+                          onPointerDown={(e) => startDrag(e, 'node', 'move', n.id, n.rect)}
+                          onPointerMove={moveDrag}
+                          onPointerUp={endDrag}
+                          onPointerCancel={endDrag}
+                        >
+                          <span
+                            className="canvas-handle-name"
+                            data-x={n.rect.x + n.rect.width / 2 > 500 ? 'start' : 'end'}
+                            data-y={n.rect.y + n.rect.height / 2 > 500 ? 'start' : 'end'}
+                          >
+                            {invalidIds.has(n.id) ? '⚠ ' : ''}
+                            {KIND_NAME[n.kind]}
+                          </span>
+                          {selected === n.id && (
+                            <span
+                              className="canvas-resize"
+                              aria-hidden="true"
+                              onPointerDown={(e) => startDrag(e, 'node', 'resize', n.id, n.rect)}
+                              onPointerMove={moveDrag}
+                              onPointerUp={endDrag}
+                              onPointerCancel={endDrag}
+                            />
+                          )}
+                        </button>
+                      ))}
                       {draft.regions.map((r) => (
-                        <option key={r.id} value={r.id} disabled={r.protected}>
-                          {r.label}
-                          {r.protected ? ' (protected)' : ''}
+                        <button
+                          type="button"
+                          key={r.id}
+                          className="canvas-region-grip"
+                          data-selected={selected === r.id}
+                          data-protected={r.protected}
+                          style={{
+                            // Top-right corner: panels hug their text from the left,
+                            // so the grip never covers what the area shows.
+                            left: `${(r.rect.x + r.rect.width) / 10}%`,
+                            top: `${r.rect.y / 10}%`,
+                          }}
+                          aria-label={`Move ${r.label} area`}
+                          aria-pressed={selected === r.id}
+                          disabled={busy}
+                          onClick={() => setSelected(r.id)}
+                          onKeyDown={(e) => nudge(e, 'region', r.id, r.rect)}
+                          onPointerDown={(e) => startDrag(e, 'region', 'move', r.id, r.rect)}
+                          onPointerMove={moveDrag}
+                          onPointerUp={endDrag}
+                          onPointerCancel={endDrag}
+                        >
+                          ⠿ {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {problems.length > 0 && (
+                  <div role="alert" className="answer bad canvas-problems">
+                    <strong>Fix before saving:</strong>
+                    <ul>
+                      {problems.map((p) => (
+                        <li key={p}>{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="note">
+                  Sample round for layout only, not test evidence. Drag to move; drag the corner to
+                  resize. Arrow keys move the selected item 10 units (Shift: 1); Alt + arrows
+                  resize.
+                </p>
+                <div className="canvas-toolbar canvas-playbar">
+                  <button
+                    className="button small"
+                    disabled={!valid?.success}
+                    onClick={() => {
+                      if (stage.current)
+                        launchSceneEffect(
+                          stage.current,
+                          { asset: 'tomato', x: 0.5 },
+                          {
+                            reducedMotion:
+                              reduced ||
+                              (typeof matchMedia === 'function' &&
+                                matchMedia('(prefers-reduced-motion: reduce)').matches),
+                          },
+                        );
+                    }}
+                  >
+                    Preview tomato
+                  </button>
+                  <label>
+                    Sample round · {(clock / 1000).toFixed(1)} s
+                    <input
+                      aria-label="Visual sample time"
+                      type="range"
+                      min="0"
+                      max={duration + 120000}
+                      step="100"
+                      value={clock}
+                      onChange={(e) => setClock(Number(e.target.value))}
+                    />
+                  </label>
+                  <button
+                    className="button small ghost"
+                    disabled={!definition}
+                    onClick={() => setClock(duration)}
+                  >
+                    Show round end
+                  </button>
+                </div>
+                <div className="canvas-tracks-wrap">
+                  <table className="canvas-tracks">
+                    <caption>When each object shows</caption>
+                    <thead>
+                      <tr>
+                        <th>Object</th>
+                        <th>Shows</th>
+                        <th>Delay</th>
+                        <th>Duration</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {draft.nodes.map((n) => (
+                        <tr key={n.id}>
+                          <th>
+                            <button
+                              className="button small ghost"
+                              onClick={() => setSelected(n.id)}
+                            >
+                              {KIND_NAME[n.kind]}
+                            </button>
+                          </th>
+                          <td>{TRIGGER[n.timing.trigger]}</td>
+                          <td>{n.timing.trigger === 'always' ? '—' : seconds(n.timing.delayMs)}</td>
+                          <td>
+                            {n.timing.trigger === 'always'
+                              ? 'Continuous'
+                              : seconds(n.timing.durationMs)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="canvas-inspector">
+                <div className="canvas-properties">
+                  <label>
+                    Selected object or area
+                    <select
+                      value={selected}
+                      disabled={busy}
+                      onChange={(e) => setSelected(e.target.value)}
+                    >
+                      {draft.nodes.map((n) => (
+                        <option key={n.id} value={n.id}>
+                          {KIND_NAME[n.kind]}
+                        </option>
+                      ))}
+                      {draft.regions.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.label} area{r.protected ? ' (protected)' : ''}
                         </option>
                       ))}
                     </select>
                   </label>
-                  <label>
-                    Show
-                    <select
-                      value={node.timing.trigger}
-                      disabled={node.kind === 'scoreboard' || node.kind === 'instructions'}
-                      onChange={(e) => {
-                        const trigger = e.target.value as typeof node.timing.trigger;
+                  <button
+                    className="button small ghost"
+                    disabled={busy || draft.regions.length >= 12}
+                    onClick={() => {
+                      const ids = new Set([...draft.regions, ...draft.nodes].map((x) => x.id));
+                      let i = 1;
+                      while (ids.has(`area-${i}`)) i++;
+                      const id = `area-${i}`;
+                      edit({
+                        ...draft,
+                        regions: [
+                          ...draft.regions,
+                          {
+                            id,
+                            label: `Area ${i}`,
+                            kind: 'custom',
+                            protected: false,
+                            rect: { x: 20, y: 20, width: 100, height: 100 },
+                          },
+                        ],
+                      });
+                      setSelected(id);
+                    }}
+                  >
+                    Add named area
+                  </button>
+                  {item && (
+                    <fieldset disabled={busy}>
+                      <legend>{itemName} position and size · 0–1000</legend>
+                      <div className="canvas-numbers">
+                        {(['x', 'y', 'width', 'height'] as const).map((f) => (
+                          <label key={f}>
+                            {f === 'x'
+                              ? 'X position'
+                              : f === 'y'
+                                ? 'Y position'
+                                : f === 'width'
+                                  ? 'Width'
+                                  : 'Height'}
+                            <input
+                              type="number"
+                              min={f === 'x' || f === 'y' ? 0 : 1}
+                              max="1000"
+                              step="1"
+                              value={item.rect[f]}
+                              onChange={(e) => field(f, Number(e.target.value))}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                      {region && (
+                        <p className="note">Moving an area also moves the objects inside it.</p>
+                      )}
+                    </fieldset>
+                  )}
+                  {region && (
+                    <RegionFields
+                      region={region}
+                      busy={busy}
+                      onChange={(next) =>
                         edit({
                           ...draft,
-                          nodes: draft.nodes.map((n) =>
-                            n.id === node.id
-                              ? {
-                                  ...n,
-                                  timing: {
-                                    trigger,
-                                    delayMs: 0,
-                                    durationMs: trigger === 'always' ? 0 : 5000,
-                                  },
-                                }
-                              : n,
-                          ),
-                        });
-                      }}
-                    >
-                      <option value="always">Always</option>
-                      <option value="round-start">After the round starts</option>
-                      <option value="round-end">After the round ends</option>
-                    </select>
-                  </label>
-                  {(node.kind === 'scoreboard' || node.kind === 'instructions') && (
-                    <p className="note">Always shown so viewers can always read it.</p>
+                          regions: draft.regions.map((r) => (r.id === region.id ? next : r)),
+                        })
+                      }
+                    />
                   )}
-                  {node.timing.trigger !== 'always' && (
-                    <div className="canvas-numbers">
-                      {(['delayMs', 'durationMs'] as const).map((f) => (
-                        <label key={f}>
-                          {f === 'delayMs' ? 'Delay (ms)' : 'Duration (ms)'}
-                          <input
-                            type="number"
-                            min={f === 'delayMs' ? 0 : 1}
-                            max="60000"
-                            value={node.timing[f]}
+                  {node && (
+                    <fieldset disabled={busy}>
+                      <legend>{KIND_NAME[node.kind]} placement and timing</legend>
+                      <label>
+                        Area
+                        <select
+                          value={node.regionId}
+                          onChange={(e) =>
+                            edit({
+                              ...draft,
+                              nodes: draft.nodes.map((n) =>
+                                n.id === node.id ? { ...n, regionId: e.target.value } : n,
+                              ),
+                            })
+                          }
+                        >
+                          {draft.regions.map((r) => (
+                            <option key={r.id} value={r.id} disabled={r.protected}>
+                              {r.label}
+                              {r.protected ? ' (protected)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Show
+                        <select
+                          value={node.timing.trigger}
+                          disabled={node.kind === 'scoreboard' || node.kind === 'instructions'}
+                          onChange={(e) => {
+                            const trigger = e.target.value as typeof node.timing.trigger;
+                            edit({
+                              ...draft,
+                              nodes: draft.nodes.map((n) =>
+                                n.id === node.id
+                                  ? {
+                                      ...n,
+                                      timing: {
+                                        trigger,
+                                        delayMs: 0,
+                                        durationMs: trigger === 'always' ? 0 : 5000,
+                                      },
+                                    }
+                                  : n,
+                              ),
+                            });
+                          }}
+                        >
+                          <option value="always">Always</option>
+                          <option value="round-start">After the round starts</option>
+                          <option value="round-end">After the round ends</option>
+                        </select>
+                      </label>
+                      {(node.kind === 'scoreboard' || node.kind === 'instructions') && (
+                        <p className="note">Always shown so viewers can always read it.</p>
+                      )}
+                      {node.timing.trigger !== 'always' && (
+                        <div className="canvas-numbers">
+                          {(['delayMs', 'durationMs'] as const).map((f) => (
+                            <label key={f}>
+                              {f === 'delayMs' ? 'Delay (ms)' : 'Duration (ms)'}
+                              <input
+                                type="number"
+                                min={f === 'delayMs' ? 0 : 1}
+                                max="60000"
+                                value={node.timing[f]}
+                                onChange={(e) =>
+                                  edit({
+                                    ...draft,
+                                    nodes: draft.nodes.map((n) =>
+                                      n.id === node.id
+                                        ? {
+                                            ...n,
+                                            timing: { ...n.timing, [f]: Number(e.target.value) },
+                                          }
+                                        : n,
+                                    ),
+                                  })
+                                }
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                      {node.kind === 'celebration' && (
+                        <label>
+                          Celebration sprite
+                          <select
+                            value={node.asset ?? ''}
                             onChange={(e) =>
                               edit({
                                 ...draft,
                                 nodes: draft.nodes.map((n) =>
                                   n.id === node.id
-                                    ? {
-                                        ...n,
-                                        timing: { ...n.timing, [f]: Number(e.target.value) },
-                                      }
+                                    ? { ...n, asset: (e.target.value || null) as typeof n.asset }
                                     : n,
                                 ),
                               })
                             }
-                          />
+                          >
+                            <option value="">Text only</option>
+                            <option value="tomato">Tomato</option>
+                            <option value="star">Star</option>
+                            <option value="heart">Heart</option>
+                          </select>
                         </label>
-                      ))}
-                    </div>
+                      )}
+                    </fieldset>
                   )}
-                  {node.kind === 'celebration' && (
-                    <label>
-                      Celebration sprite
-                      <select
-                        value={node.asset ?? ''}
-                        onChange={(e) =>
-                          edit({
-                            ...draft,
-                            nodes: draft.nodes.map((n) =>
-                              n.id === node.id
-                                ? { ...n, asset: (e.target.value || null) as typeof n.asset }
-                                : n,
-                            ),
-                          })
-                        }
-                      >
-                        <option value="">Text only</option>
-                        <option value="tomato">Tomato</option>
-                        <option value="star">Star</option>
-                        <option value="heart">Heart</option>
-                      </select>
-                    </label>
-                  )}
-                </fieldset>
-              )}
-            </div>
-            {error && (
-              <p role="alert" className="answer bad">
-                {error}
-              </p>
-            )}
-            <div className="canvas-toolbar">
-              <button
-                className="button small primary"
-                disabled={busy || (!dirty && state.revision !== 0) || !valid?.success}
-                onClick={() =>
-                  void perform(
-                    (signal) => sceneApi.save(version.id, state.revision, draft, signal),
-                    'Layout saved. Review it below before applying.',
-                  )
-                }
-              >
-                Save layout
-              </button>
-              <button
-                className="button small ghost"
-                disabled={busy || !dirty}
-                onClick={() => edit(state.scene)}
-              >
-                Discard changes
-              </button>
+                </div>
+                {error && (
+                  <p role="alert" className="answer bad">
+                    {error}
+                  </p>
+                )}
+                <div className="canvas-toolbar canvas-savebar">
+                  <button
+                    className="button small primary"
+                    disabled={busy || (!dirty && state.revision !== 0) || !valid?.success}
+                    onClick={() =>
+                      void perform(
+                        (signal) => sceneApi.save(version.id, state.revision, draft, signal),
+                        'Layout saved. Review it below before applying.',
+                      )
+                    }
+                  >
+                    Save layout
+                  </button>
+                  <button
+                    className="button small ghost"
+                    disabled={busy || !dirty}
+                    onClick={() => edit(state.scene)}
+                  >
+                    Discard changes
+                  </button>
+                </div>
+              </div>
             </div>
             <form
               className="canvas-language"

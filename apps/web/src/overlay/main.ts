@@ -20,6 +20,8 @@ const key = params.get('key') ?? '';
 const showLabels = params.get('labels') === '1';
 const reducedMotion =
   params.get('motion') === 'reduced' || matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Cards and scenes read this flag so `?motion=reduced` stills CSS motion as well as effects.
+if (reducedMotion) root.dataset.motion = 'reduced';
 const sceneOverlay = createSceneOverlay(stage, { reducedMotion, showLabels });
 let watchdog: ReturnType<typeof setTimeout> | undefined;
 let retry = 0;
@@ -61,6 +63,26 @@ function renderCommunitySafely() {
         maxHeight: `${area.height / 10}%`,
         overflow: 'hidden',
       });
+  // The round-end celebration may share the card's corner for a few seconds: the card
+  // steps aside (fades) while the winner moment is on screen, then returns.
+  const party = stage.querySelector<HTMLElement>(
+    '[data-scene-kind="celebration"]:not([hidden]) .scene-panel',
+  );
+  const box = party?.getBoundingClientRect();
+  for (const card of [communityRoot, collaborationRoot]) {
+    const r = card.hidden ? null : card.getBoundingClientRect();
+    const overlap =
+      !!box &&
+      !!r &&
+      box.width > 0 &&
+      r.width > 0 &&
+      box.left < r.right &&
+      r.left < box.right &&
+      box.top < r.bottom &&
+      r.top < box.bottom;
+    if (overlap) card.dataset.yield = 'true';
+    else delete card.dataset.yield;
+  }
 }
 let sessions: {
   automationId: string;

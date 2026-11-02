@@ -235,6 +235,16 @@ Non-negotiable invariants; each has a test in `packages/sandbox/test/invariants.
 - Console: keyboard reachable, visible focus, `prefers-reduced-motion` respected,
   all async states (compiling, testing, preview, live, disabled, failed) explicit.
 - Assets under `apps/web/public` must be ours or CC0, listed in `apps/web/public/CREDITS.md`.
+- Design system: the `:root` tokens at the top of `apps/web/src/styles/studio.css` (ink
+  surfaces, violet `--accent`, `--coral`, status colors, radii, shadows, `--ease`) are the only
+  source of color, depth and motion; component stylesheets use tokens, not raw hex.
+  `studio.css` is imported first in every entry so component stylesheets layer on top.
+- Console layout: `console/shell.tsx` renders the section rail (fixed at ≥1200 px, a sticky
+  scrollable strip below that) and titled `StudioSection`s — Create (hero, describe/test,
+  rehearsal, canvas), Live, Audience, Twitch, Production, Library, Insights. Every section stays
+  mounted; navigation only scrolls, so sockets and in-progress work never reset.
+- Responsive contract: no horizontal page scroll and no overlapping content at 375, 768, 1024
+  and 1440 px; wide tables and code scroll inside their own container.
 
 ### 2.7 Expanded studio contracts
 

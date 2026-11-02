@@ -1,4 +1,5 @@
 import type { SharedProjection } from '../collaboration/schema.js';
+import { syncChildren } from '../scenes/render.js';
 const statuses = {
   waiting: 'Starting soon',
   running: 'Shared round live',
@@ -19,12 +20,15 @@ export function renderCollaboration(
   projection: SharedProjection | null,
   layout?: { width: number; height: number; now: number; receivedAt?: number },
 ) {
-  root.replaceChildren();
   root.hidden = !projection;
   if (!projection) {
+    root.replaceChildren();
     root.removeAttribute('aria-label');
     return;
   }
+  // Built off-screen and patched in place so the goal meter glides between frames.
+  const draft = root.ownerDocument.createElement('div');
+  const commit = () => syncChildren(root, [...draft.childNodes]);
   root.dataset.mode = projection.status;
   root.dataset.shared = 'true';
   const compact = !!layout && (layout.width < 360 || layout.height < 220);
@@ -35,7 +39,7 @@ export function renderCollaboration(
     const element = root.ownerDocument.createElement(tag);
     element.textContent = text;
     element.className = className;
-    root.append(element);
+    draft.append(element);
     return element;
   };
   const remaining =
@@ -107,6 +111,7 @@ export function renderCollaboration(
       return chunks;
     });
     add('p', pages[Math.floor(layout.now / 4000) % pages.length] ?? '', '');
+    commit();
     return;
   }
   add('p', `${status} · ${projection.roleLabel}`, 'cc-kicker');
@@ -118,11 +123,15 @@ export function renderCollaboration(
     const bar = add('div', '', 'shared-meter');
     bar.setAttribute('aria-hidden', 'true');
     const fill = root.ownerDocument.createElement('span');
-    fill.style.width = `${Math.min(100, (projection.score / projection.target) * 100)}%`;
+    const share = Math.min(100, (projection.score / projection.target) * 100);
+    fill.style.width = `${share}%`;
+    // The stylesheet grows the fill with this transform factor (compositor-only).
+    fill.style.setProperty('--fill', (share / 100).toFixed(4));
     bar.append(fill);
   }
   if (values.length) add('strong', values.join(' · '), 'community-excerpt');
   // Once the round is over, the result matters; the old call to action would mislead.
   if (!over) add('p', projection.instructions, 'community-vote');
   if (projection.reason) add('p', projection.reason, 'cc-note');
+  commit();
 }

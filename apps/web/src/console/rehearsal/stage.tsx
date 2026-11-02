@@ -18,6 +18,7 @@ import {
 } from '../format.js';
 import { TwitchEventSimulator } from '../twitch/simulator.js';
 import { EVENT_COPY, syntheticEvent, type TwitchEventDetail } from '../twitch/contracts.js';
+import './rehearsal.css';
 
 interface Persona {
   id: string;
@@ -518,7 +519,7 @@ export function Rehearsal(props: {
           <label className="sr-only" htmlFor="rehearsal-text">
             Chat message as {persona.name}
           </label>
-          <span className="as" aria-hidden="true">
+          <span className="as" data-persona={persona.id} aria-hidden="true">
             {persona.name}:
           </span>
           <input
@@ -530,16 +531,16 @@ export function Rehearsal(props: {
           />
           <button
             type="submit"
-            className="button primary small"
+            className="button small send"
             disabled={disabled || !text.trim() || events.length >= 120}
           >
             Send
           </button>
         </form>
-        <div className="rehearsal-actions">
+        <div className="rehearsal-actions run-controls">
           <button
             type="button"
-            className="button small"
+            className="button small primary proof-run"
             onClick={() => void proof()}
             disabled={disabled}
           >
@@ -577,7 +578,12 @@ export function Rehearsal(props: {
           >
             Redeliver last
           </button>
-          <button type="button" className="button small ghost" onClick={reset} disabled={!version}>
+          <button
+            type="button"
+            className="button small ghost run-reset"
+            onClick={reset}
+            disabled={!version}
+          >
             Reset
           </button>
         </div>

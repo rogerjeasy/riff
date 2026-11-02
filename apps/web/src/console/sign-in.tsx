@@ -51,52 +51,78 @@ export function SignIn({
   }
   return (
     <main className={`sign-in${compact ? ' compact' : ''}`}>
-      <form className="sign-in-card" onSubmit={(e) => void submit(e)} noValidate>
-        <span className="brand" aria-hidden="true">
-          riff<span>.</span>
-        </span>
-        <div className="sign-in-heading">
-          <h1>{compact ? 'Sign in to the dock' : 'Sign in to your studio'}</h1>
-          <p className="sign-in-host">{location.host}</p>
-        </div>
-        <label className="sign-in-field">
-          Password
-          <span className="sign-in-input">
-            <input
-              type={visible ? 'text' : 'password'}
-              name="password"
-              autoComplete="current-password"
-              autoFocus
-              spellCheck={false}
-              value={password}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? 'sign-in-error' : undefined}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <button
-              type="button"
-              className="sign-in-reveal"
-              aria-pressed={visible}
-              onClick={() => setVisible((v) => !v)}
-            >
-              {visible ? 'Hide' : 'Show'}
-            </button>
+      <div className="sign-in-ambient" aria-hidden="true">
+        <span className="sign-in-orb one" />
+        <span className="sign-in-orb two" />
+        <span className="sign-in-orb three" />
+        <span className="sign-in-grid" />
+      </div>
+      <div className="sign-in-shell">
+        <header className="sign-in-intro">
+          <span className="brand" aria-hidden="true">
+            riff<span>.</span>
           </span>
-        </label>
-        {error && (
-          <p id="sign-in-error" role="alert" className="sign-in-error">
-            {error}
+          {!compact && (
+            <p className="sign-in-value">
+              One sentence in. A tested, sandboxed Twitch interaction out.
+            </p>
+          )}
+        </header>
+        <form className="sign-in-card" onSubmit={(e) => void submit(e)} noValidate>
+          <div className="sign-in-heading">
+            <h1>{compact ? 'Sign in to the dock' : 'Sign in to your studio'}</h1>
+            <p className="sign-in-host">{location.host}</p>
+          </div>
+          <label className="sign-in-field">
+            Password
+            <span className="sign-in-input">
+              <input
+                type={visible ? 'text' : 'password'}
+                name="password"
+                autoComplete="current-password"
+                autoFocus
+                spellCheck={false}
+                value={password}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'sign-in-error' : undefined}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                className="sign-in-reveal"
+                aria-pressed={visible}
+                onClick={() => setVisible((v) => !v)}
+              >
+                {visible ? 'Hide' : 'Show'}
+              </button>
+            </span>
+          </label>
+          {error && (
+            <p id="sign-in-error" role="alert" className="sign-in-error">
+              {error}
+            </p>
+          )}
+          <button
+            className="button primary sign-in-submit"
+            disabled={!password || pending}
+            data-pending={pending || undefined}
+          >
+            {pending ? 'Signing in…' : 'Sign in'}
+          </button>
+          <p className="sign-in-note">
+            {compact
+              ? 'Tip: add this dock with your private sign-in link and it will stay signed in.'
+              : 'Your Riff host gave you this password. In OBS, use your private sign-in link for the dock instead.'}
           </p>
+        </form>
+        {!compact && (
+          <ul className="sign-in-facts">
+            <li>Tested in a sandbox</li>
+            <li>Reviewed before it goes live</li>
+            <li>One-click stop</li>
+          </ul>
         )}
-        <button className="button primary sign-in-submit" disabled={!password || pending}>
-          {pending ? 'Signing in…' : 'Sign in'}
-        </button>
-        <p className="sign-in-note">
-          {compact
-            ? 'Tip: add this dock with your private sign-in link and it will stay signed in.'
-            : 'Your Riff host gave you this password. In OBS, use your private sign-in link for the dock instead.'}
-        </p>
-      </form>
+      </div>
     </main>
   );
 }

@@ -1,5 +1,6 @@
 import type { ExperienceDefinition, SessionSnapshot } from '../lib/types.js';
 import './presentation.css';
+import { teamHue } from '../scenes/render.js';
 import {
   appendMechanics,
   mechanicsOutcome,
@@ -106,14 +107,17 @@ export function createSessionHud(
   const entries = definition.teams.length
     ? definition.teams
     : [{ id: 'community', label: t('community') }];
-  for (const team of entries)
-    scores.append(
+  entries.forEach((team, index) => {
+    const score = scores.appendChild(
       element(
         'span',
         'session-score',
         `${team.label}: ${Object.hasOwn(snapshot.scores, team.id) ? snapshot.scores[team.id] : 0}${definition.objective.target !== null ? ` / ${definition.objective.target}` : ''}`,
       ),
     );
+    // Same fixed team colour as the stream scoreboard (host table, never creator text).
+    score.style.setProperty('--team', teamHue(team, index));
+  });
   hud.append(scores);
   appendMechanics(hud, definition, snapshot, now, language);
   appendFormat(hud, definition, snapshot, now, language);

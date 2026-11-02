@@ -50,6 +50,8 @@ export function createSceneOverlay(
 ) {
   let projections: SceneProjection[] = [],
     sessions: Session[] = [];
+  // Lets the shared scene stylesheet honour the overlay's `?motion=reduced` flag too.
+  if (options.reducedMotion) root.dataset.motion = 'reduced';
   const layers = new Map<string, HTMLElement>();
   function clear() {
     for (const node of layers.values()) clearScene(node);

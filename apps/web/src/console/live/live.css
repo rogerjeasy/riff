@@ -1,0 +1,458 @@
+/* Live section: interaction library, round HUD frame, OBS/Twitch setup and the activity log.
+   Loads after studio.css and refines its "live" rules. */
+
+/* ---------- interaction library ---------- */
+.card.live .library {
+  gap: 10px;
+}
+.card.live .interaction {
+  --status: var(--faint);
+  position: relative;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 16px 14px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 80px), var(--surface-2);
+  overflow: hidden;
+  transition:
+    border-color 0.2s var(--ease),
+    box-shadow 0.2s var(--ease);
+  animation: live-row-in 0.4s var(--ease) both;
+}
+.card.live .interaction:hover {
+  border-color: var(--line-strong);
+}
+/* Status rail on the leading edge: green live, amber paused, violet candidate, red quarantined. */
+.card.live .interaction::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--status);
+  opacity: 0.9;
+}
+.card.live .interaction[data-status='live'] {
+  --status: var(--good);
+  border-color: rgb(61 220 151 / 0.28);
+  background:
+    radial-gradient(420px 120px at 0% 0%, rgb(61 220 151 / 0.07), transparent 70%), var(--surface-2);
+}
+.card.live .interaction[data-status='paused'] {
+  --status: var(--warn);
+}
+.card.live .interaction[data-status='draft'] {
+  --status: var(--accent);
+}
+.card.live .interaction[data-status='quarantined'] {
+  --status: var(--bad);
+  border-color: rgb(255 93 108 / 0.4);
+  background: linear-gradient(180deg, var(--bad-bg), transparent 90px), var(--surface-2);
+}
+.card.live .interaction > * {
+  margin-top: 0;
+  margin-bottom: 0;
+  min-width: 0;
+}
+.card.live .interaction-head {
+  align-items: flex-start;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.card.live .interaction h3 {
+  flex: 1 1 160px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  text-transform: none;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.card.live .interaction-head .pill {
+  font-variant-numeric: tabular-nums;
+}
+.card.live .interaction[data-status='live'] .interaction-head .pill.good::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+  animation: live-dot 1.8s ease-in-out infinite;
+}
+@keyframes live-dot {
+  50% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+}
+.card.live .instruction {
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.card.live .instruction b {
+  padding: 1px 7px;
+  border-radius: 6px;
+  border: 1px solid rgb(124 77 255 / 0.32);
+  background: rgb(124 77 255 / 0.12);
+  color: var(--accent-soft);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Round HUD: the shared renderer draws the contents; the console frames it as a live readout. */
+.card.live .interaction .session-preview {
+  margin: 0;
+}
+.card.live .interaction .session-preview > .session-hud {
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid rgb(124 77 255 / 0.4);
+  background:
+    radial-gradient(360px 140px at 100% 0%, rgb(255 107 91 / 0.12), transparent 70%),
+    radial-gradient(360px 160px at 0% 100%, rgb(124 77 255 / 0.18), transparent 70%),
+    var(--bg-raised);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.06),
+    0 16px 36px -22px var(--accent-glow);
+}
+.card.live .interaction .round-audit {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--line-strong);
+  align-items: center;
+}
+.card.live .interaction .round-audit .audit-result {
+  font-size: 12.5px;
+}
+
+/* Actions: quiet secondary row; destructive confirms read as warnings. */
+.card.live .interaction .row-actions {
+  margin: 0;
+  gap: 6px;
+}
+.card.live .interaction .row-actions .button {
+  min-height: 34px;
+}
+.card.live .pending-transition,
+.card.live .interaction .session-reset-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgb(255 200 87 / 0.32);
+  background: var(--warn-bg);
+}
+.card.live .pending-transition p,
+.card.live .interaction .session-reset-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* Version history: a compact, scannable list. */
+.card.live .history {
+  margin: 0;
+  padding: 4px;
+  gap: 2px;
+  border-radius: 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+}
+.card.live .history button {
+  grid-template-columns: 34px 8px minmax(64px, auto) minmax(0, 1fr);
+  gap: 4px 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--text);
+  transition: background-color 0.15s var(--ease);
+}
+.card.live .history button:hover {
+  background: rgb(255 255 255 / 0.04);
+}
+.card.live .history button[aria-current='true'] {
+  background: rgb(124 77 255 / 0.12);
+  border-color: rgb(124 77 255 / 0.4);
+}
+.card.live .history button > .mono:first-child {
+  color: var(--muted);
+  font-weight: 600;
+}
+.card.live .history button > span:nth-child(3) {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.card.live .history button > .muted {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.card.live .history .dot.active {
+  box-shadow: 0 0 0 3px var(--good-bg);
+}
+.card.live .history .dot.candidate {
+  box-shadow: 0 0 0 3px rgb(124 77 255 / 0.18);
+}
+.card.live .history .badge.kept {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 11px;
+  vertical-align: 1px;
+}
+
+/* ---------- OBS browser source and Twitch chat ---------- */
+.card.live .setup {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.card.live .setup + .setup {
+  margin-top: 10px;
+}
+.card.live .setup h3 {
+  margin: 0;
+  justify-content: space-between;
+}
+.card.live .setup .note {
+  margin: 0;
+}
+.card.live .setup .note b {
+  font-family: var(--mono);
+  color: var(--accent-soft);
+}
+.card.live .url {
+  position: relative;
+  padding: 10px 12px 10px 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.card.live .url::before {
+  /* A tiny "source" glyph so the field reads as a link, not prose. */
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 12px;
+  height: 9px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  border: 1.5px solid var(--faint);
+}
+.card.live .setup .row-actions {
+  margin: 0;
+  gap: 6px;
+}
+
+/* ---------- activity log ---------- */
+.card.activity .card-head {
+  align-items: center;
+}
+.card.activity .activity-filter {
+  gap: 2px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--bg-raised);
+}
+.card.activity .activity-filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  transition:
+    background-color 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+.card.activity .activity-filter button:hover:not([aria-pressed='true']) {
+  color: var(--text);
+  background: rgb(255 255 255 / 0.04);
+}
+.card.activity .activity-filter .count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.06);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.card.activity .activity-filter button[aria-pressed='true'] .count {
+  background: rgb(124 77 255 / 0.3);
+  color: var(--text);
+}
+.card.activity .activity-feed {
+  gap: 0;
+}
+.card.activity .activity-feed li {
+  --outcome: var(--faint);
+  position: relative;
+  grid-template-columns: minmax(0, 116px) minmax(0, 1fr) auto;
+  column-gap: 14px;
+  align-items: start;
+  padding: 12px 8px 12px 16px;
+  border-bottom: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0;
+  transition: background-color 0.15s var(--ease);
+}
+.card.activity .activity-feed li:last-child {
+  border-bottom: 0;
+}
+.card.activity .activity-feed li:hover {
+  background: rgb(255 255 255 / 0.025);
+}
+.card.activity .activity-feed li::before {
+  /* Outcome rail. */
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--outcome);
+}
+.card.activity .activity-feed li[data-outcome='accepted'] {
+  --outcome: var(--good);
+}
+.card.activity .activity-feed li[data-outcome='blocked'] {
+  --outcome: var(--warn);
+}
+.card.activity .activity-feed li[data-outcome='incident'] {
+  --outcome: var(--bad);
+  margin: 4px 0;
+  padding: 12px 8px 12px 16px;
+  border: 1px solid rgb(255 93 108 / 0.35);
+  border-radius: 12px;
+  background: var(--bad-bg);
+}
+.card.activity .activity-feed li[data-outcome='info'] {
+  --outcome: var(--accent-soft);
+}
+.card.activity .activity-feed li > .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+}
+.card.activity .feed-body {
+  gap: 4px;
+}
+.card.activity .feed-cause {
+  gap: 4px 8px;
+  font-size: 12px;
+}
+.card.activity .feed-outcome {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+.card.activity .feed-outcome.info {
+  color: var(--accent-soft);
+}
+.card.activity .feed-version {
+  min-height: 22px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  transition:
+    background-color 0.15s var(--ease),
+    border-color 0.15s var(--ease);
+}
+.card.activity .feed-version:hover:not(.static) {
+  border-color: rgb(124 77 255 / 0.5);
+}
+.card.activity .feed-message {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.card.activity .activity-feed time {
+  padding-top: 1px;
+  font-size: 11.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes live-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (max-width: 720px) {
+  .card.activity .activity-feed li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    row-gap: 6px;
+  }
+  .card.activity .activity-feed li > .badge {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+  }
+  .card.activity .activity-feed li > time {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .card.activity .activity-feed li > .feed-body {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+@media (max-width: 560px) {
+  .card.live .interaction {
+    padding: 14px 12px 12px 16px;
+  }
+  .card.live .history button {
+    grid-template-columns: 30px 8px minmax(0, 1fr);
+  }
+  .card.live .history button > .muted {
+    grid-column: 3;
+  }
+  .card.live .setup {
+    padding: 14px 12px;
+  }
+  .card.live .setup .row-actions .button {
+    flex: 1 1 auto;
+  }
+  .card.activity .card-head {
+    align-items: flex-start;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card.live .interaction,
+  .card.live .interaction[data-status='live'] .interaction-head .pill.good::before {
+    animation: none;
+  }
+}

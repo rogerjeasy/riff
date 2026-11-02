@@ -23,15 +23,29 @@
 }
 .panel-card .participation-toggle {
   display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
-  padding: 10px 12px;
+  padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--line);
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
   cursor: pointer;
+  transition: background-color 0.18s var(--ease);
+}
+.panel-card .participation-toggle:hover {
+  background: var(--surface-3);
+}
+/* Consecutive switches read as one grouped settings list. */
+.panel-card .participation-toggle:has(+ .participation-toggle) {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.panel-card .participation-toggle + .participation-toggle {
+  margin-top: -13px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
 }
 .participation-toggle > span {
   display: grid;
@@ -39,14 +53,16 @@
 }
 .participation-toggle b {
   font-size: 14px;
+  font-weight: 650;
 }
 /* A real switch built on a native checkbox, so keyboard and screen readers work unchanged. */
 .participation-toggle input {
   appearance: none;
   position: relative;
-  width: 36px;
-  height: 20px;
-  margin: 1px 0 0;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  margin: 0;
   border-radius: 999px;
   background: var(--surface-3);
   border: 1px solid var(--line-strong);
@@ -58,11 +74,12 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--muted);
-  transition: transform 0.15s;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  transition: transform 0.2s var(--ease);
 }
 .participation-toggle input:checked {
   background: var(--accent);
@@ -72,17 +89,26 @@
   transform: translateX(16px);
   background: var(--accent-ink);
 }
-.participation-toggle:focus-within {
+.participation-toggle:has(input:focus-visible) {
   outline: 2px solid var(--accent-soft);
   outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+}
+.participation-toggle input:disabled {
+  opacity: 0.5;
 }
 .participation-preview {
   display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px dashed var(--line-strong);
-  background: rgb(255 255 255 / 0.015);
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(300px 140px at 100% 0%, rgb(124 77 255 / 0.1), transparent 70%),
+    var(--surface-2);
+  box-shadow: var(--shadow-1);
+  min-width: 0;
 }
 .participation-preview-head {
   display: flex;
@@ -92,11 +118,12 @@
 }
 .participation-preview-card {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 12px 14px;
   border-radius: 12px;
-  background: var(--surface);
+  background: var(--bg-raised);
   border: 1px solid var(--line);
+  overflow-wrap: anywhere;
 }
 .participation-preview-card .badge {
   justify-self: start;
@@ -110,7 +137,16 @@
     grid-template-columns: 1fr;
   }
 }
+@media (max-width: 640px) {
+  .panel-card .participation-toggle {
+    padding: 12px 14px;
+  }
+  .participation-field .segmented button {
+    white-space: nowrap;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  .panel-card .participation-toggle,
   .participation-toggle input,
   .participation-toggle input::after {
     transition: none;

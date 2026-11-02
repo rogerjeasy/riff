@@ -4,14 +4,19 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 14px;
+  padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
+  border-radius: 14px;
+  background: var(--surface-2);
 }
 .chat-optin-text {
   display: grid;
-  gap: 2px;
+  gap: 4px;
+  min-width: 0;
+}
+.chat-optin > .button,
+.chat-optin > div:last-child {
+  flex: none;
 }
 .chat-risk ul {
   display: grid;
@@ -25,10 +30,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 18px;
-  border: 1px solid var(--accent);
+  padding: 18px 20px;
+  border: 1px solid rgb(124 77 255 / 0.55);
   border-radius: 14px;
-  background: var(--surface-2);
+  background:
+    radial-gradient(360px 140px at 0% 0%, rgb(124 77 255 / 0.16), transparent 70%), var(--surface-2);
+  box-shadow: 0 16px 40px -24px var(--accent-glow);
 }
 .chat-code[data-expired] {
   border-color: var(--line-strong);
@@ -40,6 +47,7 @@
   min-width: 0;
 }
 .panel-card .chat-code-value code {
+  font-variant-numeric: tabular-nums;
   font-size: 30px;
   font-weight: 750;
   letter-spacing: 0.18em;
@@ -82,8 +90,16 @@
 }
 .chat-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
+}
+.chat-facts > div {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .chat-facts dt,
 .chat-commands dd {
@@ -91,8 +107,10 @@
   font-size: 12px;
 }
 .chat-facts dt {
-  font-weight: 750;
-  letter-spacing: 0.07em;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--faint);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 .chat-facts dd {
@@ -113,8 +131,13 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
   font-size: 14px;
+  overflow-wrap: anywhere;
 }
 .badge.chat-badge {
   color: var(--codex);
@@ -125,17 +148,42 @@
   gap: 8px;
   margin-top: 10px;
 }
+.chat-commands {
+  padding: 4px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
 .chat-commands > div {
   display: grid;
   grid-template-columns: minmax(200px, auto) 1fr;
   gap: 12px;
   align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.chat-commands > div:last-child {
+  border-bottom: 0;
+}
+.chat-commands dt {
+  overflow-wrap: anywhere;
 }
 @media (max-width: 640px) {
   .chat-optin,
   .chat-commands > div {
     display: grid;
     grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .chat-optin {
+    gap: 12px;
+    padding: 14px;
+  }
+  .chat-code-meter {
+    min-width: 0;
+  }
+  .panel-card .chat-code-value code {
+    font-size: 26px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

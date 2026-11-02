@@ -5,6 +5,7 @@ import { SessionHud } from '../sessions/session-hud.js';
 import { RoundAudit } from '../sessions/round-audit.js';
 import { TimerList } from '../timers/timer-list.js';
 import { ago, approvalLine, approverLabel, audienceLabel, formatWindow, tone } from '../format.js';
+import './live.css';
 
 const STATUS_LABEL: Record<Automation['status'], string> = {
   live: 'Live',

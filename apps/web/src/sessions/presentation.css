@@ -1,55 +1,125 @@
+/*
+ * Shared round HUD (console rehearsal, live panel and private previews). Text-first, built
+ * from host-validated state; studio tokens with fallbacks so it also renders standalone.
+ */
 .session-hud {
-  background: #191624;
-  color: #f8f5ff;
-  border: 1px solid #76658d;
-  border-radius: 14px;
-  padding: 14px 18px;
+  --hud-team: var(--accent-soft, #b9a3ff);
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  background: linear-gradient(180deg, var(--surface-2, #161622), var(--surface, #11111b));
+  color: var(--text, #f4f4fa);
+  border: 1px solid var(--line-strong, rgb(255 255 255 / 0.14));
+  border-radius: var(--radius-sm, 12px);
+  padding: 14px 16px 16px;
   font:
     500 14px/1.5 Inter,
     ui-sans-serif,
     system-ui,
     sans-serif;
   text-align: left;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow-1, 0 1px 2px rgb(0 0 0 / 0.4));
 }
 .session-heading,
 .session-scores {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px 22px;
+  gap: 8px 16px;
   justify-content: space-between;
 }
 .session-title {
   margin: 0;
-  font-size: 18px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: inherit;
 }
 .session-phase {
-  color: #d8c8ed;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px 2px 8px;
+  border-radius: 999px;
+  background: var(--good-bg, rgb(61 220 151 / 0.11));
+  color: var(--good, #3ddc97);
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.session-phase::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.session-hud[data-phase='paused'] .session-phase {
+  background: var(--warn-bg, rgb(255 200 87 / 0.11));
+  color: var(--warn, #ffc857);
+}
+.session-hud[data-phase='finished'] .session-phase {
+  background: rgb(255 255 255 / 0.06);
+  color: var(--muted, #a8a8bd);
 }
 .session-scores {
   justify-content: flex-start;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 12px;
 }
 .session-score {
-  font-size: 22px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 10px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px var(--line, rgb(255 255 255 / 0.075));
+  font-size: 20px;
   font-weight: 800;
-  color: #ffe1ba;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text, #f4f4fa);
+}
+.session-score::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--team, var(--hud-team));
+  box-shadow: 0 0 10px var(--team, var(--hud-team));
 }
 .session-context,
 .session-rules,
 .session-resource,
 .session-outcome {
-  margin: 6px 0 0;
+  margin: 8px 0 0;
+}
+.session-context {
+  color: var(--muted, #a8a8bd);
+  font-size: 13px;
 }
 .session-rules {
-  color: #d8d2e5;
+  padding-top: 10px;
+  border-top: 1px solid var(--line, rgb(255 255 255 / 0.075));
+  color: var(--muted, #a8a8bd);
+  font-size: 13px;
 }
 .session-resource,
 .session-outcome {
-  color: #a8efc1;
+  color: var(--good, #3ddc97);
   font-weight: 700;
+}
+.session-outcome {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: var(--good-bg, rgb(61 220 151 / 0.11));
 }
 .session-preview {
   margin-top: 12px;
@@ -79,14 +149,15 @@
 .session-reset-confirm {
   margin: 12px 0;
   padding: 12px;
-  border: 1px solid #9c7647;
+  border: 1px solid rgb(255 200 87 / 0.4);
   border-radius: 10px;
+  background: var(--warn-bg, rgb(255 200 87 / 0.11));
 }
 /* Version 2 mechanics: round indicator, health pools, burst meter and tiers. */
 .session-mechanics {
-  margin-top: 10px;
+  margin-top: 12px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 .session-round,
 .session-intermission {
@@ -94,32 +165,40 @@
   font-variant-numeric: tabular-nums;
 }
 .session-round {
-  color: #d8c8ed;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-soft, #b9a3ff);
 }
 .session-intermission {
-  color: #ffe1ba;
+  color: var(--warn, #ffc857);
   font-weight: 700;
 }
 .session-pools {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+  gap: 10px 16px;
 }
 .session-pool {
   display: grid;
   gap: 6px;
   min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.03);
+  box-shadow: inset 0 0 0 1px var(--line, rgb(255 255 255 / 0.075));
 }
 .session-pool[data-eliminated='true'] {
   opacity: 0.72;
 }
 .session-meter {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .session-meter-label {
   font-size: 0.86em;
+  color: var(--muted, #a8a8bd);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
@@ -127,28 +206,29 @@
   display: block;
   height: 8px;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.14);
+  background: rgb(255 255 255 / 0.1);
   overflow: hidden;
 }
 .session-meter-fill {
   display: block;
   height: 100%;
   width: 100%;
+  border-radius: inherit;
   transform-origin: left center;
-  background: #a8efc1;
+  background: linear-gradient(90deg, #3ddc97, #a8efc1);
   transition: transform 240ms ease-out;
 }
 .session-meter-low .session-meter-fill {
-  background: #ffb36b;
+  background: linear-gradient(90deg, #ff9a4d, #ffc857);
 }
 .session-meter-out .session-meter-fill {
-  background: #ff6b6b;
+  background: var(--bad, #ff5d6c);
 }
 .session-meter-burst .session-meter-fill {
-  background: #b9a2ff;
+  background: linear-gradient(90deg, var(--accent, #7c4dff), var(--accent-soft, #b9a3ff));
 }
 .session-meter-shield .session-meter-fill {
-  background: #7fd6ff;
+  background: linear-gradient(90deg, #4fd1e8, #a6ecff);
 }
 .session-tiers {
   list-style: none;
@@ -160,14 +240,15 @@
 }
 .session-tier {
   font-size: 0.8em;
-  padding: 1px 8px;
+  padding: 1px 9px;
   border-radius: 999px;
-  border: 1px solid #76658d;
-  color: #d8d2e5;
+  border: 1px solid var(--line-strong, rgb(255 255 255 / 0.14));
+  color: var(--muted, #a8a8bd);
 }
 .session-tier[data-reached='true'] {
-  border-color: #a8efc1;
-  color: #a8efc1;
+  border-color: rgb(61 220 151 / 0.55);
+  background: var(--good-bg, rgb(61 220 151 / 0.11));
+  color: var(--good, #3ddc97);
   font-weight: 700;
 }
 .overlay-sessions .session-meter-track {
@@ -176,26 +257,24 @@
 /* Why this viewer's commands would be refused right now (translated engine reasons). */
 .session-viewer-status {
   list-style: none;
-  margin: 6px 0 0;
+  margin: 8px 0 0;
   padding: 0;
   display: grid;
   gap: 2px;
-  color: #ffe1ba;
+  color: var(--warn, #ffc857);
   font-size: 0.86em;
 }
 /* Broadcast reduced-motion preference, independent of the viewer's OS setting. */
 .session-hud[data-reduced-motion='true'],
-.session-hud[data-reduced-motion='true'] .session-meter-fill {
-  transition: none;
-  animation: none;
+.session-hud[data-reduced-motion='true'] * {
+  transition: none !important;
+  animation: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  .session-hud {
-    transition: none;
-    animation: none;
-  }
-  .session-meter-fill {
-    transition: none;
+  .session-hud,
+  .session-hud * {
+    transition: none !important;
+    animation: none !important;
   }
 }
 .round-audit {
@@ -222,71 +301,146 @@
 
 /* Version 3 formats: mural grid, staged composition card and quiz reveal. */
 .session-format {
-  margin-top: 10px;
+  margin-top: 12px;
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 .session-format-status,
 .session-quiz-summary {
   margin: 0;
-  color: #d8c8ed;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-soft, #b9a3ff);
   font-variant-numeric: tabular-nums;
 }
+.session-quiz-summary {
+  color: var(--muted, #a8a8bd);
+}
+/* Mural: a framed pixel canvas with a subtle checker for unpainted cells. */
 .session-mural {
   display: grid;
-  gap: 1px;
+  gap: 2px;
   width: min(100%, 320px);
   aspect-ratio: 1;
-  background: rgb(255 255 255 / 0.14);
-  border-radius: 6px;
+  padding: 6px;
+  box-sizing: border-box;
+  background: #0b0a12;
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 1px var(--line-strong, rgb(255 255 255 / 0.14)),
+    0 8px 24px -10px rgb(0 0 0 / 0.7);
   overflow: hidden;
 }
 .session-mural-cell {
   display: block;
-  background: rgb(15 10 25 / 0.82);
+  min-width: 0;
+  border-radius: 2px;
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
 }
-.session-format-options,
-.session-composition {
+.session-mural-cell:not([data-empty]) {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.25),
+    inset 0 -1px 0 rgb(0 0 0 / 0.2);
+}
+.session-format-options {
+  list-style: none;
   margin: 0;
-  padding-left: 1.4em;
+  padding: 0;
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
+.session-format-option {
+  position: relative;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px var(--line, rgb(255 255 255 / 0.075));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+/* Composition card: the piece the audience is building, stage by stage. */
 .session-composition {
   list-style: none;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: rgb(255 255 255 / 0.08);
+  margin: 0;
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+  border-radius: 10px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(124 77 255 / 0.16), transparent 60%),
+    rgb(255 255 255 / 0.03);
+  box-shadow: inset 0 0 0 1px rgb(185 163 255 / 0.22);
 }
 .session-composition-title {
-  font-weight: 700;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent-soft, #b9a3ff);
+}
+.session-composition-part {
+  position: relative;
+  padding-left: 16px;
+  font-weight: 650;
+}
+.session-composition-part::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.55em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-soft, #b9a3ff);
 }
 .session-pending {
-  opacity: 0.72;
+  color: var(--muted, #a8a8bd);
   font-style: italic;
+  font-weight: 500;
+}
+.session-pending::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--faint, #8b8ba3);
 }
 .session-quiz-prompt {
   margin: 0;
-  font-size: 1.1em;
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 .session-format-option[data-correct='true'] {
-  color: #b9f5c9;
-  font-weight: 700;
+  background: var(--good-bg, rgb(61 220 151 / 0.11));
+  box-shadow: inset 0 0 0 1px rgb(61 220 151 / 0.55);
+  color: #c8f7de;
+  font-weight: 750;
 }
 .session-format-option[data-correct='true']::after {
   content: ' ✓';
+  color: var(--good, #3ddc97);
 }
 .session-quiz-reveal {
   display: grid;
   gap: 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: rgb(48 164 108 / 0.18);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--good-bg, rgb(61 220 151 / 0.11));
+  box-shadow: inset 0 0 0 1px rgb(61 220 151 / 0.35);
 }
 .session-quiz-reveal p {
   margin: 0;
   overflow-wrap: anywhere;
+}
+.session-quiz-answer {
+  font-weight: 750;
+  color: #c8f7de;
+}
+.session-quiz-explanation {
+  color: var(--muted, #a8a8bd);
+  font-size: 13px;
 }

@@ -1,5 +1,6 @@
 import '../panel-kit.css';
 import './recipes.css';
+import './directory.css';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { request } from '../../lib/api.js';
@@ -87,7 +88,10 @@ export function RecipeDirectory() {
       <header className="recipe-directory-hero">
         <a href="/">← Creator console</a>
         <p className="step-label">Riff recipes</p>
-        <h1>Interactions other streamers made, ready to remix</h1>
+        <h1>
+          Interactions other streamers made,{' '}
+          <span className="recipe-directory-accent">ready to remix</span>
+        </h1>
         <p>
           Watch a synthetic demo, read the exact rules and code, then download a pinned edition and
           review it in your own channel. Nothing here can run on your stream by itself.
@@ -103,14 +107,17 @@ export function RecipeDirectory() {
           <label className="sr-only" htmlFor="recipe-search">
             Search published recipes
           </label>
-          <input
-            id="recipe-search"
-            type="search"
-            value={query}
-            maxLength={80}
-            placeholder="Search by title, author or description"
-            onChange={(e) => setQuery(e.target.value)}
-          />
+          <span className="recipe-search-field">
+            <span className="recipe-search-icon" aria-hidden="true" />
+            <input
+              id="recipe-search"
+              type="search"
+              value={query}
+              maxLength={80}
+              placeholder="Search by title, author or description"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </span>
           <button className="button">Search</button>
         </form>
       </header>
@@ -120,7 +127,7 @@ export function RecipeDirectory() {
         </p>
       )}
       <div className="recipe-directory-body">
-        <section aria-label="Search results">
+        <section aria-label="Search results" className="recipe-directory-results">
           {recipes === null ? (
             <p className="panel-hint">Loading recipes…</p>
           ) : recipes.length === 0 ? (

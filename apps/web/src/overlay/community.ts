@@ -1,4 +1,5 @@
 import type { Community } from '../community/schema.js';
+import { syncChildren } from '../scenes/render.js';
 
 const PAGE_MS = 4000;
 /** Closed results stay on air briefly; history remains in the creator inbox. */
@@ -40,9 +41,14 @@ function ballotLabel(ballot: Ballot) {
  * panel shows a one-line invitation when idle so it never crowds the stream.
  */
 export function renderCommunity(root: HTMLElement, projection: Community | null, now: number) {
-  root.replaceChildren();
   root.hidden = !projection;
-  if (!projection) return;
+  if (!projection) {
+    root.replaceChildren();
+    return;
+  }
+  // Built off-screen, then patched in place: unchanged cards keep their elements, so the
+  // vote bars glide and only changed counts pop instead of the card redrawing 4×/second.
+  const draft = root.ownerDocument.createElement('div');
   const node = <K extends keyof HTMLElementTagNameMap>(
     parent: HTMLElement,
     tag: K,
@@ -71,31 +77,34 @@ export function renderCommunity(root: HTMLElement, projection: Community | null,
   root.dataset.mode = ballot ? (open ? 'vote' : 'results') : selection ? 'selection' : 'invite';
 
   if (ballot) {
-    const head = node(root, 'header', 'cc-head');
+    const head = node(draft, 'header', 'cc-head');
     node(
       head,
       'span',
       'cc-kicker',
       open ? `Chat vote${ballot.number ? ` #${ballot.number}` : ''}` : 'Vote results',
     );
-    node(
+    const timer = node(
       head,
       'span',
       open ? 'cc-timer' : 'cc-timer done',
       open ? clock(ballot.deadlineAt - now) : 'Closed',
     );
-    node(root, 'h2', 'cc-title', open ? 'Which idea should we build?' : 'Chat has spoken');
+    if (open && ballot.deadlineAt - now <= 10_000) timer.dataset.urgent = 'true';
+    node(draft, 'h2', 'cc-title', open ? 'Which idea should we build?' : 'Chat has spoken');
     const total = ballot.options.reduce((sum, option) => sum + option.votes, 0);
     const top = Math.max(0, ...ballot.options.map((option) => option.votes));
     const pageSize = compact ? 1 : 5;
     const pages = Math.max(1, Math.ceil(ballot.options.length / pageSize));
     const page = tick % pages;
-    const list = node(root, 'div', 'cc-options');
+    const list = node(draft, 'div', 'cc-options');
     for (const option of ballot.options.slice(page * pageSize, (page + 1) * pageSize)) {
       const row = node(list, 'article', 'community-option');
       const leading = top > 0 && option.votes === top;
       if (leading) row.dataset.leading = ballot.tied ? 'tie' : 'true';
       row.style.setProperty('--share', `${total ? Math.round((option.votes / total) * 100) : 0}%`);
+      // Same share as a 0–1 factor so the bar can grow with a transform.
+      row.style.setProperty('--share-n', total ? (option.votes / total).toFixed(3) : '0');
       node(row, 'span', 'cc-key', String(option.option));
       const body = node(row, 'div', 'cc-body');
       node(body, 'p', 'community-excerpt', excerpt(option.text, 72));
@@ -108,15 +117,15 @@ export function renderCommunity(root: HTMLElement, projection: Community | null,
         `${option.votes} ${option.votes === 1 ? 'vote' : 'votes'}${leading && !open ? (ballot.tied ? ' · tie' : ' · most') : ''}`,
       );
     }
-    if (pages > 1) node(root, 'small', 'cc-page', `Options ${page + 1}/${pages}`);
+    if (pages > 1) node(draft, 'small', 'cc-page', `Options ${page + 1}/${pages}`);
     if (open) {
-      const how = node(root, 'p', 'community-vote');
+      const how = node(draft, 'p', 'community-vote');
       node(how, 'span', '', 'Vote in chat ');
       node(how, 'code', '', `!riff vote ${ballotLabel(ballot)} <number>`);
-      node(root, 'small', 'cc-note', 'Votes advise the streamer, who picks what gets built.');
+      node(draft, 'small', 'cc-note', 'Votes advise the streamer, who picks what gets built.');
     } else
       node(
-        root,
+        draft,
         'small',
         'cc-note',
         ballot.tied
@@ -126,7 +135,7 @@ export function renderCommunity(root: HTMLElement, projection: Community | null,
   }
 
   if (selection && height >= 600 && !(ballot && compact)) {
-    const card = node(root, 'footer', 'community-selection');
+    const card = node(draft, 'footer', 'community-selection');
     card.dataset.status = selection.status;
     node(
       card,
@@ -140,11 +149,22 @@ export function renderCommunity(root: HTMLElement, projection: Community | null,
   }
 
   if (!ballot) {
-    const invite = node(root, 'div', 'cc-invite');
+    const invite = node(draft, 'div', 'cc-invite');
     const line = node(invite, 'p', '');
     node(line, 'span', 'cc-kicker', 'Got an idea?');
     node(line, 'code', '', excerpt(projection.commands[0] ?? '!riff suggest <idea>', 48));
     // Shown wherever submission is presented: chat is public; credit is opt-in.
     node(invite, 'small', 'cc-note', excerpt(projection.creditNotice, 140));
   }
+  const still =
+    !!root.closest('[data-motion="reduced"]') ||
+    (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  syncChildren(root, [...draft.childNodes], (changed) => {
+    const votes = changed.closest('.cc-votes');
+    if (!votes || still || typeof (votes as HTMLElement).animate !== 'function') return;
+    (votes as HTMLElement).animate([{ transform: 'scale(1.25)' }, { transform: 'scale(1)' }], {
+      duration: 320,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+    });
+  });
 }
