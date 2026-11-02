@@ -63,7 +63,7 @@ function activate(app: RiffApp) {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.repo.activate(automation.id, version.id);
+  app.riff.repo.activate(automation.id, version.id, 'console');
   app.riff.runtime.activate(automation.id, app.riff.repo.version(version.id)!);
   return { automation, version };
 }

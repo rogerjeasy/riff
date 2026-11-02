@@ -161,14 +161,22 @@ describe('describe → test → preview → approve → play', () => {
       method: 'POST',
       url: `/api/versions/${candidate.id}/approve`,
       headers,
-      payload: { artifactId: 'f'.repeat(64), expectedActiveVersionId: null },
+      payload: {
+        artifactId: 'f'.repeat(64),
+        reportHash: candidate.reportHash,
+        expectedActiveVersionId: null,
+      },
     });
     expect(wrong.statusCode).toBe(409);
     const approved = await app.inject({
       method: 'POST',
       url: `/api/versions/${candidate.id}/approve`,
       headers,
-      payload: { artifactId: candidate.artifactId, expectedActiveVersionId: null },
+      payload: {
+        artifactId: candidate.artifactId,
+        reportHash: candidate.reportHash,
+        expectedActiveVersionId: null,
+      },
     });
     expect(approved.statusCode).toBe(200);
 
@@ -199,7 +207,11 @@ describe('describe → test → preview → approve → play', () => {
       method: 'POST',
       url: `/api/versions/${v1.id}/approve`,
       headers,
-      payload: { artifactId: v1.artifactId, expectedActiveVersionId: null },
+      payload: {
+        artifactId: v1.artifactId,
+        reportHash: v1.reportHash,
+        expectedActiveVersionId: null,
+      },
     });
     for (let i = 0; i < 3; i++)
       await app.riff.runtime.handleChat(
@@ -229,7 +241,11 @@ describe('describe → test → preview → approve → play', () => {
           method: 'POST',
           url: `/api/versions/${v2.id}/approve`,
           headers,
-          payload: { artifactId: v2.artifactId, expectedActiveVersionId: null },
+          payload: {
+            artifactId: v2.artifactId,
+            reportHash: v2.reportHash,
+            expectedActiveVersionId: null,
+          },
         })
       ).statusCode,
     ).toBe(409);
@@ -237,7 +253,11 @@ describe('describe → test → preview → approve → play', () => {
       method: 'POST',
       url: `/api/versions/${v2.id}/approve`,
       headers,
-      payload: { artifactId: v2.artifactId, expectedActiveVersionId: v1.id },
+      payload: {
+        artifactId: v2.artifactId,
+        reportHash: v2.reportHash,
+        expectedActiveVersionId: v1.id,
+      },
     });
 
     expect(
@@ -287,7 +307,11 @@ describe('describe → test → preview → approve → play', () => {
           method: 'POST',
           url: `/api/versions/${v1.id}/approve`,
           headers,
-          payload: { artifactId: v1.artifactId, expectedActiveVersionId: null },
+          payload: {
+            artifactId: v1.artifactId,
+            reportHash: v1.reportHash,
+            expectedActiveVersionId: null,
+          },
         })
       ).statusCode,
     ).toBe(200);
@@ -339,7 +363,11 @@ describe('describe → test → preview → approve → play', () => {
       method: 'POST',
       url: `/api/versions/${v1.id}/approve`,
       headers,
-      payload: { artifactId: v1.artifactId, expectedActiveVersionId: null },
+      payload: {
+        artifactId: v1.artifactId,
+        reportHash: v1.reportHash,
+        expectedActiveVersionId: null,
+      },
     });
 
     await app.riff.runtime.handleChat(chat('x0', 'troll', '!riff panic'));
@@ -378,7 +406,11 @@ describe('describe → test → preview → approve → play', () => {
       method: 'POST',
       url: `/api/versions/${v1.id}/approve`,
       headers,
-      payload: { artifactId: v1.artifactId, expectedActiveVersionId: null },
+      payload: {
+        artifactId: v1.artifactId,
+        reportHash: v1.reportHash,
+        expectedActiveVersionId: null,
+      },
     });
     // Simulate a version whose handler faults at runtime by activating a hostile artifact directly.
     app.riff.runtime.activate(v1.automationId, {

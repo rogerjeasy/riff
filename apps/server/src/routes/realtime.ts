@@ -1,7 +1,8 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { ChannelRepository } from '../db/repositories/studio.js';
+import type { ActivityRow, ChannelRepository } from '../db/repositories/studio.js';
+import { activityView } from '../services/automations/activity-view.js';
 import type { Hub } from '../services/hub.js';
 import type { OverlayBroker } from '../services/overlay/broker.js';
 import type { TwitchConnection } from '../services/twitch/connection.js';
@@ -9,6 +10,15 @@ import { isSameOrigin } from './guard.js';
 
 const keyMatches = (expected: string, given: string) =>
   expected.length === given.length && timingSafeEqual(Buffer.from(expected), Buffer.from(given));
+
+/** Rows are projected for the console; a lookup failure still delivers the raw cause. */
+function projectActivity(row: ActivityRow, repo: ChannelRepository) {
+  try {
+    return activityView(row, repo);
+  } catch {
+    return activityView(row, { version: () => undefined, automation: () => undefined });
+  }
+}
 
 /** Console push (same-origin) and read-only overlay sockets (bearer key in the URL). */
 export function registerRealtimeRoutes(
@@ -20,7 +30,15 @@ export function registerRealtimeRoutes(
       socket.close(4003, 'Use the Riff console');
       return;
     }
-    const unsubscribe = deps.hub.subscribe((message) => socket.send(JSON.stringify(message)));
+    const unsubscribe = deps.hub.subscribe((message) =>
+      socket.send(
+        JSON.stringify(
+          message.type === 'activity' && message.payload
+            ? { ...message, payload: projectActivity(message.payload as ActivityRow, deps.repo) }
+            : message,
+        ),
+      ),
+    );
     socket.send(JSON.stringify({ v: 1, type: 'twitch', payload: deps.twitch.status }));
     socket.on('close', unsubscribe);
     // The console never sends commands over this socket; mutations use guarded HTTP.

@@ -432,7 +432,7 @@ it('rejects an active local command conflict before granting shared membership',
     },
   });
   const localVersion = receiverRepo.versions(local.id)[0]!;
-  receiverRepo.activate(local.id, localVersion.id);
+  receiverRepo.activate(local.id, localVersion.id, 'console');
   const member = createCollaborationMember({
     database: receiverDb,
     repo: receiverRepo,

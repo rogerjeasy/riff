@@ -52,7 +52,7 @@ function seed(repo: ReturnType<typeof forChannel>) {
     compileRunId: null,
     status: 'candidate',
   });
-  repo.activate(automation.id, version.id);
+  repo.activate(automation.id, version.id, 'console');
   return { automation, version };
 }
 it('commits state, event identity and outbox atomically and preserves them on restart', () => {

@@ -2,7 +2,7 @@ import { TransitionReview } from './transition-review.js';
 import { sameDefinition } from '../../sessions/presentation.js';
 import { useState } from 'react';
 import type { Automation, ScenarioResult, Version } from '../../lib/types.js';
-import { CODE_LABEL, shortHash, triggerSummary } from '../format.js';
+import { approvalLine, CODE_LABEL, shortHash, triggerSummary } from '../format.js';
 import type { RegressionEvidence } from '../rehearsal/contracts.js';
 import { describeCheck } from '../rehearsal/labels.js';
 
@@ -262,6 +262,9 @@ function EvidenceCard(props: EvidenceProps) {
         <p className="step-label" id="approve-heading">
           <span>4</span> Approve
         </p>
+        {version.approvedAt !== null && (
+          <p className="note approved-by">{approvalLine(version.approvedBy, version.approvedAt)}</p>
+        )}
         {isLive ? (
           <p className="live-note">
             <span className="live-dot" aria-hidden="true" /> This exact version is live.
@@ -401,7 +404,8 @@ function EvidenceCard(props: EvidenceProps) {
             </div>
             {!keeping && (
               <p className="note mono">
-                Approval binds to artifact {shortHash(version.artifactId)}.
+                Approval binds to artifact {shortHash(version.artifactId)} and test report{' '}
+                {shortHash(version.reportHash)}.
               </p>
             )}
           </>

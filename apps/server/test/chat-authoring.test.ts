@@ -120,6 +120,10 @@ describe('in-chat authoring (F10) and owner chat approval (F17)', { timeout: 30_
     expect(app.riff.repo.version(version.id)?.status).toBe('active');
     expect(sent.at(-1)).toBe('Riff · Live: viewers can now type !tomato.');
     expect(activity(app)).toEqual(expect.arrayContaining(['CHAT_APPROVED', 'APPROVED']));
+    // F06: the approving actor is the badge-verified broadcaster in chat.
+    expect(app.riff.repo.version(version.id)?.approvedBy).toBe('chat:owner');
+    const approval = app.riff.studio.snapshot().activity.find((a) => a.code === 'APPROVED');
+    expect(approval?.source).toEqual({ kind: 'chat', label: 'owner in chat' });
 
     await app.riff.runtime.handleChat(say(`!riff approve ${code.code}`));
     expect(sent.at(-1)).toBe('Riff · That code was already used.');
@@ -228,7 +232,12 @@ describe('in-chat authoring (F10) and owner chat approval (F17)', { timeout: 30_
       () => app.riff.authoring.runs().find((r) => r.id === runId && r.result)?.result,
     );
     const other = app.riff.repo.version(run.versionId!)!;
-    app.riff.studio.approve(other.id, { artifactId: other.artifactId!, activeVersionId: null });
+    app.riff.studio.approve(other.id, {
+      artifactId: other.artifactId!,
+      reportHash: other.reportHash!,
+      approvedBy: 'console',
+      activeVersionId: null,
+    });
     expect(app.riff.chatAuthoring.snapshot().activeCode?.id).toBe(code.id);
     await app.riff.runtime.handleChat(say(`!riff approve ${code.code}`));
     expect(sent.at(-1)).toBe(

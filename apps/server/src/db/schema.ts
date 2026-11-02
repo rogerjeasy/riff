@@ -86,7 +86,15 @@ export const versions = sqliteTable(
       enum: ['candidate', 'failed', 'approved', 'active', 'superseded', 'quarantined', 'discarded'],
     }).notNull(),
     incident: text('incident'),
+    /**
+     * sha256 of the canonical evidence (test report, intent checks, migration and
+     * rehearsal results) computed when the verified version is stored; approval binds it.
+     * Null only for versions stored before the binding existed.
+     */
+    reportHash: text('report_hash'),
     approvedAt: integer('approved_at'),
+    /** Who approved: `console` (signed-in console) or `chat:<broadcaster>` (F17). */
+    approvedBy: text('approved_by'),
     activatedAt: integer('activated_at'),
     createdAt: integer('created_at').notNull(),
   },
@@ -121,6 +129,17 @@ export const compileRuns = sqliteTable(
   (table) => [index('compile_runs_channel').on(table.channelId)],
 );
 
+/** Where an activity entry came from and what happened to its effects (F16). */
+export interface ActivityDetail {
+  source: {
+    kind: 'chat' | 'timer' | 'redemption' | 'twitch' | 'console' | 'system';
+    /** Short reader-facing phrase, e.g. `!tomato by alice` or `celebrate`. */
+    label: string;
+  };
+  /** Effects the handler asked for that were submitted vs. withheld; absent when unknown. */
+  effects?: { allowed: number; blocked: number };
+}
+
 export const activity = sqliteTable(
   'activity',
   {
@@ -136,6 +155,8 @@ export const activity = sqliteTable(
     viewer: text('viewer'),
     code: text('code'),
     message: text('message').notNull(),
+    /** Bounded structured cause (source, effect counts); null for older rows. */
+    detail: text('detail', { mode: 'json' }).$type<ActivityDetail>(),
   },
   (table) => [index('activity_channel_at').on(table.channelId, table.at)],
 );

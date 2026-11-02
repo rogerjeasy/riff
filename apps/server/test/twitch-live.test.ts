@@ -98,7 +98,7 @@ it('drives the approved version from authenticated EventSub chat to the overlay'
   )
     await new Promise((resolve) => setTimeout(resolve, 50));
   const studio = (await app.inject({ method: 'GET', url: '/api/studio' })).json<{
-    automations: { versions: { id: string; artifactId: string }[] }[];
+    automations: { versions: { id: string; artifactId: string; reportHash: string }[] }[];
   }>();
   const version = studio.automations[0]!.versions[0]!;
   expect(
@@ -107,7 +107,11 @@ it('drives the approved version from authenticated EventSub chat to the overlay'
         method: 'POST',
         url: `/api/versions/${version.id}/approve`,
         headers,
-        payload: { artifactId: version.artifactId, expectedActiveVersionId: null },
+        payload: {
+          artifactId: version.artifactId,
+          reportHash: version.reportHash,
+          expectedActiveVersionId: null,
+        },
       })
     ).statusCode,
   ).toBe(200);

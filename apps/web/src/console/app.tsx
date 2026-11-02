@@ -380,12 +380,7 @@ export function App() {
                 }}
                 onApprove={async (version, resetSession) => {
                   try {
-                    await api.approve(
-                      version.id,
-                      version.artifactId ?? '',
-                      automation?.activeVersionId ?? null,
-                      resetSession,
-                    );
+                    await api.approve(version, automation?.activeVersionId ?? null, resetSession);
                     notify(
                       version.manifest.trigger.kind === 'twitch.event' ||
                         version.manifest.trigger.kind === 'points.redeem'
@@ -462,7 +457,11 @@ export function App() {
               }}
               notify={notify}
             />
-            <ActivityFeed activity={studio.activity} />
+            <ActivityFeed
+              activity={studio.activity}
+              selectedVersionId={selected?.id ?? null}
+              onSelectVersion={(id) => setSelectedId(id)}
+            />
           </div>
         </div>
       </main>

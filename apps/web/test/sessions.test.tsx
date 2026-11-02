@@ -82,6 +82,8 @@ const version: Version = {
   status: 'active',
   incident: null,
   approvedAt: 1,
+  approvedBy: 'console',
+  reportHash: 'c'.repeat(64),
   activatedAt: 1,
   createdAt: 1,
   changes: [],
@@ -184,6 +186,8 @@ const editedVersion: Version = {
   number: 2,
   status: 'candidate',
   approvedAt: null,
+  approvedBy: null,
+  reportHash: 'c'.repeat(64),
   manifest: {
     ...version.manifest,
     experience: {

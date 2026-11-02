@@ -218,7 +218,7 @@ it('rechecks command conflicts and profile revisions at installation', async () 
   b.service.import(pack);
   const review = await b.service.adapt({ sourceDigest: pack.digest, profileRevision: 0 });
   const competitor = local(b);
-  b.repo.activate(competitor.automationId, competitor.id);
+  b.repo.activate(competitor.automationId, competitor.id, 'console');
   expect(() => b.service.install({ reviewId: review.id, digest: review.digest })).toThrow(
     /command/,
   );

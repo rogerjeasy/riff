@@ -511,14 +511,15 @@ export const api = {
       boundary: t.plan.boundary,
     }),
   cancelTransition: (id: string) => transitionRequest(`/api/transitions/${id}/cancel`, {}),
+  /** Approve exactly the reviewed artifact and test report (F06). */
   approve: (
-    versionId: string,
-    artifactId: string,
+    version: { id: string; artifactId: string | null; reportHash: string },
     expectedActiveVersionId: string | null,
     resetSession = false,
   ) =>
-    request('POST', `/api/versions/${versionId}/approve`, {
-      artifactId,
+    request('POST', `/api/versions/${version.id}/approve`, {
+      artifactId: version.artifactId ?? '',
+      reportHash: version.reportHash,
       expectedActiveVersionId,
       ...(resetSession ? { resetSession: true } : {}),
     }),

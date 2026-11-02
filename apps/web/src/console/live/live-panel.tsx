@@ -4,7 +4,7 @@ import type { Activity, Automation, Studio, Version } from '../../lib/types.js';
 import { SessionHud } from '../sessions/session-hud.js';
 import { RoundAudit } from '../sessions/round-audit.js';
 import { TimerList } from '../timers/timer-list.js';
-import { ago, audienceLabel, formatWindow, tone } from '../format.js';
+import { ago, approvalLine, approverLabel, audienceLabel, formatWindow, tone } from '../format.js';
 
 const STATUS_LABEL: Record<Automation['status'], string> = {
   live: 'Live',
@@ -257,9 +257,19 @@ export function LivePanel(props: {
                           <span className="mono">v{version.number}</span>
                           <span className={`dot ${version.status}`} aria-hidden="true" />
                           <span>{version.status === 'active' ? 'live' : version.status}</span>
-                          <span className="muted">
+                          <span
+                            className="muted"
+                            title={
+                              version.approvedAt !== null
+                                ? approvalLine(version.approvedBy, version.approvedAt)
+                                : undefined
+                            }
+                          >
                             {version.origin === 'codex' ? 'Codex' : version.origin} ·{' '}
                             {ago(version.createdAt)}
+                            {version.approvedAt !== null && approverLabel(version.approvedBy) && (
+                              <> · approved by {approverLabel(version.approvedBy)}</>
+                            )}
                             {automation.transitions?.some(
                               (t) => t.status === 'applied' && t.targetVersionId === version.id,
                             ) && (
@@ -426,30 +436,150 @@ function TwitchSetup({
   );
 }
 
-export function ActivityFeed({ activity }: { activity: Activity[] }) {
+const SOURCE_LABEL: Record<Activity['source']['kind'], string> = {
+  chat: 'Chat',
+  timer: 'Timer',
+  redemption: 'Channel Points',
+  twitch: 'Twitch event',
+  console: 'Console',
+  system: 'Riff',
+};
+const OUTCOME_LABEL: Record<Activity['outcome'], string> = {
+  accepted: 'Accepted',
+  blocked: 'Blocked',
+  incident: 'Incident',
+  info: 'Update',
+};
+type ActivityFilter = 'all' | 'blocked' | 'incidents';
+const matches = (entry: Activity, filter: ActivityFilter) =>
+  filter === 'all' ||
+  (filter === 'blocked' ? entry.outcome === 'blocked' : entry.outcome === 'incident');
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+/**
+ * F16: each entry names its source, the exact interaction version (selectable for review),
+ * the outcome with a plain-language reason, and allowed vs. blocked effects when known.
+ */
+export function ActivityFeed({
+  activity,
+  selectedVersionId = null,
+  onSelectVersion,
+}: {
+  activity: Activity[];
+  selectedVersionId?: string | null;
+  onSelectVersion?: (versionId: string) => void;
+}) {
   const [, tick] = useState(0);
+  const [filter, setFilter] = useState<ActivityFilter>('all');
   useEffect(() => {
     const timer = setInterval(() => tick((n) => n + 1), 5000);
     return () => clearInterval(timer);
   }, []);
+  const recent = activity.slice(0, 40);
+  const counts = {
+    all: recent.length,
+    blocked: recent.filter((e) => e.outcome === 'blocked').length,
+    incidents: recent.filter((e) => e.outcome === 'incident').length,
+  };
+  const shown = recent.filter((entry) => matches(entry, filter)).slice(0, 25);
   return (
     <section className="card activity" aria-labelledby="activity-heading">
       <header className="card-head">
         <h2 id="activity-heading">Activity</h2>
+        {recent.length > 0 && (
+          <div className="segmented activity-filter" role="group" aria-label="Show activity">
+            {(
+              [
+                ['all', 'All'],
+                ['blocked', 'Blocked'],
+                ['incidents', 'Incidents'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={filter === value}
+                onClick={() => setFilter(value)}
+              >
+                {label} <span className="count">{counts[value]}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </header>
-      {activity.length === 0 ? (
+      {recent.length === 0 ? (
         <p className="empty">Live decisions, approvals and incidents appear here as they happen.</p>
+      ) : shown.length === 0 ? (
+        <p className="empty">
+          {filter === 'blocked'
+            ? 'Nothing was blocked recently.'
+            : 'No incidents recently. Riff records one whenever it stops an interaction.'}
+        </p>
       ) : (
-        <ol className="feed" aria-live="polite">
-          {activity.slice(0, 25).map((entry) => (
-            <li key={entry.id} data-kind={entry.kind}>
-              <span className={`badge ${tone(entry.code)}`}>{entry.code ?? entry.kind}</span>
-              <span>{entry.message}</span>
-              <time className="muted" dateTime={new Date(entry.at).toISOString()}>
-                {ago(entry.at)}
-              </time>
-            </li>
-          ))}
+        <ol className="feed activity-feed" aria-live="polite">
+          {shown.map((entry) => {
+            const label = entry.interaction
+              ? `${entry.interaction.title}${entry.interaction.number === null ? '' : ` v${entry.interaction.number}`}`
+              : null;
+            const { versionId } = entry;
+            return (
+              <li key={entry.id} data-kind={entry.kind} data-outcome={entry.outcome}>
+                <span
+                  className={`badge ${entry.outcome === 'incident' ? 'bad' : tone(entry.code)}`}
+                >
+                  {entry.code ?? entry.kind}
+                </span>
+                <div className="feed-body">
+                  <p className="feed-cause">
+                    <span className={`feed-outcome ${entry.outcome}`}>
+                      {OUTCOME_LABEL[entry.outcome]}
+                    </span>
+                    <span className="feed-source">
+                      {SOURCE_LABEL[entry.source.kind]} · {entry.source.label}
+                    </span>
+                    {label &&
+                      (versionId && onSelectVersion ? (
+                        <button
+                          type="button"
+                          className="feed-version"
+                          aria-current={selectedVersionId === versionId}
+                          aria-label={`Review ${label}`}
+                          onClick={() => onSelectVersion(versionId)}
+                        >
+                          {label}
+                        </button>
+                      ) : (
+                        <span className="feed-version static">{label}</span>
+                      ))}
+                  </p>
+                  <p className="feed-message">
+                    {entry.reason && entry.outcome !== 'incident' ? (
+                      <>
+                        <span className="sr-only">Reason: </span>
+                        {entry.reason}
+                      </>
+                    ) : (
+                      entry.message
+                    )}
+                  </p>
+                  {entry.effects && (
+                    <p className="feed-effects">
+                      <span className="good">
+                        {plural(entry.effects.allowed, 'effect')} allowed
+                      </span>
+                      {' · '}
+                      <span className={entry.effects.blocked ? 'bad' : 'muted'}>
+                        {entry.effects.blocked} blocked
+                      </span>
+                    </p>
+                  )}
+                </div>
+                <time className="muted" dateTime={new Date(entry.at).toISOString()}>
+                  {ago(entry.at)}
+                </time>
+              </li>
+            );
+          })}
         </ol>
       )}
     </section>

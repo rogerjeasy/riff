@@ -41,7 +41,12 @@ async function source(app: RiffApp) {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   return v;
 }
 it('keeps public directory access separate from hosted console and requires guarded owner publication', async () => {
@@ -124,7 +129,12 @@ it('exports, privately adapts on a second channel, installs and activates with r
   expect(candidate.status).toBe('candidate');
   expect(b.riff.runtime.running()).toHaveLength(0);
   expect(b.riff.studio.snapshot().automations[0]?.versions[0]?.blockers).toEqual([]);
-  b.riff.studio.approve(candidate.id, { artifactId: candidate.artifactId!, activeVersionId: null });
+  b.riff.studio.approve(candidate.id, {
+    artifactId: candidate.artifactId!,
+    reportHash: candidate.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const canvas = b.riff.scenes.view(candidate.id);
   b.riff.scenes.apply(candidate.id, canvas.revision, canvas.digest);
   const messages: { type: string; payload: unknown }[] = [];

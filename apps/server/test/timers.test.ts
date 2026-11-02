@@ -63,7 +63,7 @@ function install(app: RiffApp, source = once, title = 'Countdown', limits = mani
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.repo.activate(automation.id, version.id);
+  app.riff.repo.activate(automation.id, version.id, 'console');
   app.riff.runtime.activate(automation.id, app.riff.repo.version(version.id)!);
   return { automationId: automation.id, versionId: version.id };
 }
@@ -253,7 +253,7 @@ describe('cancel semantics', () => {
       compileRunId: null,
       status: 'candidate',
     });
-    app.riff.repo.activate(automationId, next.id);
+    app.riff.repo.activate(automationId, next.id, 'console');
     app.riff.runtime.activate(automationId, app.riff.repo.version(next.id)!);
     expect(app.riff.runtime.timers(automationId)).toEqual([]);
   });

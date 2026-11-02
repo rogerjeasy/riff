@@ -49,7 +49,12 @@ it('persists revision CAS, immutable review evidence and rejects stale/private a
   expect(
     (await post(app, `${path}/apply`, { expectedRevision: 1, digest: state.digest })).statusCode,
   ).toBe(409);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   expect(
     (await post(app, `${path}/apply`, { expectedRevision: 1, digest: '0'.repeat(64) })).statusCode,
   ).toBe(409);
@@ -113,7 +118,12 @@ it('generates an offline contextual candidate without publishing it and honors p
   expect(
     messages.flatMap((m) => (JSON.parse(m).type === 'scenes' ? JSON.parse(m).payload.scenes : [])),
   ).toHaveLength(0);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   app.riff.studio.panic('test');
   expect(
     (await post(app, `${path}/apply`, { expectedRevision: 1, digest: saved.json().state.digest }))
@@ -175,7 +185,12 @@ it('publishes exact active scenes with per-automation instructions and withdraws
     { send: (data) => messages.push(JSON.parse(data) as OverlayMessage), close() {} },
     'home',
   );
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const active = messages.filter((m) => m.type === 'scenes').at(-1)!;
   expect(active.payload.scenes[0]).toMatchObject({
     versionId: v.id,
@@ -197,8 +212,18 @@ it('rejects scene application conflicting with another active protected region',
   apps.push(app);
   const first = version(app),
     second = version(app);
-  app.riff.studio.approve(first.id, { artifactId: first.artifactId!, activeVersionId: null });
-  app.riff.studio.approve(second.id, { artifactId: second.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(first.id, {
+    artifactId: first.artifactId!,
+    reportHash: first.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
+  app.riff.studio.approve(second.id, {
+    artifactId: second.artifactId!,
+    reportHash: second.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   // This camera sits where the first interaction's default effects fly: a real protected conflict.
   const candidate = structuredClone(DEFAULT_SCENE);
   candidate.regions.find((r) => r.id === 'camera')!.rect = {
@@ -235,7 +260,12 @@ it('isolates tenants and restores the applied scene after server restart', async
   const other = foreign.insertVersion({ ...v, automationId: foreign.createAutomation('Other').id });
   expect((await app.inject(`/api/scenes/${other.id}`)).statusCode).toBe(404);
   const saved = app.riff.scenes.save(v.id, 0, DEFAULT_SCENE);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   app.riff.scenes.apply(v.id, saved.revision, saved.digest);
   await app.close();
   const restarted = await createApp({ logger: false, database });
@@ -263,10 +293,17 @@ it('rejects invalid ancestry and superseded behavior without changing applied pr
   apps.push(app);
   const v = version(app);
   const saved = app.riff.scenes.save(v.id, 0, DEFAULT_SCENE);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const replacement = app.riff.repo.insertVersion({ ...v, parentVersionId: v.id });
   app.riff.studio.approve(replacement.id, {
     artifactId: replacement.artifactId!,
+    reportHash: replacement.reportHash!,
+    approvedBy: 'console',
     activeVersionId: v.id,
   });
   expect(() => app.riff.scenes.apply(v.id, saved.revision, saved.digest)).toThrow(/active/);
@@ -282,7 +319,12 @@ it('withdraws cached scenes if authoritative reads fail and recovers on a later 
   const app = await createApp({ logger: false });
   apps.push(app);
   const v = version(app);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const messages: OverlayMessage[] = [];
   app.riff.overlay.attach(
     { send: (data) => messages.push(JSON.parse(data) as OverlayMessage), close() {} },
@@ -325,7 +367,12 @@ it('re-emits the same eligible scene after a clear and refresh', async () => {
   const app = await createApp({ logger: false });
   apps.push(app);
   const v = version(app);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const messages: OverlayMessage[] = [];
   app.riff.overlay.attach(
     { send: (data) => messages.push(JSON.parse(data) as OverlayMessage), close() {} },
@@ -345,7 +392,12 @@ it('pins inherited presentation approval to a new behavior version without later
   const custom = structuredClone(DEFAULT_SCENE);
   custom.regions[0]!.rect.width = 250;
   const saved = app.riff.scenes.save(v.id, 0, custom);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   app.riff.scenes.apply(v.id, saved.revision, saved.digest);
   const child = app.riff.repo.insertVersion({ ...v, parentVersionId: v.id });
   app.riff.scenes.inherit(child.id, v.id);
@@ -361,7 +413,12 @@ it('pins inherited presentation approval to a new behavior version without later
   const parentNext = app.riff.scenes.save(v.id, 1, custom);
   app.riff.scenes.apply(v.id, parentNext.revision, parentNext.digest);
   expect(app.riff.scenes.state(child.id).scene).toEqual(inherited.scene);
-  app.riff.studio.approve(child.id, { artifactId: child.artifactId!, activeVersionId: v.id });
+  app.riff.studio.approve(child.id, {
+    artifactId: child.artifactId!,
+    reportHash: child.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: v.id,
+  });
   const messages: OverlayMessage[] = [];
   app.riff.overlay.attach(
     { send: (data) => messages.push(JSON.parse(data) as OverlayMessage), close() {} },
@@ -375,7 +432,12 @@ it('inherits presentation inside the normal authoring candidate transaction', as
   const app = await createApp({ logger: false });
   apps.push(app);
   const v = version(app);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const saved = app.riff.scenes.save(v.id, 0, DEFAULT_SCENE);
   app.riff.scenes.apply(v.id, saved.revision, saved.digest);
   const started = app.riff.authoring.start({
@@ -403,7 +465,12 @@ it('returns the same host participation instructions for private and live scene 
   const v = version(app);
   const messages: OverlayMessage[] = [];
   app.riff.overlay.attach({ send: (data) => messages.push(JSON.parse(data)), close() {} }, 'home');
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const live = messages.filter((m) => m.type === 'scenes').at(-1);
   expect(live?.type).toBe('scenes');
   const state = (await app.inject(`/api/scenes/${v.id}`)).json().state;
@@ -417,8 +484,18 @@ it('lets live interactions share text space, and explains how the overlay resolv
   apps.push(app);
   const first = version(app),
     second = version(app);
-  app.riff.studio.approve(first.id, { artifactId: first.artifactId!, activeVersionId: null });
-  app.riff.studio.approve(second.id, { artifactId: second.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(first.id, {
+    artifactId: first.artifactId!,
+    reportHash: first.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
+  app.riff.studio.approve(second.id, {
+    artifactId: second.artifactId!,
+    reportHash: second.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const path = `/api/scenes/${second.id}`;
   const moved = structuredClone(DEFAULT_SCENE);
   moved.nodes.find((n) => n.id === 'effects')!.rect.x += 10;

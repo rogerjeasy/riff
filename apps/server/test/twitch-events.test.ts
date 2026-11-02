@@ -114,7 +114,9 @@ async function approve(intent: string) {
   const id = run.json<{ id: string }>().id;
   await wait(() => Boolean(riff.riff.authoring.runs().find((r) => r.id === id)?.result));
   const studio = (await riff.inject({ method: 'GET', url: '/api/studio' })).json<{
-    automations: { versions: { id: string; artifactId: string; intent: string }[] }[];
+    automations: {
+      versions: { id: string; artifactId: string; reportHash: string; intent: string }[];
+    }[];
   }>();
   const version = studio.automations
     .flatMap((automation) => automation.versions)
@@ -123,7 +125,11 @@ async function approve(intent: string) {
     method: 'POST',
     url: `/api/versions/${version.id}/approve`,
     headers,
-    payload: { artifactId: version.artifactId, expectedActiveVersionId: null },
+    payload: {
+      artifactId: version.artifactId,
+      reportHash: version.reportHash,
+      expectedActiveVersionId: null,
+    },
   });
   expect(approved.statusCode).toBe(200);
   return version;

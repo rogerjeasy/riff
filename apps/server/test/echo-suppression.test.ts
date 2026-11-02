@@ -146,7 +146,7 @@ function install(target: RiffApp, source: string, manifest: PermissionManifest) 
     compileRunId: null,
     status: 'candidate',
   });
-  target.riff.repo.activate(automation.id, version.id);
+  target.riff.repo.activate(automation.id, version.id, 'console');
   target.riff.runtime.activate(automation.id, target.riff.repo.version(version.id)!);
   return automation.id;
 }

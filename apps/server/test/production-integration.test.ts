@@ -124,7 +124,12 @@ it('runs approved mapped operations through the real local control gate without 
     actionId: null,
   };
   expect(() => app.riff.production.reviewMappings([mapping])).toThrow();
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   app.riff.studio.pause(v.automationId);
   app.riff.production.reviewMappings([mapping]);
   app.riff.production.approveMappings(app.riff.production.view().mappingReview!.digest);

@@ -5,7 +5,7 @@ import type { VerificationReport } from '@riff/sandbox';
 import { assessSessionTransition, classifySessionTransition } from '@riff/sandbox';
 import { describeAudience, describeWindow } from '@riff/compiler';
 import type { VersionRow } from '../../db/repositories/studio.js';
-import { versionApprovalBlockers } from '../../db/version-health.js';
+import { reportHashOf, versionApprovalBlockers } from '../../db/version-health.js';
 
 export interface Evidence {
   verification: VerificationReport;
@@ -151,6 +151,7 @@ export function progressAssessment(active: VersionRow | undefined, row: VersionR
 export function versionView(row: VersionRow, active: VersionRow | undefined, panic: boolean) {
   return {
     ...row,
+    reportHash: reportHashOf(row),
     evidence: row.evidence as Evidence,
     changes: diffVersions(active, row),
     progress: progressAssessment(active, row),

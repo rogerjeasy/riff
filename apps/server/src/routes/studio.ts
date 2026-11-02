@@ -175,21 +175,35 @@ export function registerStudioRoutes(
   });
   app.post('/api/versions/:id/approve', async (request, reply) => {
     const p = params.safeParse(request.params);
+    const hash = z.string().regex(/^[a-f0-9]{64}$/);
     const body = z
       .object({
-        artifactId: z.string().regex(/^[a-f0-9]{64}$/),
+        artifactId: hash,
+        reportHash: hash,
         expectedActiveVersionId: id.nullable(),
         resetSession: z.boolean().optional(),
       })
       .strict()
       .safeParse(request.body);
-    if (!p.success || !body.success)
-      return reply
-        .code(400)
-        .send({ code: 'INVALID', message: 'Approval must name the exact artifact you reviewed.' });
+    if (!p.success || !body.success) {
+      // Older consoles bound only the artifact; they must reload and review the report.
+      const unbound =
+        p.success &&
+        typeof request.body === 'object' &&
+        request.body !== null &&
+        !('reportHash' in request.body);
+      return reply.code(400).send({
+        code: 'INVALID',
+        message: unbound
+          ? 'Approval must also name the test report you reviewed. Reload the console and review this version again.'
+          : 'Approval must name the exact artifact and test report you reviewed.',
+      });
+    }
     try {
       const version = studio.approve(p.data.id, {
         artifactId: body.data.artifactId,
+        reportHash: body.data.reportHash,
+        approvedBy: 'console',
         activeVersionId: body.data.expectedActiveVersionId,
         ...(body.data.resetSession === undefined ? {} : { resetSession: body.data.resetSession }),
       });

@@ -107,7 +107,7 @@ function active(s: ReturnType<typeof setup>) {
     compileRunId: null,
     status: 'candidate',
   });
-  s.repo.activate(v.automationId, v.id);
+  s.repo.activate(v.automationId, v.id, 'console');
   return v;
 }
 it('keeps credentials sealed and setup requires exact review, visible test and explicit live confirmation', async () => {

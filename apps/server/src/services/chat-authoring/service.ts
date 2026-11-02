@@ -5,6 +5,7 @@ import type { ChatAuthoringRepository } from '../../db/repositories/chat-authori
 import type { ChannelRepository, VersionRow } from '../../db/repositories/studio.js';
 import type { AuthoringService, RunSnapshot } from '../authoring/service.js';
 import { versionView } from '../automations/views.js';
+import { reportHashOf } from '../../db/version-health.js';
 import type { Hub } from '../hub.js';
 import type { LiveChatMessage } from '../live/runtime.js';
 import { ProposalError } from '../proposals/service.js';
@@ -55,6 +56,8 @@ const codeSchema = z.object({
   versionId: z.string(),
   automationId: z.string(),
   artifactId: z.string(),
+  /** Test-report identity the code was issued for; codes issued before binding lack it. */
+  reportHash: z.string().optional(),
   expectedActiveVersionId: z.string().nullable(),
   issuedAt: z.number(),
   expiresAt: z.number(),
@@ -114,6 +117,9 @@ export interface ChatReplies {
   status(): { available: boolean; reason: string | null };
 }
 
+/** Bounded, control-free broadcaster name for the approval record. */
+const chatActor = (message: LiveChatMessage) =>
+  (sanitizeIntent(message.viewerName) || message.viewerId).toLowerCase().slice(0, 40);
 const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
 const sameCode = (a: string, b: string) =>
   a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -131,7 +137,12 @@ export function createChatAuthoringService(deps: {
   authoring: Pick<AuthoringService, 'start' | 'cancel'>;
   approve: (
     versionId: string,
-    expected: { artifactId: string; activeVersionId: string | null },
+    expected: {
+      artifactId: string;
+      reportHash: string;
+      activeVersionId: string | null;
+      approvedBy: string;
+    },
   ) => VersionRow;
   discard: (versionId: string) => void;
   blocked: () => boolean;
@@ -224,6 +235,7 @@ export function createChatAuthoringService(deps: {
       viewer: null,
       code,
       message,
+      detail: { source: { kind: 'chat' as const, label: 'In-chat authoring' } },
     };
     let row;
     try {
@@ -321,6 +333,7 @@ export function createChatAuthoringService(deps: {
         versionId: version.id,
         automationId: version.automationId,
         artifactId: version.artifactId ?? '',
+        reportHash: reportHashOf(version),
         expectedActiveVersionId: repo.automation(version.automationId)?.activeVersionId ?? null,
         issuedAt: at,
         expiresAt: at + L.codeTtlMs,
@@ -442,7 +455,7 @@ export function createChatAuthoringService(deps: {
     return { failed: false as const, match };
   }
 
-  function approve(input: string, reply: string | undefined) {
+  function approve(input: string, reply: string | undefined, broadcaster: string) {
     const found = lookupFailure(input, reply, 'approve');
     if (found.failed) return;
     const { match } = found;
@@ -480,7 +493,10 @@ export function createChatAuthoringService(deps: {
     try {
       deps.approve(version.id, {
         artifactId: match.artifactId,
+        // A code issued before report binding names no report and is refused as stale.
+        reportHash: match.reportHash ?? '',
         activeVersionId: match.expectedActiveVersionId,
+        approvedBy: `chat:${broadcaster}`,
       });
     } catch (error) {
       return refuse(error instanceof Error ? error.message : 'Approval failed.');
@@ -696,10 +712,10 @@ export function createChatAuthoringService(deps: {
           start(command.kind, command.intent, reply);
           break;
         case 'approve':
-          approve(command.code, reply);
+          approve(command.code, reply, chatActor(message));
           break;
         case 'approve-alias':
-          approve(activeCodes()[0]?.code ?? '', reply);
+          approve(activeCodes()[0]?.code ?? '', reply, chatActor(message));
           break;
         case 'reject':
           reject(command.code, reply);

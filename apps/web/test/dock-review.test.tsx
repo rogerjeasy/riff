@@ -44,6 +44,8 @@ const candidate: Version = {
   status: 'candidate',
   incident: null,
   approvedAt: null,
+  approvedBy: null,
+  reportHash: 'b'.repeat(64),
   activatedAt: null,
   createdAt: 1,
   changes: [],
@@ -70,7 +72,15 @@ it('uses existing exact-version evidence and approval in the dock', async () => 
   expect(screen.getByLabelText('Handler source')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Approve v1 & go live' }));
   await waitFor(() =>
-    expect(approve).toHaveBeenCalledWith('candidate', 'a'.repeat(64), null, undefined),
+    expect(approve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'candidate',
+        artifactId: 'a'.repeat(64),
+        reportHash: 'b'.repeat(64),
+      }),
+      null,
+      undefined,
+    ),
   );
   expect(refresh).toHaveBeenCalled();
 });

@@ -9,6 +9,9 @@ import type { Hub } from '../hub.js';
 import type { LiveRuntime } from '../live/runtime.js';
 import type { OverlayBroker } from '../overlay/broker.js';
 import { approvalBlockers, versionView, type Evidence } from './views.js';
+import { reportHashOf } from '../../db/version-health.js';
+import { activityView } from './activity-view.js';
+import type { ActivityDetail } from '../../db/schema.js';
 import { PRESERVING_MIGRATION_SOURCE } from '@riff/compiler';
 
 import { StudioError } from './errors.js';
@@ -30,7 +33,11 @@ export function createStudioService(deps: {
     automationId: string | null,
     versionId: string | null,
     code: string,
-  ) =>
+    actor = 'console',
+  ) => {
+    const source: ActivityDetail['source'] = actor.startsWith('chat:')
+      ? { kind: 'chat', label: `${actor.slice(5)} in chat` }
+      : { kind: 'console', label: 'Console' };
     hub.publish(
       'activity',
       repo.record({
@@ -42,8 +49,10 @@ export function createStudioService(deps: {
         viewer: null,
         code,
         message,
+        detail: { source },
       }),
     );
+  };
   const mustVersion = (id: string) => {
     const version = repo.version(id);
     if (!version) throw new StudioError('NOT_FOUND', 'That version no longer exists.');
@@ -59,11 +68,16 @@ export function createStudioService(deps: {
     return automation?.activeVersionId ? repo.version(automation.activeVersionId) : undefined;
   };
 
-  function goLive(version: VersionRow, reason: 'approve' | 'rollback', resetSession = false) {
+  function goLive(
+    version: VersionRow,
+    reason: 'approve' | 'rollback',
+    resetSession = false,
+    actor = 'console',
+  ) {
     try {
       repo.atomic(() => {
         runtime.prepareActivation(version, resetSession);
-        repo.activate(version.automationId, version.id);
+        repo.activate(version.automationId, version.id, actor);
       });
     } catch (error) {
       if (error instanceof SessionConfigurationError)
@@ -79,6 +93,7 @@ export function createStudioService(deps: {
       version.automationId,
       version.id,
       reason === 'approve' ? 'APPROVED' : 'ROLLBACK',
+      actor,
     );
     changed();
     return fresh;
@@ -133,29 +148,41 @@ export function createStudioService(deps: {
         running: runtime.running(),
         lastEvent: runtime.lastEvent,
         automations,
-        activity: repo.activity(40),
+        activity: repo.activity(40).map((row) => activityView(row, repo)),
       };
     },
     /**
-     * Activate exactly the reviewed artifact. The caller must echo the artifact hash it
-     * reviewed and the active version it expects to replace; anything stale is refused.
+     * Activate exactly the reviewed artifact. The caller must echo the artifact hash and
+     * test-report hash it reviewed and the active version it expects to replace; anything
+     * stale is refused. `approvedBy` names the actor (`console` or `chat:<broadcaster>`).
      */
     approve(
       versionId: string,
-      expected: { artifactId: string; activeVersionId: string | null; resetSession?: boolean },
+      expected: {
+        artifactId: string;
+        reportHash: string;
+        activeVersionId: string | null;
+        resetSession?: boolean;
+        approvedBy: string;
+      },
     ) {
       const version = mustVersion(versionId);
       const blockers = approvalBlockers(version, runtime.panicked);
       if (blockers.length) throw new StudioError('BLOCKED', blockers.join(' '));
       if (version.artifactId !== expected.artifactId)
         throw new StudioError('STALE', 'This is not the version you reviewed. Review it again.');
+      if (reportHashOf(version) !== expected.reportHash)
+        throw new StudioError(
+          'STALE',
+          'The test report changed since you reviewed it. Review the new evidence first.',
+        );
       const automation = mustAutomation(version.automationId);
       if (automation.activeVersionId !== expected.activeVersionId)
         throw new StudioError(
           'STALE',
           'The live version changed while you were reviewing. Review the new difference first.',
         );
-      return goLive(version, 'approve', expected.resetSession);
+      return goLive(version, 'approve', expected.resetSession, expected.approvedBy);
     },
     /** Cancel one pending named timer of an interaction; unknown names are a 404. */
     async cancelTimer(automationId: string, name: string) {

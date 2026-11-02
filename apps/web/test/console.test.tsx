@@ -82,6 +82,8 @@ const version = (patch: Partial<Version> = {}): Version => ({
   status: 'candidate',
   incident: null,
   approvedAt: null,
+  approvedBy: null,
+  reportHash: 'c'.repeat(64),
   activatedAt: null,
   createdAt: Date.now(),
   changes: [],
@@ -140,6 +142,20 @@ describe('approval card', () => {
     ]);
     fireEvent.click(screen.getByRole('button', { name: /Approve v2/ }));
     expect(onApprove).toHaveBeenCalledWith(expect.objectContaining({ artifactId: 'f'.repeat(64) }));
+  });
+  it('shows who approved the version and the bound test report', () => {
+    render(
+      <Evidence
+        version={version({ approvedAt: 0, approvedBy: 'chat:streamer', status: 'superseded' })}
+        automation={undefined}
+        panic={false}
+        previewed
+        onApprove={async () => undefined}
+        onDiscard={async () => undefined}
+      />,
+    );
+    expect(screen.getByText(/^Approved by streamer in chat at /)).toBeTruthy();
+    expect(screen.getByText(/test report cccccccc…cccc/)).toBeTruthy();
   });
   it('blocks approval with stated reasons and requires consent for wider authority', () => {
     const { rerender } = render(

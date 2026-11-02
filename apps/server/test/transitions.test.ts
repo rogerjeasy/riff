@@ -66,7 +66,7 @@ async function setup(database?: DatabaseConnection, effectsPerMinute = 120) {
     });
   }
   const old = version(definition);
-  repo.activate(automation.id, old.id);
+  repo.activate(automation.id, old.id, 'console');
   app.riff.runtime.activate(automation.id, repo.version(old.id)!);
   const next = version(
     {
@@ -464,7 +464,12 @@ it('malformed verification evidence fails closed as an approval blocker', async 
 it('audits migration after an identical-definition activation with no intervening chat', async () => {
   const f = await setup();
   const same = f.version(definition, f.old.id, '/* revised handler */');
-  f.app.riff.studio.approve(same.id, { artifactId: same.artifactId!, activeVersionId: f.old.id });
+  f.app.riff.studio.approve(same.id, {
+    artifactId: same.artifactId!,
+    reportHash: same.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: f.old.id,
+  });
   const t = await f.preview();
   await f.app.riff.studio.approveTransition(t.id, {
     evidenceId: t.evidenceId,
@@ -533,7 +538,12 @@ it('manual ordinary activation invalidates pending transitions', async () => {
   const t = await f.preview('round-end');
   await f.approve(t);
   const same = f.version(definition, f.old.id, '/* ordinary edit */');
-  f.app.riff.studio.approve(same.id, { artifactId: same.artifactId!, activeVersionId: f.old.id });
+  f.app.riff.studio.approve(same.id, {
+    artifactId: same.artifactId!,
+    reportHash: same.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: f.old.id,
+  });
   expect(f.repo.transition(t.id)?.status).toBe('cancelled');
   f.setAt(121000);
   await f.app.riff.runtime.tick();

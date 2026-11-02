@@ -48,7 +48,7 @@ function activate(app: RiffApp, handler = source) {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.repo.activate(automation.id, version.id);
+  app.riff.repo.activate(automation.id, version.id, 'console');
   app.riff.runtime.activate(automation.id, app.riff.repo.version(version.id)!);
   return { automation, version };
 }
@@ -309,6 +309,7 @@ it('authors a preserving edit, reviews private comparisons, retains chat during 
     (
       await post(`/api/versions/${first.id}/approve`, {
         artifactId: first.artifactId,
+        reportHash: first.reportHash,
         expectedActiveVersionId: null,
       })
     ).statusCode,
@@ -406,7 +407,11 @@ it.each([
     method: 'POST',
     url: `/api/versions/${version.id}/approve`,
     headers: { 'x-riff-request': '1' },
-    payload: { artifactId: version.artifactId, expectedActiveVersionId: null },
+    payload: {
+      artifactId: version.artifactId,
+      reportHash: version.reportHash,
+      expectedActiveVersionId: null,
+    },
   });
   expect(approve.statusCode).toBe(200);
   if (joinCommand) await app.riff.runtime.handleChat(chat('join', 'alice', joinCommand));
@@ -448,6 +453,7 @@ it('preserves progress for compatible edits and requires reset consent for chang
       headers: { 'x-riff-request': '1' },
       payload: {
         artifactId,
+        reportHash: app.riff.repo.version(versionId)?.reportHash,
         expectedActiveVersionId: expected,
         ...(resetSession === undefined ? {} : { resetSession }),
       },

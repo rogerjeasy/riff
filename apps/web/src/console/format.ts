@@ -31,6 +31,20 @@ export const ago = (at: number, now = Date.now()) => {
         ? `${Math.floor(s / 60)}m ago`
         : `${Math.floor(s / 3600)}h ago`;
 };
+/** Who approved a version, in reader terms: `console` or `chat:<broadcaster>`. */
+export const approverLabel = (approvedBy: string | null) =>
+  approvedBy === null
+    ? null
+    : approvedBy.startsWith('chat:')
+      ? `${approvedBy.slice(5)} in chat`
+      : approvedBy === 'console'
+        ? 'the console'
+        : approvedBy;
+export const approvalLine = (approvedBy: string | null, approvedAt: number) => {
+  const who = approverLabel(approvedBy);
+  const when = new Date(approvedAt).toLocaleString();
+  return who ? `Approved by ${who} at ${when}.` : `Approved at ${when} (approver not recorded).`;
+};
 export const shortHash = (hash: string | null) =>
   hash ? `${hash.slice(0, 8)}…${hash.slice(-4)}` : '—';
 

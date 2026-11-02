@@ -38,7 +38,12 @@ async function live(app: RiffApp) {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   return v;
 }
 it('exposes only current approved public guidance and retains explicit broadcast preferences', async () => {
@@ -220,7 +225,12 @@ it('shows resource limits, objectives and aggregate outcomes without exposing li
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   await app.riff.runtime.handleChat({
     id: 'contribution',
     channelId: app.riff.repo.channelId,
@@ -703,7 +713,12 @@ it('reports collective goal progress and join commands', async () => {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   await app.riff.runtime.handleChat({
     ...helpMessage(app, 'c1', manifest.trigger.command),
     roles: ['viewer'],

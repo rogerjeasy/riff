@@ -428,6 +428,8 @@ Tables: `channels`, `channel_state`, `collaboration_connections`, `director_stat
 `channel_point_redemptions`, `prediction_requests`.
 Twitch event triggers (F19) add routes `GET /api/twitch/triggers` and the optional
 `/auth/twitch?triggers=<family,...>` consent query; no table.
+Migration 0019 adds columns only: `versions.report_hash`, `versions.approved_by` and
+`activity.detail` (F06/F16 below).
 
 ---
 
@@ -472,8 +474,8 @@ Implemented end to end, with Tomato Toss as the reference interaction:
   before storing exact source and check results with immutable candidate evidence.
 - **Server**: Codex transport (temp workspace + temp `CODEX_HOME` with only the login,
   read-only sandbox, no network, no web search, minimal env), authoring service,
-  private replay (`POST /api/versions/:id/preview`), approval bound to artifact hash and
-  expected live version, pause/resume/rollback, panic/resume (in-memory first, persisted,
+  private replay (`POST /api/versions/:id/preview`), approval bound to artifact hash,
+  test-report hash and expected live version (F06, below), pause/resume/rollback, panic/resume (in-memory first, persisted,
   survives restart), quarantine on incident, overlay broker (live decisions only,
   heartbeat, rotatable key), Twitch OAuth + sealed tokens + EventSub chat → live runtime.
   Mutating routes require same-origin and `x-riff-request: 1`.
@@ -1149,3 +1151,30 @@ version diffs) and the web branch on `kind`, never on the presence of `event`. P
 `riff-compiler/12` documents it in one TASK_RULES section. `/auth/twitch` accepts `?features=`
 (Channel Points/Predictions), `?feature=` (polls/announcements/shoutouts) and
 `?triggers=` (event families) together and always keeps granted scopes.
+
+## Exact approval binding and activity causes — F06/F16
+
+Migration 0019 (`0019_approval_binding_activity_detail`) adds `versions.report_hash`,
+`versions.approved_by` and `activity.detail`. `insertVersion` stores `report_hash`, the
+sha256 of the canonical evidence (verification report, intent checks, migration and
+rehearsal results), when the verified version is persisted. `POST /api/versions/:id/approve`
+now requires `{artifactId, reportHash, expectedActiveVersionId, resetSession?}`; a body
+without `reportHash` (older consoles) is rejected with 400 and a reload instruction, and a
+hash that differs from the stored/derived report is 409 STALE. The shared approval predicate
+(`db/version-health.ts`) also blocks any version whose stored evidence no longer matches its
+`report_hash`. Rows from before 0019 keep a null hash and bind the hash derived from their
+current evidence. Activation records `approved_by`: `console` for the console route, F32
+transitions and rollback, and `chat:<broadcaster>` (lowercased badge-verified display name)
+for F17 chat approval. Chat codes carry the report hash they were issued for; codes issued
+before binding are refused as stale. Version views expose `reportHash` and `approvedBy`; the
+evidence card shows "Approved by … at …" and the version history names the approver.
+
+Activity rows may carry bounded `detail` JSON: `source {kind: chat|timer|redemption|twitch|
+console|system, label}` and `effects {allowed, blocked}` (effects the handler requested vs.
+submitted for presentation). `services/automations/activity-view.ts` projects rows for the
+console (studio snapshot, last 40, and each `/ws/console` activity push): source (inferred
+for older rows), interaction title and version number (null when the version is gone),
+outcome `accepted|blocked|incident|info`, plain-language reason and effect counts. The
+console Activity card shows these per row with a version button that selects that version
+for review, incident rows visually distinct, and an All/Blocked/Incidents filter. No new
+routes, env vars or dependencies.

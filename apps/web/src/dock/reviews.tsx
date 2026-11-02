@@ -43,7 +43,7 @@ export function DockReviews({
         }}
         onApprove={async (v, reset) => {
           try {
-            await api.approve(v.id, v.artifactId ?? '', automation?.activeVersionId ?? null, reset);
+            await api.approve(v, automation?.activeVersionId ?? null, reset);
             notify('The exact reviewed version is live.');
           } catch (e) {
             notify(e instanceof Error ? e.message : 'Approval failed.');

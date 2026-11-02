@@ -282,7 +282,7 @@ export function transitionRepository(connection: DatabaseConnection, channelId: 
           .where(and(eq(versions.channelId, channelId), eq(versions.id, t.sourceVersionId)))
           .run();
         db.update(versions)
-          .set({ status: 'active', activatedAt: at, approvedAt: at })
+          .set({ status: 'active', activatedAt: at, approvedAt: at, approvedBy: 'console' })
           .where(and(eq(versions.channelId, channelId), eq(versions.id, target.id)))
           .run();
         db.update(automations)

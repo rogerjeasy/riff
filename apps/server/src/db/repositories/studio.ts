@@ -7,7 +7,16 @@ import { sessionRepository } from './sessions.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, max } from 'drizzle-orm';
 import type { DatabaseConnection } from '../client.js';
-import { activity, automations, channelState, channels, compileRuns, versions } from '../schema.js';
+import {
+  activity,
+  automations,
+  channelState,
+  channels,
+  compileRuns,
+  versions,
+  type ActivityDetail,
+} from '../schema.js';
+import { reportDigest } from '../version-health.js';
 
 export type VersionRow = typeof versions.$inferSelect;
 export type AutomationRow = typeof automations.$inferSelect;
@@ -108,7 +117,15 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
     insertVersion(
       row: Omit<
         VersionRow,
-        'id' | 'channelId' | 'number' | 'createdAt' | 'approvedAt' | 'activatedAt' | 'incident'
+        | 'id'
+        | 'channelId'
+        | 'number'
+        | 'createdAt'
+        | 'approvedAt'
+        | 'approvedBy'
+        | 'activatedAt'
+        | 'incident'
+        | 'reportHash'
       >,
     ) {
       return connection.client.transaction(() => {
@@ -124,8 +141,11 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
           number: (last?.value ?? 0) + 1,
           createdAt: now(),
           approvedAt: null,
+          approvedBy: null,
           activatedAt: null,
           incident: null,
+          // Bound once, when the verified evidence is stored; approval must name it.
+          reportHash: reportDigest(row.evidence),
         };
         db.insert(versions).values(full).run();
         return full;
@@ -140,8 +160,8 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
         .where(and(eq(versions.channelId, channelId), eq(versions.id, id)))
         .run();
     },
-    /** Atomically make `versionId` the active version of its automation. */
-    activate(automationId: string, versionId: string) {
+    /** Atomically make `versionId` the active version of its automation, recording who approved. */
+    activate(automationId: string, versionId: string, approvedBy: string) {
       connection.client.transaction(() => {
         proposalLineageRepository(connection, channelId).assertVersionLineage(versionId);
         transitionRepository(connection, channelId).invalidateTransitions(automationId);
@@ -156,7 +176,7 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
             .where(and(eq(versions.channelId, channelId), eq(versions.id, current.activeVersionId)))
             .run();
         db.update(versions)
-          .set({ status: 'active', activatedAt: now(), approvedAt: now() })
+          .set({ status: 'active', activatedAt: now(), approvedAt: now(), approvedBy })
           .where(and(eq(versions.channelId, channelId), eq(versions.id, versionId)))
           .run();
         db.update(automations)
@@ -185,10 +205,12 @@ export function forChannel(connection: DatabaseConnection, channelId: string) {
         .where(and(eq(compileRuns.channelId, channelId), eq(compileRuns.id, id)))
         .run();
     },
-    record(entry: Omit<ActivityRow, 'id' | 'channelId'>) {
+    record(
+      entry: Omit<ActivityRow, 'id' | 'channelId' | 'detail'> & { detail?: ActivityDetail | null },
+    ) {
       return db
         .insert(activity)
-        .values({ ...entry, channelId })
+        .values({ ...entry, detail: entry.detail ?? null, channelId })
         .returning()
         .get();
     },

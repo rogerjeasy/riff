@@ -1610,6 +1610,94 @@ pre {
 .feed .badge {
   justify-self: start;
 }
+/* F16: cause, exact version, outcome and effects per entry; incidents stand apart. */
+.activity-filter button {
+  padding: 4px 9px;
+  font-size: 12px;
+}
+.activity-filter .count {
+  font-family: var(--mono);
+  color: var(--faint);
+  margin-left: 2px;
+}
+.activity-feed li {
+  grid-template-columns: 116px minmax(0, 1fr) auto;
+}
+.activity-feed li[data-outcome='incident'] {
+  background: var(--bad-bg);
+  border-left: 3px solid var(--bad);
+  border-radius: 8px;
+  padding: 8px 8px 8px 10px;
+  border-bottom-color: transparent;
+}
+.feed-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.feed-body p {
+  margin: 0;
+}
+.feed-cause {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.feed-outcome {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+}
+.feed-outcome.accepted {
+  color: var(--good);
+}
+.feed-outcome.blocked {
+  color: var(--warn);
+}
+.feed-outcome.incident {
+  color: var(--bad);
+}
+.feed-source {
+  overflow-wrap: anywhere;
+}
+.feed-version {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--accent-soft);
+  border-radius: 6px;
+  padding: 0 6px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+.feed-version:hover,
+.feed-version[aria-current='true'] {
+  background: var(--surface-3);
+}
+.feed-version.static {
+  color: var(--muted);
+  cursor: default;
+}
+.feed-message {
+  overflow-wrap: anywhere;
+}
+.feed-effects {
+  font-size: 12px;
+  font-family: var(--mono);
+}
+.feed-effects .good {
+  color: var(--good);
+}
+.feed-effects .bad {
+  color: var(--bad);
+}
+.approved-by {
+  margin: 0 0 8px;
+}
 
 /* ---------- toasts, boot, dock ---------- */
 .toasts {

@@ -282,7 +282,7 @@ async function battle(app: RiffApp) {
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.repo.activate(automation.id, base.id);
+  app.riff.repo.activate(automation.id, base.id, 'console');
   app.riff.runtime.activate(automation.id, app.riff.repo.version(base.id)!);
   await chat(app, '!red', 'join');
   await chat(app, '!throw', 'throw');
@@ -336,12 +336,15 @@ it('runs the selected !splat +2 edit through F32 with preserved scores and audit
   // Moderation preserves existing play, but every future activation remains gated.
   expect(app.riff.repo.automation(f.automation.id)!.activeVersionId).toBe(f.next.id);
   expect((await chat(app, '!splat', 'after-hide'))[0]!.code).toBe('ACCEPTED');
-  expect(() => app.riff.repo.activate(f.automation.id, descendant.id)).toThrow('REVOKED');
-  expect(() => app.riff.repo.activate(f.automation.id, f.next.id)).toThrow('REVOKED');
+  expect(() => app.riff.repo.activate(f.automation.id, descendant.id, 'console')).toThrow(
+    'REVOKED',
+  );
+  expect(() => app.riff.repo.activate(f.automation.id, f.next.id, 'console')).toThrow('REVOKED');
   expect(
     (
       await post(app, `/api/versions/${descendant.id}/approve`, {
         artifactId: descendant.artifactId,
+        reportHash: descendant.reportHash,
         expectedActiveVersionId: f.next.id,
       })
     ).statusCode,
@@ -357,8 +360,8 @@ it('runs the selected !splat +2 edit through F32 with preserved scores and audit
     ).statusCode,
   ).toBe(409);
   // Clean pre-proposal rollback remains safe; restoring the removed target stays blocked.
-  app.riff.repo.activate(f.automation.id, f.base.id);
-  expect(() => app.riff.repo.activate(f.automation.id, f.next.id)).toThrow('REVOKED');
+  app.riff.repo.activate(f.automation.id, f.base.id, 'console');
+  expect(() => app.riff.repo.activate(f.automation.id, f.next.id, 'console')).toThrow('REVOKED');
 }, 30000);
 it('cancels F32 round-end reviews on hide without disturbing current live progress', async () => {
   const { app } = await setup(createOfflineTransport());
@@ -515,7 +518,7 @@ it('reselections invalidate earlier pending transitions and every selection in a
   expect(app.riff.repo.transition(pending.id)!.status).toBe('cancelled');
   // The newest selection is still valid; the inherited older selection is stale.
   expect(() => app.riff.proposals.assertSelectionAuthorized(second.selection.id)).not.toThrow();
-  expect(() => app.riff.repo.activate(f.automation.id, descendant.id)).toThrow('STALE');
+  expect(() => app.riff.repo.activate(f.automation.id, descendant.id, 'console')).toThrow('STALE');
 }, 30000);
 it('aborts hidden queued generation before the transport opens and replays its original claim', async () => {
   let release!: () => void;
@@ -578,7 +581,7 @@ it('returns the original successful run and candidate after restart without anot
     parentVersionId: original.id,
     compileRunId: null,
   });
-  f.app.riff.repo.activate(edited.automationId, edited.id);
+  f.app.riff.repo.activate(edited.automationId, edited.id, 'console');
   expect(communityProjection(f.app.riff.proposals, f.app.riff.repo).selections[0]!.status).toBe(
     'applied',
   );

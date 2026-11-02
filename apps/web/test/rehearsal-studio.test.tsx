@@ -50,6 +50,8 @@ const version: Version = {
   status: 'candidate',
   incident: null,
   approvedAt: null,
+  approvedBy: null,
+  reportHash: 'c'.repeat(64),
   activatedAt: null,
   createdAt: 0,
   changes: [],

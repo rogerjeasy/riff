@@ -54,7 +54,7 @@ function setup() {
     compileRunId: null,
     status: 'candidate',
   });
-  repo.activate(version.automationId, version.id);
+  repo.activate(version.automationId, version.id, 'console');
   return { db, service, version };
 }
 

@@ -190,7 +190,12 @@ async function approve(intent: string) {
     automations: {
       id: string;
       title: string;
-      versions: { id: string; artifactId: string; verification?: { ok: boolean } }[];
+      versions: {
+        id: string;
+        artifactId: string;
+        reportHash: string;
+        verification?: { ok: boolean };
+      }[];
     }[];
   }>();
   const automation = studio.automations.find((a) =>
@@ -201,7 +206,11 @@ async function approve(intent: string) {
     method: 'POST',
     url: `/api/versions/${version.id}/approve`,
     headers,
-    payload: { artifactId: version.artifactId, expectedActiveVersionId: null },
+    payload: {
+      artifactId: version.artifactId,
+      reportHash: version.reportHash,
+      expectedActiveVersionId: null,
+    },
   });
   expect(approved.statusCode, approved.body).toBe(200);
   return { automationId: automation.id, versionId: version.id };

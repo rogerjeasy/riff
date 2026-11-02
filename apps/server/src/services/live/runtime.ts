@@ -99,6 +99,22 @@ export interface LiveTwitchEvent {
   source: 'twitch';
 }
 const TIER_LABEL = { '1000': 'Tier 1', '2000': 'Tier 2', '3000': 'Tier 3' } as const;
+/**
+ * Effects the handler asked for vs. those submitted for presentation. Only accepted or
+ * fenced decisions ever carried effects; rejected ones have nothing to count.
+ */
+function effectCounts(decision: ExecutionDecision, delivered: number) {
+  const requested = decision.effects.length;
+  if (decision.code !== 'ACCEPTED' && requested === 0) return undefined;
+  const allowed = Math.min(delivered, requested);
+  return { allowed, blocked: requested - allowed };
+}
+
+const withEffects = (decision: ExecutionDecision, delivered: number) => {
+  const effects = effectCounts(decision, delivered);
+  return effects ? { effects } : {};
+};
+
 /** Activity wording for an accepted platform event. */
 export function twitchActivity(event: TwitchEventDetail): string {
   const tier = event.tier ? ` (${TIER_LABEL[event.tier]})` : '';
@@ -499,6 +515,15 @@ export function createLiveRuntime(deps: {
           decision.code === 'ACCEPTED'
             ? `${viewerName} ${data.twitch ? twitchActivity(data.twitch) : `used ${(version.manifest as PermissionManifest).trigger.command}`} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
             : decision.reason,
+        detail: {
+          source: data.twitch
+            ? { kind: 'twitch', label: `${viewerName} ${twitchActivity(data.twitch)}` }
+            : {
+                kind: 'chat',
+                label: `${(version.manifest as PermissionManifest).trigger.command} by ${viewerName}`,
+              },
+          ...withEffects(decision, delivered),
+        },
       });
       if (fence === generation && !panic)
         queueTwitchActions(decision, automationId, viewerName, raid);
@@ -579,6 +604,7 @@ export function createLiveRuntime(deps: {
         decision.code === 'ACCEPTED'
           ? `Timer “${row.name}” fired${event.missed ? ` ${Math.round((event.firedAt - event.scheduledAt) / 1000)} s late (missed while Riff was unavailable)` : ''} · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
           : `Timer “${row.name}”: ${decision.reason}`,
+      detail: { source: { kind: 'timer', label: row.name }, ...withEffects(decision, delivered) },
     });
     hub.publish('studio', null);
   }
@@ -672,6 +698,13 @@ export function createLiveRuntime(deps: {
         decision.code === 'ACCEPTED'
           ? `${input.viewerName} redeemed “${trigger.reward ?? ''}” · ${delivered} cosmetic effect${delivered === 1 ? '' : 's'} submitted for presentation`
           : decision.reason,
+      detail: {
+        source: {
+          kind: 'redemption',
+          label: `“${trigger.reward ?? ''}” by ${input.viewerName}`,
+        },
+        ...withEffects(decision, delivered),
+      },
     });
     return live ? decision : { ...decision, code: 'STOPPED', effects: [] };
   }
@@ -989,6 +1022,7 @@ export function createLiveRuntime(deps: {
           viewer: message.viewerName,
           code: 'CAPACITY',
           message: reason,
+          detail: { source: { kind: 'chat', label: `Chat message by ${message.viewerName}` } },
         });
         lastEvent = { at, viewer: message.viewerName, code: 'CAPACITY' };
         return Promise.resolve(decisions);
@@ -1033,6 +1067,12 @@ export function createLiveRuntime(deps: {
           viewer: input.viewerName,
           code: 'CAPACITY',
           message: `The gameplay queue was full, so this ${input.twitch.kind} was not admitted.`,
+          detail: {
+            source: {
+              kind: 'twitch',
+              label: `${input.viewerName} ${twitchActivity(input.twitch)}`,
+            },
+          },
         });
         return Promise.resolve([]);
       }

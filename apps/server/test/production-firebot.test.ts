@@ -103,7 +103,7 @@ function active(s: S) {
     compileRunId: null,
     status: 'candidate',
   });
-  s.repo.activate(v.automationId, v.id);
+  s.repo.activate(v.automationId, v.id, 'console');
   return v;
 }
 function finish(s: S, v: ReturnType<typeof active>, id = 'round-1') {

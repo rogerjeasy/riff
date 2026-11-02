@@ -216,7 +216,12 @@ it('`!riff help fr` shows the version 2 rules, round and language on the stream 
     compileRunId: null,
     status: 'candidate',
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
 
   const english = app.riff.participation.presentation(v.id, null)!;
   expect(english.language).toBe('en');

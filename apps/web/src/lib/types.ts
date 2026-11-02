@@ -262,6 +262,10 @@ export interface Version {
   status: VersionStatus;
   incident: string | null;
   approvedAt: number | null;
+  /** `console` or `chat:<broadcaster>`; null when never approved or approved before F06 binding. */
+  approvedBy: string | null;
+  /** Identity of the evidence shown for review; approval must name it (F06). */
+  reportHash: string;
   activatedAt: number | null;
   createdAt: number;
   changes: Change[];
@@ -292,16 +296,24 @@ export interface TimerView {
   createdAt: number;
   fires: number;
 }
+export type ActivitySourceKind = 'chat' | 'timer' | 'redemption' | 'twitch' | 'console' | 'system';
+/** Server-projected activity entry (F16): cause, exact version, outcome and effects. */
 export interface Activity {
   id: number;
   at: number;
   kind: 'decision' | 'incident' | 'control' | 'system';
   automationId: string | null;
+  /** Null when the version no longer exists. */
   versionId: string | null;
   eventId: string | null;
   viewer: string | null;
   code: string | null;
   message: string;
+  source: { kind: ActivitySourceKind; label: string };
+  interaction: { title: string; number: number | null } | null;
+  outcome: 'accepted' | 'blocked' | 'incident' | 'info';
+  reason: string | null;
+  effects: { allowed: number; blocked: number } | null;
 }
 export type RunStage =
   | 'queued'

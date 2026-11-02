@@ -178,7 +178,12 @@ it('clears delayed cosmetics on panic and retains approval without automatic res
     digest: state.draft!.digest,
     evidenceHash: state.draft!.evidence!.hash,
   });
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const frames: string[] = [];
   app.riff.overlay.attach({ send: (s) => frames.push(s), close() {} }, 'home');
   await app.riff.runtime.handleChat({
@@ -223,7 +228,12 @@ it('commits every accepted contribution before coalescing and drops revoked queu
   apps.push(app);
   const { state, version: v } = await review(app, true);
   app.riff.director.approve(state.revision, state.draft!.digest, state.draft!.evidence!.hash);
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const frames: { type: string }[] = [];
   app.riff.overlay.attach({ send: (s) => frames.push(JSON.parse(s)), close() {} }, 'home');
   for (let n = 0; n < 20; n++) {
@@ -297,7 +307,7 @@ it('rejects gameplay queue overflow visibly before counting a contribution', asy
   const app = await createApp({ logger: false, now: () => 1000 });
   apps.push(app);
   const v = version(app, true);
-  app.riff.repo.activate(v.automationId, v.id);
+  app.riff.repo.activate(v.automationId, v.id, 'console');
   app.riff.runtime.activate(v.automationId, app.riff.repo.version(v.id)!);
   const message = (n: number) => ({
     id: `capacity-${n}`,
@@ -327,7 +337,12 @@ it.each(['swap', 'rollback', 'reset'] as const)(
     apps.push(app);
     const { state, version: v } = await review(app, true);
     app.riff.director.approve(state.revision, state.draft!.digest, state.draft!.evidence!.hash);
-    app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+    app.riff.studio.approve(v.id, {
+      artifactId: v.artifactId!,
+      reportHash: v.reportHash!,
+      approvedBy: 'console',
+      activeVersionId: null,
+    });
     const frames: { type: string; payload: { viewer?: string } }[] = [];
     app.riff.overlay.attach({ send: (s) => frames.push(JSON.parse(s)), close() {} }, 'home');
     const chat = (id: string) =>
@@ -356,10 +371,10 @@ it.each(['swap', 'rollback', 'reset'] as const)(
         parentVersionId: v.id,
         status: 'candidate',
       });
-      app.riff.repo.activate(v.automationId, next.id);
+      app.riff.repo.activate(v.automationId, next.id, 'console');
       app.riff.runtime.activate(v.automationId, app.riff.repo.version(next.id)!);
       if (change === 'rollback') {
-        app.riff.repo.activate(v.automationId, v.id);
+        app.riff.repo.activate(v.automationId, v.id, 'console');
         app.riff.runtime.activate(v.automationId, app.riff.repo.version(v.id)!);
       }
     }
@@ -408,7 +423,12 @@ it('enforces one durable batch even after exact reapproval and process restart',
     reviewed.draft!.digest,
     reviewed.draft!.evidence!.hash,
   );
-  app.riff.studio.approve(v.id, { artifactId: v.artifactId!, activeVersionId: null });
+  app.riff.studio.approve(v.id, {
+    artifactId: v.artifactId!,
+    reportHash: v.reportHash!,
+    approvedBy: 'console',
+    activeVersionId: null,
+  });
   const frames: { type: string }[] = [];
   const attach = (a: RiffApp) =>
     a.riff.overlay.attach({ send: (s) => frames.push(JSON.parse(s)), close() {} }, 'home');
