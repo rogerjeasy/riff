@@ -3,6 +3,16 @@
 </p>
 
 <p align="center">
+  <a href="docs/assets/riff-demo.mp4"><img src="docs/assets/riff-demo-poster.jpg" width="100%" alt="Watch the 2:47 Riff demo: real Twitch chat sends !love and !tomato while hearts and tomatoes fly across the Riff overlay."></a>
+</p>
+
+<p align="center">
+  <strong>▶ <a href="docs/assets/riff-demo.mp4">Watch the demo (2:47)</a></strong>: the problem, the approach, then a live run on
+  production. Codex compiles a sentence, Riff verifies and rehearses it, and real Twitch chat
+  drives the overlay.
+</p>
+
+<p align="center">
   <a href="https://twitchcon-codex.devpost.com/"><img alt="Codex × TwitchCon Hackathon" src="https://img.shields.io/badge/Codex_%C3%97_TwitchCon-Hackathon_2026-7c4dff?labelColor=07070c&style=flat-square"></a>
   <a href="https://github.com/rogerjeasy/riff/actions/workflows/verify.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rogerjeasy/riff/verify.yml?branch=main&label=CI&labelColor=07070c&style=flat-square"></a>
   <img alt="Codex: runtime compiler" src="https://img.shields.io/badge/Codex-runtime_compiler-9db4ff?labelColor=07070c&style=flat-square&logo=openai&logoColor=white">
