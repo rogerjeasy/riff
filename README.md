@@ -3,13 +3,13 @@
 </p>
 
 <p align="center">
-  <a href="docs/assets/riff-demo.mp4"><img src="docs/assets/riff-demo-poster.jpg" width="100%" alt="Watch the 2:47 Riff demo: real Twitch chat sends !love and !tomato while hearts and tomatoes fly across the Riff overlay."></a>
+  <a href="https://youtu.be/EDgzq_fIspc"><img src="docs/assets/riff-demo-poster.jpg" width="900" alt="The Riff demo, 2 minutes 47 seconds: real Twitch chat sends !love and !tomato while hearts and tomatoes fly across the Riff overlay, with a play button. Click to watch on YouTube."></a>
 </p>
 
 <p align="center">
-  <strong>▶ <a href="docs/assets/riff-demo.mp4">Watch the demo (2:47)</a></strong>: the problem, the approach, then a live run on
+  <strong>▶ <a href="https://youtu.be/EDgzq_fIspc">Watch the demo on YouTube (2:47)</a></strong>: the problem, the approach, then a live run on
   production. Codex compiles a sentence, Riff verifies and rehearses it, and real Twitch chat
-  drives the overlay. Also on the
+  drives the overlay. The MP4 is also attached to the
   <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0"><strong>v1.0.0 release</strong></a>.
 </p>
 
@@ -24,6 +24,7 @@
 </p>
 
 <p align="center">
+  <strong><a href="https://youtu.be/EDgzq_fIspc">Demo video</a></strong> ·
   <strong><a href="#try-it">Try it</a></strong> ·
   <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0">Release v1.0.0</a> ·
   <a href="docs/studio-guide.md">Studio guide</a> ·
