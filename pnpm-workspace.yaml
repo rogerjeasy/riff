@@ -20,6 +20,15 @@ allowBuilds:
   better-sqlite3: false
   msw: false
 
+# Security overrides for transitive deps with no fixed release of their parent
+# yet (pnpm audit --prod). Remove once @fastify/static, typescript-eslint and
+# eslint ship ranges that already resolve to patched versions.
+overrides:
+  # GHSA-3g3m-2fjr-6pw4 (via @fastify/static).
+  'glob@>=9.0.0 <14.0.2': '14.0.3'
+  # GHSA-g3hv-75wg-m249 (via typescript-eslint, eslint, glob).
+  'minimatch@<11.0.1': '11.0.3'
+
 catalog:
   '@axe-core/playwright': '4.13.0'
   '@eslint/js': '9.39.5'
