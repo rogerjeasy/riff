@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 360" width="1280" height="360" role="img" aria-labelledby="t d">
+  <title id="t">Riff — Invent your next live experience together</title>
+  <desc id="d">The Riff mark and name. Five steps: Describe, Test, Preview, Approve, Play. Beside them a Twitch chat where three !tomato throws land and the fourth is blocked by the host limit of three per 60 seconds.</desc>
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c4dff"/><stop offset=".6" stop-color="#a855f7"/><stop offset="1" stop-color="#d45fae"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="play" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff6b5b"/><stop offset="1" stop-color="#d45fae"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.12" cy="0.1" r="0.6">
+      <stop offset="0" stop-color="#7c4dff" stop-opacity=".32"/><stop offset="1" stop-color="#7c4dff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.9" cy="0.95" r="0.5">
+      <stop offset="0" stop-color="#ff6b5b" stop-opacity=".16"/><stop offset="1" stop-color="#ff6b5b" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1" fill="#fff" fill-opacity=".045"/>
+    </pattern>
+  </defs>
+
+  <rect width="1280" height="360" rx="24" fill="#07070c"/>
+  <rect width="1280" height="360" rx="24" fill="url(#dots)"/>
+  <rect width="1280" height="360" rx="24" fill="url(#glowA)"/>
+  <rect width="1280" height="360" rx="24" fill="url(#glowB)"/>
+  <rect x=".5" y=".5" width="1279" height="359" rx="23.5" fill="none" stroke="#fff" stroke-opacity=".08"/>
+
+  <g font-family="Inter, 'SF Pro Display', 'Segoe UI', system-ui, -apple-system, sans-serif">
+    <!-- Mark + name -->
+    <g transform="translate(72 62)">
+      <rect width="88" height="88" rx="25" fill="url(#mark)"/>
+      <rect width="88" height="88" rx="25" fill="url(#sheen)"/>
+      <g fill="#fff">
+        <rect x="21.3" y="48.1" width="11" height="19.3" rx="4"/>
+        <rect x="38.5" y="33" width="11" height="34.4" rx="4"/>
+        <rect x="55.7" y="20.6" width="11" height="46.8" rx="4"/>
+      </g>
+    </g>
+    <text x="184" y="138" font-size="86" font-weight="700" letter-spacing="-2.5" fill="#f4f4fa">Riff</text>
+    <text x="72" y="206" font-size="30" font-weight="500" fill="#a8a8bd">Invent your next live experience <tspan fill="#f4f4fa">together.</tspan></text>
+
+    <!-- Pipeline -->
+    <g font-size="18" font-weight="600" text-anchor="middle">
+      <g transform="translate(72 238)">
+        <rect width="148" height="44" rx="22" fill="#161622" stroke="#fff" stroke-opacity=".14"/>
+        <text x="74" y="28" fill="#f4f4fa">Describe</text>
+      </g>
+      <text x="236" y="267" fill="#8b8ba3" font-weight="400">→</text>
+      <g transform="translate(252 238)">
+        <rect width="148" height="44" rx="22" fill="#161622" stroke="#fff" stroke-opacity=".14"/>
+        <text x="74" y="28" fill="#f4f4fa">Test</text>
+      </g>
+      <text x="416" y="267" fill="#8b8ba3" font-weight="400">→</text>
+      <g transform="translate(432 238)">
+        <rect width="148" height="44" rx="22" fill="#161622" stroke="#fff" stroke-opacity=".14"/>
+        <text x="74" y="28" fill="#f4f4fa">Preview</text>
+      </g>
+      <text x="596" y="267" fill="#8b8ba3" font-weight="400">→</text>
+      <g transform="translate(612 238)">
+        <rect width="148" height="44" rx="22" fill="#7c4dff" fill-opacity=".18" stroke="#b9a3ff" stroke-opacity=".6"/>
+        <text x="74" y="28" fill="#f4f4fa">Approve</text>
+      </g>
+      <text x="776" y="267" fill="#8b8ba3" font-weight="400">→</text>
+      <g transform="translate(792 238)">
+        <rect width="148" height="44" rx="22" fill="url(#play)"/>
+        <text x="74" y="28" fill="#fff">Play</text>
+      </g>
+    </g>
+    <text x="72" y="320" font-size="16" fill="#8b8ba3">Codex compiles it  ·  the host verifies it  ·  Twitch chat plays it</text>
+
+    <!-- Chat card -->
+    <g transform="translate(984 56)">
+      <rect width="232" height="248" rx="18" fill="#11111b" stroke="#fff" stroke-opacity=".1"/>
+      <circle cx="22" cy="28" r="5" fill="#ff6b5b"/>
+      <text x="36" y="33" font-size="14" font-weight="600" fill="#a8a8bd">Twitch chat</text>
+      <line x1="16" y1="50" x2="216" y2="50" stroke="#fff" stroke-opacity=".08"/>
+      <g font-size="15">
+        <g transform="translate(16 66)">
+          <text y="20" fill="#b9a3ff" font-weight="600">mira</text><text x="44" y="20" fill="#f4f4fa">!tomato</text>
+          <rect x="128" y="3" width="72" height="24" rx="12" fill="#3ddc97" fill-opacity=".14"/><text x="164" y="20" fill="#3ddc97" font-size="13" font-weight="600" text-anchor="middle">Thrown</text>
+        </g>
+        <g transform="translate(16 102)">
+          <text y="20" fill="#b9a3ff" font-weight="600">mira</text><text x="44" y="20" fill="#f4f4fa">!tomato</text>
+          <rect x="128" y="3" width="72" height="24" rx="12" fill="#3ddc97" fill-opacity=".14"/><text x="164" y="20" fill="#3ddc97" font-size="13" font-weight="600" text-anchor="middle">Thrown</text>
+        </g>
+        <g transform="translate(16 138)">
+          <text y="20" fill="#b9a3ff" font-weight="600">mira</text><text x="44" y="20" fill="#f4f4fa">!tomato</text>
+          <rect x="128" y="3" width="72" height="24" rx="12" fill="#3ddc97" fill-opacity=".14"/><text x="164" y="20" fill="#3ddc97" font-size="13" font-weight="600" text-anchor="middle">Thrown</text>
+        </g>
+        <g transform="translate(16 174)">
+          <text y="20" fill="#b9a3ff" font-weight="600">mira</text><text x="44" y="20" fill="#f4f4fa">!tomato</text>
+          <rect x="128" y="3" width="72" height="24" rx="12" fill="#ffc857" fill-opacity=".14"/><text x="164" y="20" fill="#ffc857" font-size="13" font-weight="600" text-anchor="middle">Blocked</text>
+        </g>
+      </g>
+      <text x="116" y="232" font-size="12.5" fill="#8b8ba3" text-anchor="middle">3 per 60 s · enforced by the host</text>
+    </g>
+  </g>
+</svg>
