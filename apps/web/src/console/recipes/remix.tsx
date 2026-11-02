@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { request } from '../../lib/api.js';
 import type { Version } from '../../lib/types.js';
@@ -45,8 +45,13 @@ export function RemixTab({
   const [target, setTarget] = useState('');
   const [profile, setProfile] = useState<RecipeProfile>(state.profile);
   const [sceneText, setSceneText] = useState(JSON.stringify(state.profile.scene, null, 2));
-  // Follow the saved profile when the server revision moves (save, or another tab).
+  // Follow the saved profile when the server revision moves (save, or another tab). The
+  // initial state already seeds the form, so a mount-time resync could only discard an edit
+  // typed before the effect flushed.
+  const seenRevision = useRef(state.profile.revision);
   useEffect(() => {
+    if (seenRevision.current === state.profile.revision) return;
+    seenRevision.current = state.profile.revision;
     setProfile(state.profile);
     setSceneText(JSON.stringify(state.profile.scene, null, 2));
   }, [state.profile.revision]);
