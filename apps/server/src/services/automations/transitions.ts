@@ -26,11 +26,14 @@ import type { LiveRuntime } from '../live/runtime.js';
 import { experienceOf, SessionConfigurationError } from '../live/sessions.js';
 import { approvalBlockers, diffVersions } from './views.js';
 import { StudioError } from './errors.js';
+import { reportHashOf } from '../../db/version-health.js';
 import { ProposalError } from '../proposals/service.js';
 let previews = 0;
 export interface TransitionApproval {
   evidenceId: string;
   artifactId: string;
+  /** The target version's test report the reviewer saw (F06 parity with version approval). */
+  reportHash: string;
   expectedActiveVersionId: string;
   sessionId: string;
   boundary: SessionTransitionBoundary;
@@ -288,9 +291,12 @@ export function createTransitionService(
     },
     async approve(id: string, expected: TransitionApproval) {
       const t = required(id);
+      const target = repo.version(t.targetVersionId);
       if (
         t.evidenceId !== expected.evidenceId ||
         t.plan.targetArtifactId !== expected.artifactId ||
+        !target ||
+        reportHashOf(target) !== expected.reportHash ||
         t.sourceVersionId !== expected.expectedActiveVersionId ||
         t.sourceSessionId !== expected.sessionId ||
         t.plan.boundary !== expected.boundary

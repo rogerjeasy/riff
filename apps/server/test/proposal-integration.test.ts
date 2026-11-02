@@ -10,6 +10,7 @@ import { openDatabase } from '../src/db/client.js';
 import type { RunSnapshot } from '../src/services/authoring/service.js';
 import { communityProjection } from '../src/services/proposals/projection.js';
 import { forChannel } from '../src/db/repositories/studio.js';
+import { reportHashOf } from '../src/db/version-health.js';
 const headers = { 'x-riff-request': '1' };
 const apps: RiffApp[] = [];
 const cleanups: (() => void)[] = [];
@@ -301,6 +302,7 @@ async function battle(app: RiffApp) {
     post(app, `/api/transitions/${transition.id}/approve`, {
       evidenceId: transition.evidenceId,
       artifactId: next.artifactId,
+      reportHash: reportHashOf(next),
       expectedActiveVersionId: base.id,
       sessionId: app.riff.repo.session(automation.id)!.id,
       boundary: (transition.plan as { boundary: string }).boundary,
@@ -691,6 +693,7 @@ it.each(['before approval', 'inside pending transaction'] as const)(
       const approval = await post(app, `/api/transitions/${transition.id}/approve`, {
         evidenceId: transition.evidenceId,
         artifactId: target.artifactId,
+        reportHash: reportHashOf(target),
         expectedActiveVersionId: f.base.id,
         sessionId: transition.sourceSessionId,
         boundary: 'round-end',

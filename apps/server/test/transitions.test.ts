@@ -8,6 +8,7 @@ import { sessionTransitions, sessionOutbox, versions } from '../src/db/schema.js
 import { eq } from 'drizzle-orm';
 import { forChannel } from '../src/db/repositories/studio.js';
 import type { VersionRow } from '../src/db/repositories/studio.js';
+import { reportHashOf } from '../src/db/version-health.js';
 const apps: RiffApp[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((a) => a.close()));
@@ -110,6 +111,7 @@ async function setup(database?: DatabaseConnection, effectsPerMinute = 120) {
       payload: {
         evidenceId: t.evidenceId,
         artifactId: target.artifactId,
+        reportHash: reportHashOf(target),
         expectedActiveVersionId: old.id,
         sessionId: repo.session(automation.id)!.id,
         boundary: (t.plan as { boundary: string }).boundary,
@@ -299,12 +301,49 @@ it('round-end approval on an already finished round applies immediately without 
   expect(r.json().transition.status).toBe('applied');
   expect(f.repo.session(f.automation.id)?.snapshot.phase).toBe('finished');
 });
+it('transition approval must name the target version test report the reviewer saw (F06)', async () => {
+  const f = await setup();
+  const t = await f.preview();
+  const stale = await f.app.inject({
+    method: 'POST',
+    url: `/api/transitions/${t.id}/approve`,
+    headers: { 'x-riff-request': '1' },
+    payload: {
+      evidenceId: t.evidenceId,
+      artifactId: f.next.artifactId,
+      reportHash: '0'.repeat(64),
+      expectedActiveVersionId: f.old.id,
+      sessionId: t.sourceSessionId,
+      boundary: 'immediate',
+    },
+  });
+  expect(stale.statusCode, stale.body).toBe(409);
+  const missing = await f.app.inject({
+    method: 'POST',
+    url: `/api/transitions/${t.id}/approve`,
+    headers: { 'x-riff-request': '1' },
+    payload: {
+      evidenceId: t.evidenceId,
+      artifactId: f.next.artifactId,
+      expectedActiveVersionId: f.old.id,
+      sessionId: t.sourceSessionId,
+      boundary: 'immediate',
+    },
+  });
+  expect(missing.statusCode).toBe(400);
+  expect(missing.json().message).toContain('test report');
+  expect(f.automation.id && f.repo.automation(f.automation.id)?.activeVersionId).toBe(f.old.id);
+  const r = await f.approve(t);
+  expect(r.statusCode, r.body).toBe(200);
+  expect(f.repo.version(f.next.id)?.approvedBy).toBe('console');
+});
 it('chat arriving during asynchronous activation is retained on the replacement engine', async () => {
   const f = await setup();
   const t = await f.preview();
   const activation = f.app.riff.studio.approveTransition(t.id, {
     evidenceId: t.evidenceId,
     artifactId: f.next.artifactId!,
+    reportHash: reportHashOf(f.next),
     expectedActiveVersionId: f.old.id,
     sessionId: t.sourceSessionId,
     boundary: 'immediate',
@@ -474,6 +513,7 @@ it('audits migration after an identical-definition activation with no intervenin
   await f.app.riff.studio.approveTransition(t.id, {
     evidenceId: t.evidenceId,
     artifactId: f.next.artifactId!,
+    reportHash: reportHashOf(f.next),
     expectedActiveVersionId: same.id,
     sessionId: t.sourceSessionId,
     boundary: 'immediate',
@@ -513,6 +553,7 @@ it('uses the same reviewed migration for compatible rollback against current pro
   await f.app.riff.studio.approveTransition(t.id, {
     evidenceId: t.evidenceId,
     artifactId: rename.artifactId!,
+    reportHash: reportHashOf(rename),
     expectedActiveVersionId: f.old.id,
     sessionId: t.sourceSessionId,
     boundary: 'immediate',
@@ -522,6 +563,7 @@ it('uses the same reviewed migration for compatible rollback against current pro
   await f.app.riff.studio.approveTransition(rollback.id, {
     evidenceId: rollback.evidenceId,
     artifactId: f.old.artifactId!,
+    reportHash: reportHashOf(f.old),
     expectedActiveVersionId: rename.id,
     sessionId: rollback.sourceSessionId,
     boundary: 'immediate',
@@ -732,6 +774,7 @@ it('CAS rejects a rollback target whose previous approval was removed after prep
     await f.app.riff.studio.approveTransition(forward.id, {
       evidenceId: forward.evidenceId,
       artifactId: rename.artifactId!,
+      reportHash: reportHashOf(rename),
       expectedActiveVersionId: f.old.id,
       sessionId: forward.sourceSessionId,
       boundary: 'immediate',
@@ -749,6 +792,7 @@ it('CAS rejects a rollback target whose previous approval was removed after prep
       f.app.riff.studio.approveTransition(t.id, {
         evidenceId: t.evidenceId,
         artifactId: f.old.artifactId!,
+        reportHash: reportHashOf(f.old),
         expectedActiveVersionId: rename.id,
         sessionId: t.sourceSessionId,
         boundary: 'immediate',
@@ -786,6 +830,7 @@ it('retains the automation cosmetic budget through migration, compatible rollbac
     await f.app.riff.studio.approveTransition(rollback.id, {
       evidenceId: rollback.evidenceId,
       artifactId: f.old.artifactId!,
+      reportHash: reportHashOf(f.old),
       expectedActiveVersionId: rename.id,
       sessionId: rollback.sourceSessionId,
       boundary: 'immediate',

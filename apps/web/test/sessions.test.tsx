@@ -387,13 +387,14 @@ it('validates transition wire evidence and sends exact approval identities', asy
   vi.stubGlobal('fetch', fetcher);
   const reviewed = await api.previewTransition('v2', 'immediate');
   expect(reviewed.migrationSource).toBe(t.migrationSource);
-  await api.approveTransition(reviewed);
+  await api.approveTransition(reviewed, 'f'.repeat(64));
   expect(fetcher).toHaveBeenLastCalledWith(
     '/api/transitions/t1/approve',
     expect.objectContaining({
       body: JSON.stringify({
         evidenceId: t.evidenceId,
         artifactId: t.plan.targetArtifactId,
+        reportHash: 'f'.repeat(64),
         expectedActiveVersionId: 'v1',
         sessionId: snapshot.id,
         boundary: 'immediate',
@@ -439,7 +440,9 @@ it('shows actual transition comparisons and requires existing authority consent 
   fireEvent.click(screen.getByLabelText(/I understand this grants more authority/));
   expect(button.hasAttribute('disabled')).toBe(false);
   fireEvent.click(button);
-  await waitFor(() => expect(approve).toHaveBeenCalledWith(t));
+  await waitFor(() =>
+    expect(approve).toHaveBeenCalledWith(t, expect.stringMatching(/^[a-f0-9]{64}$/)),
+  );
 });
 
 it.each(['boundary', 'source', 'version', 'session'] as const)(

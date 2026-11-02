@@ -502,10 +502,12 @@ export const api = {
       boundary,
       ...(migrationSource ? { migrationSource } : {}),
     }),
-  approveTransition: (t: Transition) =>
+  /** Approve the exact transition evidence and the target version's test report (F06). */
+  approveTransition: (t: Transition, reportHash: string) =>
     transitionRequest(`/api/transitions/${t.id}/approve`, {
       evidenceId: t.evidenceId,
       artifactId: t.plan.targetArtifactId,
+      reportHash,
       expectedActiveVersionId: t.sourceVersionId,
       sessionId: t.sourceSessionId,
       boundary: t.plan.boundary,

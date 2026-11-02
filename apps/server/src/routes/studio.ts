@@ -146,6 +146,7 @@ export function registerStudioRoutes(
       .object({
         evidenceId: z.string().regex(/^[a-f0-9]{64}$/),
         artifactId: z.string().regex(/^[a-f0-9]{64}$/),
+        reportHash: z.string().regex(/^[a-f0-9]{64}$/),
         expectedActiveVersionId: id,
         sessionId: id,
         boundary: z.enum(['immediate', 'round-end', 'stopped']),
@@ -155,7 +156,8 @@ export function registerStudioRoutes(
     if (!p.success || !body.success)
       return reply.code(400).send({
         code: 'INVALID',
-        message: 'Approval must bind exact transition evidence and source session.',
+        message:
+          'Approval must bind exact transition evidence, test report and source session. Reload the console and review again.',
       });
     try {
       return { transition: await studio.approveTransition(p.data.id, body.data) };

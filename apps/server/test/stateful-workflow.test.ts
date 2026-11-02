@@ -6,6 +6,7 @@ import { createApp, migrateConnection, type RiffApp } from '../src/app.js';
 import { openDatabase } from '../src/db/client.js';
 import type { LiveChatMessage } from '../src/services/live/runtime.js';
 import type { RunSnapshot } from '../src/services/authoring/service.js';
+import { reportHashOf } from '../src/db/version-health.js';
 const apps: RiffApp[] = [];
 afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
@@ -344,6 +345,7 @@ it('authors a preserving edit, reviews private comparisons, retains chat during 
       await post(`/api/transitions/${t.id}/approve`, {
         evidenceId: t.evidenceId,
         artifactId: t.plan.targetArtifactId,
+        reportHash: reportHashOf(app.riff.repo.version(t.targetVersionId as string)!),
         expectedActiveVersionId: t.sourceVersionId,
         sessionId: t.sourceSessionId,
         boundary: 'immediate',

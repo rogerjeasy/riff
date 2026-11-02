@@ -140,7 +140,7 @@ export function TransitionReview(props: {
     setBusy('approve');
     setMessage(null);
     try {
-      const result = await api.approveTransition(reviewed);
+      const result = await api.approveTransition(reviewed, version.reportHash);
       setProof(null);
       const text =
         result.status === 'pending'
