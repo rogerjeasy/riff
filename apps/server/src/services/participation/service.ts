@@ -13,7 +13,7 @@ import type { DatabaseConnection } from '../../db/client.js';
 import { participationState } from '../../db/schema.js';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { LiveChatMessage } from '../live/runtime.js';
-import { copy, mechanicsCopy, phaseCopy, ruleCopy } from './copy.js';
+import { copy, fairnessCopy, mechanicsCopy, phaseCopy, ruleCopy } from './copy.js';
 export const languageSchema = z.enum(['en', 'fr', 'es', 'de']);
 export const settingsSchema = z
   .object({
@@ -49,9 +49,12 @@ export function createParticipationService(deps: {
   blocked: () => boolean;
   changed: () => void;
   now?: () => number;
+  /** The approved, enabled director participation policy (F37/F40), or null when inactive. */
+  fairness?: () => 'fifo' | 'first-time' | 'rotation' | null;
 }) {
   const { database, repo } = deps,
-    now = deps.now ?? Date.now;
+    now = deps.now ?? Date.now,
+    fairness = () => deps.fairness?.() ?? null;
   let closed = false,
     temporary: { language: ParticipationLanguage; until: number } | null = null,
     helpUntil = 0,
@@ -80,6 +83,7 @@ export function createParticipationService(deps: {
     return JSON.stringify([
       language ?? null,
       settings().revision,
+      fairness(),
       deps.blocked(),
       repo.automations().map((a) => {
         const snapshot = repo.session(a.id)?.snapshot;
@@ -140,7 +144,8 @@ export function createParticipationService(deps: {
             e = m.experience,
             snapshot = repo.session(automation.id)?.snapshot;
           const phase = automation.status === 'paused' ? 'paused' : (snapshot?.phase ?? 'running');
-          const facts = ruleCopy(m, lang);
+          const facts = ruleCopy(m, lang),
+            fair = fairnessCopy(lang, fairness());
           const target = e?.objective.kind === 'collective-goal' ? e.objective.target : null;
           interactions.push({
             id: automation.id,
@@ -148,6 +153,8 @@ export function createParticipationService(deps: {
             phase,
             free: m.trigger.audience.includes('viewer'),
             ...facts,
+            // Explain an approved opportunity-rotation policy alongside the rules.
+            ...(fair ? { instructions: [...facts.instructions, fair].slice(0, 6) } : {}),
             // Event triggers (F19) have no chat command to copy.
             ...(m.trigger.kind === 'twitch.event'
               ? {}
@@ -239,6 +246,9 @@ export function createParticipationService(deps: {
           [status, round, facts.objective].filter(Boolean).join(' · ').slice(0, 200),
         );
       }
+      // An approved opportunity-rotation policy is explained after the phase line.
+      const fair = fairnessCopy(language, fairness());
+      if (fair) instructions.push(fair);
       return {
         instructions: instructions.slice(0, 6),
         language,

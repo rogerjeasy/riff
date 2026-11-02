@@ -53,6 +53,18 @@ function summary(state: DirectorState | null): { text: string; tone: Tone } {
   if (state.draft) return { text: 'Draft · not tested', tone: 'muted' };
   return { text: 'Not set up', tone: 'muted' };
 }
+/** Who wins a contested presentation slot; presentation only, never admission or scoring. */
+const PARTICIPATION_HINT: Record<Envelope['participation'], string> = {
+  'first-time': 'A viewer’s first action this round gets visual priority.',
+  rotation:
+    'Priority to viewers who haven’t had a turn yet: a contested slot goes to whoever waited longest, never by spending or subscription. Every action still counts.',
+  fifo: 'Effects appear in the order they were accepted.',
+};
+const PARTICIPATION_SUMMARY: Record<Envelope['participation'], string> = {
+  'first-time': 'first-timers first',
+  rotation: 'rotating turns',
+  fifo: 'arrival order',
+};
 const seconds = (ms: number) => `${(ms / 1000).toFixed(ms % 1000 ? 1 : 0)} s`;
 const settingsLine = (s: Settings) =>
   `every ${seconds(s.intervalMs)} · ${s.batchSize} ${s.batchSize === 1 ? 'effect' : 'effects'} · ${s.intensity}%`;
@@ -314,15 +326,12 @@ export function DirectorPanel({ versions, panic }: { versions: Version[]; panic:
                     value={envelope.participation}
                     options={[
                       { value: 'first-time', label: 'First-timers first' },
+                      { value: 'rotation', label: 'Rotate turns' },
                       { value: 'fifo', label: 'Arrival order' },
                     ]}
                     onChange={(participation) => setEnvelope({ ...envelope, participation })}
                   />
-                  <span className="panel-hint">
-                    {envelope.participation === 'first-time'
-                      ? 'A viewer’s first action this round gets visual priority.'
-                      : 'Effects appear in the order they were accepted.'}
-                  </span>
+                  <span className="panel-hint">{PARTICIPATION_HINT[envelope.participation]}</span>
                 </div>
               </div>
               {problems.length > 0 && (
@@ -532,7 +541,7 @@ export function DirectorPanel({ versions, panic }: { versions: Version[]; panic:
             />
             <p className="panel-hint">
               At most {approved.envelope.interruptionsPerMinute} interruptions per minute ·{' '}
-              {approved.envelope.participation === 'fifo' ? 'arrival order' : 'first-timers first'}
+              {PARTICIPATION_SUMMARY[approved.envelope.participation]}
             </p>
           </div>
         )}

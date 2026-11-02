@@ -26,6 +26,12 @@ export const DIRECTOR_LIMITS = {
   interruptionWindowMs: 60_000,
   decisions: 50,
 } as const;
+/** Visible adaptation reason for each approved participation policy (console decision log). */
+export const PARTICIPATION_REASON = {
+  fifo: 'Arrival order kept.',
+  'first-time': 'First-time participants were shown first.',
+  rotation: 'Priority to viewers who haven’t had a turn yet.',
+} as const;
 /**
  * Why a decision was recorded. Consecutive decisions of one kind are merged so a burst
  * cannot push the creator-relevant reasons (mode changes, clears, limits) out of history.
@@ -48,10 +54,12 @@ export function createDirectorPolicy(raw: DirectorEnvelope) {
   let settings: DirectorSettings = regular();
   let clock = 0,
     lastBatch = 0;
-  let pending: { frame: DirectorFrame; at: number; first: boolean }[] = [];
+  let pending: { frame: DirectorFrame; at: number; first: boolean; viewer: string }[] = [];
   // Insertion-ordered maps: the oldest identity is evicted first when memory is full.
   const seen = new Map<string, number>(),
-    participants = new Map<string, number>();
+    participants = new Map<string, number>(),
+    // Rotation memory: viewer id -> clock of their last presented turn (bounded, oldest evicted).
+    turns = new Map<string, number>();
   let activity: number[] = [],
     interruptions: number[] = [];
   const counters = { accepted: 0, offered: 0, presented: 0, coalesced: 0, expired: 0, cleared: 0 };
@@ -89,6 +97,33 @@ export function createDirectorPolicy(raw: DirectorEnvelope) {
       map.delete(k);
     }
     map.set(key, clock);
+  }
+  /**
+   * Opportunity rotation: each contested slot goes to the pending viewer whose last turn is
+   * oldest (never shown first). Ties keep arrival order, so replay is exact. A viewer picked
+   * for this batch goes to the back, so a batch spreads across distinct viewers. Only
+   * presentation order changes; accepted gameplay was already counted before enqueue.
+   */
+  function rotate(slots: number) {
+    const rank = (viewer: string, picked: Set<string>) =>
+      picked.has(viewer) ? Infinity : (turns.get(viewer) ?? -1);
+    let rest = pending;
+    const chosen: typeof pending = [];
+    const picked = new Set<string>();
+    while (chosen.length < slots && rest.length) {
+      // reduce keeps the earliest arrival on equal rank, so ties stay in arrival order.
+      const next = rest.reduce((best, p) =>
+        rank(p.viewer, picked) < rank(best.viewer, picked) ? p : best,
+      );
+      chosen.push(next);
+      picked.add(next.viewer);
+      rest = rest.filter((p) => p !== next);
+    }
+    for (const viewer of picked) {
+      turns.delete(viewer);
+      remember(turns, viewer, DIRECTOR_LIMITS.participantTtlMs);
+    }
+    return chosen;
   }
   function advance(at: number) {
     if (!Number.isSafeInteger(at) || at < 0)
@@ -143,7 +178,12 @@ export function createDirectorPolicy(raw: DirectorEnvelope) {
           counters.coalesced++;
           continue;
         }
-        pending.push({ frame: structuredClone(frame), at: clock, first: first && index === 0 });
+        pending.push({
+          frame: structuredClone(frame),
+          at: clock,
+          first: first && index === 0,
+          viewer: input.viewerId,
+        });
       }
       adapt();
     },
@@ -164,7 +204,10 @@ export function createDirectorPolicy(raw: DirectorEnvelope) {
       limitReported = false;
       if (envelope.participation === 'first-time')
         pending.sort((a, b) => Number(b.first) - Number(a.first));
-      const chosen = pending.slice(0, settings.batchSize);
+      const chosen =
+        envelope.participation === 'rotation'
+          ? rotate(settings.batchSize)
+          : pending.slice(0, settings.batchSize);
       const coalesced = pending.length - chosen.length;
       counters.coalesced += coalesced;
       counters.presented += chosen.length;
@@ -177,7 +220,7 @@ export function createDirectorPolicy(raw: DirectorEnvelope) {
       batch.coalesced += coalesced;
       record(
         'batch',
-        `Showed ${batch.presented} ${batch.presented === 1 ? 'effect' : 'effects'} in ${batch.batches} ${batch.batches === 1 ? 'batch' : 'batches'} and merged ${batch.coalesced} extra. ${envelope.participation === 'first-time' ? 'First-time participants were shown first.' : 'Arrival order kept.'} Gameplay is unchanged.`,
+        `Showed ${batch.presented} ${batch.presented === 1 ? 'effect' : 'effects'} in ${batch.batches} ${batch.batches === 1 ? 'batch' : 'batches'} and merged ${batch.coalesced} extra. ${PARTICIPATION_REASON[envelope.participation]} Gameplay is unchanged.`,
         true,
       );
       return chosen.map((p) => ({ ...p.frame, intensity: settings.intensity }));

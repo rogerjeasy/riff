@@ -3,8 +3,11 @@
 `participation_state` stores revisioned broadcast language/motion/contrast/effect-label
 preferences and bounded help receipts per channel. Settings are presentation only;
 approved commands, eligibility, limits and scoring stay under the existing host engine.
-The existing director's optional first-participation policy prioritizes cosmetics;
-accepted gameplay contributions are never dropped by that presentation policy.
+The existing director's optional first-participation or opportunity-rotation policy
+prioritizes cosmetics; accepted gameplay contributions are never dropped by that
+presentation policy. While an approved rotation policy is enabled, each interaction's rules
+and the on-stream guidance end with the reviewed `fairnessCopy` line ("Priority to viewers
+who haven’t had a turn yet", en/fr/es/de).
 
 GET `/api/participation` and POST `/api/participation/settings` use the existing private
 session and mutation guards. Saves require `expectedRevision`; a 400 names the invalid

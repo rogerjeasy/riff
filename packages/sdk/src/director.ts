@@ -5,7 +5,12 @@ export interface DirectorEnvelope {
   batchSize: { min: number; max: number };
   intensity: { min: number; max: number };
   interruptionsPerMinute: number;
-  participation: 'fifo' | 'first-time';
+  /**
+   * Who is shown first when presentation slots are contested: arrival order, a viewer's
+   * first action in the round, or rotation (whoever waited longest since their last turn).
+   * Presentation priority only; never admission, scoring, spending or subscription status.
+   */
+  participation: 'fifo' | 'first-time' | 'rotation';
 }
 export interface DirectorSettings {
   intervalMs: number;

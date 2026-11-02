@@ -816,7 +816,12 @@ balanced/gameplay mode, lock or in-envelope manual settings; stop fences memory
 before persistence. History restores as a new draft requiring fresh review.
 
 Approved bounds: 250–2000 ms batch interval, 1–6 effects/batch, 25–100% intensity,
-1–60 interruptions per rolling minute, FIFO or first-participation visual priority.
+1–60 interruptions per rolling minute, FIFO, first-participation or opportunity-rotation
+visual priority. Rotation (F40) gives each contested slot to the pending viewer whose last
+presented turn is oldest (never shown first, ties by arrival), spreads one batch across
+distinct viewers, explains "Priority to viewers who haven’t had a turn yet" in the decision
+log and, while approved and enabled, adds that reviewed en/fr/es/de line to on-stream rules
+and `/participate`. It reads no spending or subscription data.
 The host selects calm settings at >=8 queued cosmetics or >=12 accepted actions
 in 10 seconds, or in creator-selected gameplay mode. Pending cosmetics cap at 120,
 expire after 5 seconds, and are counted as presented, coalesced, expired or cleared.

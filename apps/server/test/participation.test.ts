@@ -788,3 +788,57 @@ it('keeps pre-F40 recipe digests by omitting false contrast and label presentati
     highContrast: true,
   });
 });
+it('explains an approved opportunity-rotation policy on stream in the selected language (F37/F40)', async () => {
+  const app = await setup();
+  const v = await live(app);
+  const director = (action: string, payload: object) =>
+    app.inject({
+      method: 'POST',
+      url: `/api/director/${action}`,
+      payload,
+      headers: { 'x-riff-request': '1' },
+    });
+  const rotation = 'Priority to viewers who haven’t had a turn yet';
+  const lines = () => app.riff.participation.presentation(v.id, null)?.instructions ?? [];
+  const companion = async (query = '') =>
+    (await app.inject(`/participation${query}`)).json().interactions[0];
+  expect(lines()).not.toContain(rotation);
+  const { DEFAULT_DIRECTOR_ENVELOPE } = await import('@riff/sdk');
+  await director('draft', {
+    expectedRevision: 0,
+    envelope: { ...DEFAULT_DIRECTOR_ENVELOPE, participation: 'rotation' },
+  });
+  const rehearsed = (await director('rehearse', { expectedRevision: 1, versionId: v.id })).json()
+    .state;
+  const evidence = rehearsed.draft.evidence;
+  expect(evidence.passed).toBe(true);
+  // The private rehearsal shows the rotation reason in the console decision log.
+  expect(
+    evidence.telemetry.decisions.some((d: { reason: string }) =>
+      d.reason.includes('Priority to viewers who haven’t had a turn yet.'),
+    ),
+  ).toBe(true);
+  // Nothing is announced until the creator approves the policy.
+  expect(lines()).not.toContain(rotation);
+  await director('approve', {
+    expectedRevision: rehearsed.revision,
+    digest: rehearsed.draft.digest,
+    evidenceHash: evidence.hash,
+  });
+  expect(lines()).toContain(rotation);
+  expect((await companion()).instructions).toContain(rotation);
+  expect((await companion('?language=fr')).instructions).toContain(
+    'Priorité aux spectateurs qui n’ont pas encore eu leur tour',
+  );
+  expect(
+    app.riff.participation.presentation(v.id, {
+      language: 'de',
+      reducedMotion: false,
+      instructions: [],
+    })?.instructions,
+  ).toContain('Vorrang für Zuschauer, die noch nicht an der Reihe waren');
+  // Rotation never gates participation: the command stays free for everyone.
+  expect(await companion()).toMatchObject({ free: true, audience: ['viewer'] });
+  await director('stop', {});
+  expect(lines()).not.toContain(rotation);
+});

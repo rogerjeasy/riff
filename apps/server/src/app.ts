@@ -251,6 +251,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     repo,
     blocked: () => runtime.panicked,
     changed: () => hub.publish('studio', null),
+    fairness: () => directorService.participation(),
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   participationRef.current = participation;

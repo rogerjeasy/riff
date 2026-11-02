@@ -79,6 +79,46 @@ it('saves only a draft and never enables controls before approval', async () => 
   expect(init.headers).toMatchObject({ 'x-riff-request': '1' });
 });
 
+it('lets the creator choose opportunity rotation and explains it before saving the draft', async () => {
+  const state = {
+    revision: 0,
+    draft: null,
+    approved: null,
+    enabled: false,
+    mode: 'balanced',
+    settings: null,
+    history: [],
+    telemetry: null,
+  };
+  const fetcher = vi.fn(
+    async (_url: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ state }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  render(<DirectorPanel versions={[]} panic={false} />);
+  fireEvent.click(screen.getByRole('button', { name: /Adaptive director/ }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Save draft only' }).closest('fieldset')?.disabled,
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Rotate turns' }));
+  expect(screen.getByRole('button', { name: 'Rotate turns' }).getAttribute('aria-pressed')).toBe(
+    'true',
+  );
+  expect(screen.getByText(/Priority to viewers who haven’t had a turn yet/)).toBeTruthy();
+  expect(screen.getByText(/never by spending or subscription/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Save draft only' }));
+  await waitFor(() =>
+    expect(fetcher.mock.calls.some(([url]) => url === '/api/director/draft')).toBe(true),
+  );
+  const init = fetcher.mock.calls.find(([url]) => url === '/api/director/draft')?.[1];
+  expect(JSON.parse(init?.body as string).envelope.participation).toBe('rotation');
+});
+
 it('fences a pending draft response after immediate stop and preserves edited inputs', async () => {
   const state = {
     revision: 0,

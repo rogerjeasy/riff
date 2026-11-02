@@ -16,7 +16,7 @@ export const directorEnvelopeSchema = z
     batchSize: range(1, 6),
     intensity: range(25, 100),
     interruptionsPerMinute: z.number().int().min(1).max(60),
-    participation: z.enum(['fifo', 'first-time']),
+    participation: z.enum(['fifo', 'first-time', 'rotation']),
   })
   .strict();
 export const directorSettingsSchema = z

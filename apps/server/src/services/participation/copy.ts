@@ -516,3 +516,21 @@ function mechanicsParts(
 function bounded(lines: string[]) {
   return lines.map((line) => line.slice(0, MAX_LINE)).slice(0, 5);
 }
+
+/**
+ * Reviewed on-stream explanation of the approved director fairness policy. Only opportunity
+ * rotation is announced: it is the policy viewers can act on ("wait your turn"); arrival
+ * order and first-time priority need no viewer-facing line.
+ */
+const FAIRNESS_COPY: Record<ParticipationLanguage, string> = {
+  en: 'Priority to viewers who haven’t had a turn yet',
+  fr: 'Priorité aux spectateurs qui n’ont pas encore eu leur tour',
+  es: 'Prioridad para quienes aún no han tenido su turno',
+  de: 'Vorrang für Zuschauer, die noch nicht an der Reihe waren',
+};
+export function fairnessCopy(
+  language: ParticipationLanguage,
+  policy: 'fifo' | 'first-time' | 'rotation' | null,
+): string | null {
+  return policy === 'rotation' ? FAIRNESS_COPY[language] : null;
+}

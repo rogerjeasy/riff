@@ -4,6 +4,17 @@ The director is a channel-scoped host presentation service. Approved ranges cont
 projectile batching, frequency and intensity. The policy uses accepted activity and
 queue depth; it never changes gameplay admission, scores, resources or eligibility.
 
+Participation policy decides who wins a contested presentation slot: `fifo` (arrival
+order), `first-time` (a viewer's first action this round) or `rotation` (F40 opportunity
+rotation). Rotation gives each slot to the pending viewer whose last presented turn is
+oldest — never-shown viewers first, ties by arrival order, so replay is exact — and puts a
+viewer already picked for this batch behind everyone else. Turn memory is bounded like
+identity memory. The policy sees only viewer id, round and arrival; it has no spending,
+subscription or role input, and it only orders cosmetics that were already counted. Batch
+decisions say "Priority to viewers who haven’t had a turn yet." `participation()` exposes the
+approved policy while presentation is enabled so the participation service can explain it
+on stream (`fairnessCopy`, en/fr/es/de).
+
 `policy.ts` is deterministic, has no I/O or clock dependency, bounds pending effects
 at 120 and expires them after five seconds. `rehearsal.ts` runs an exact stored
 artifact twice in isolated sandbox rehearsals, compares evidence and state, and

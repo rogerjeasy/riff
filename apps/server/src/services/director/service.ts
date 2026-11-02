@@ -95,6 +95,10 @@ export function createDirectorService(deps: {
   }
   const api = {
     view,
+    /** Approved participation policy while presentation is enabled; null otherwise. */
+    participation() {
+      return enabled && state.approved && !closed ? state.approved.envelope.participation : null;
+    },
     save(expected: number, raw: DirectorEnvelope) {
       current(expected);
       const parsed = directorEnvelopeSchema.safeParse(raw);
