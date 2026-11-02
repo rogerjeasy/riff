@@ -248,6 +248,9 @@ it('creates an agreement from distinct roles and preserves the creator’s publi
     status: 'waiting',
     reason: null,
     members: [],
+    lost: [],
+    waitUntil: null,
+    decisions: [],
   });
   const versions = [
     {
@@ -268,6 +271,7 @@ it('creates an agreement from distinct roles and preserves the creator’s publi
   fireEvent.click(screen.getByRole('button', { name: 'Create shared agreement' }));
   await waitFor(() => expect(create).toHaveBeenCalled());
   expect(create.mock.calls[0]?.[0]).toBe(contract.versionId);
+  expect(create.mock.calls[0]?.[2]).toBe(false);
   expect(create.mock.calls[0]?.[1][1]).toMatchObject({
     channelId: '200',
     required: false,
@@ -322,9 +326,12 @@ it('guides the host through approve, invite and start with the reason start is b
       status: 'waiting',
       reason: 'Waiting for Steer to approve and connect.',
       members: [
-        { roleId: 'repair', approved: true, connected: true },
-        { roleId: 'steer', approved: false, connected: false },
+        { roleId: 'repair', approved: true, connected: true, dropped: false, presenting: false },
+        { roleId: 'steer', approved: false, connected: false, dropped: false, presenting: false },
       ],
+      lost: [],
+      waitUntil: null,
+      decisions: [],
     },
   ];
   vi.spyOn(collaborationApi, 'status').mockResolvedValue(initial);
@@ -375,4 +382,80 @@ it('leads the stream card with the command, a goal meter and a smooth countdown'
   expect(root.textContent).not.toContain('left');
   expect(root.querySelector('.shared-cta')).toBeNull();
   expect(root.textContent).not.toContain('can type');
+});
+
+it('offers the host an explicit choice when a required channel is missing and shows decisions', async () => {
+  const initial = status();
+  initial.member.review = null;
+  initial.member.state = 'idle';
+  const paused = {
+    contract: contract as never,
+    revision: 7,
+    status: 'paused' as const,
+    reason: 'Steer left. The host can wait, continue without them, or end the round.',
+    members: [
+      { roleId: 'repair', approved: true, connected: true, dropped: false, presenting: false },
+      { roleId: 'steer', approved: false, connected: false, dropped: false, presenting: false },
+    ],
+    lost: ['steer'],
+    waitUntil: null,
+    decisions: [{ code: 'HANDOFF', at: 1000 }],
+  };
+  initial.sessions = [paused];
+  vi.spyOn(collaborationApi, 'status').mockResolvedValue(initial);
+  const control = vi.spyOn(collaborationApi, 'control').mockResolvedValue(paused);
+  render(<CollaborationPanel versions={[]} panic={false} />);
+  const choice = await screen.findByRole('region', { name: 'Missing channel choice' });
+  expect(choice.textContent).toContain('Steer is missing');
+  fireEvent.click(screen.getByRole('button', { name: 'Wait 2 minutes' }));
+  await waitFor(() =>
+    expect(control).toHaveBeenCalledWith(contract.id, 7, 'wait', expect.anything()),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Continue without Steer' }));
+  await waitFor(() =>
+    expect(control).toHaveBeenCalledWith(contract.id, 7, 'continue', expect.anything()),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'End and show results' }));
+  await waitFor(() =>
+    expect(control).toHaveBeenCalledWith(contract.id, 7, 'end', expect.anything()),
+  );
+  expect(screen.getByText(/Host decisions · 1/)).toBeTruthy();
+});
+it('shows bursts, tier and the raid presenter on the overlay only when granted', () => {
+  const root = document.createElement('section');
+  renderCollaboration(
+    root,
+    projectionSchema.parse({
+      sessionId: contract.id,
+      digest: contract.digest,
+      revision: 2,
+      title: 'Ship',
+      roleId: 'steer',
+      roleLabel: 'Steer',
+      status: 'running',
+      reason: null,
+      instructions:
+        'Steer: Everyone can type !steer · 2 different viewers within 10s trigger Boost.',
+      bursts: 2,
+      tier: 1,
+      presenter: 'Steer',
+    }),
+  );
+  expect(root.textContent).toContain('2 bursts');
+  expect(root.textContent).toContain('tier 1');
+  expect(root.textContent).toContain('continuing here after the raid');
+  expect(
+    projectionSchema.safeParse({
+      sessionId: contract.id,
+      digest: contract.digest,
+      revision: 2,
+      title: 'Ship',
+      roleId: 'steer',
+      roleLabel: 'Steer',
+      status: 'running',
+      reason: null,
+      instructions: 'x',
+      tier: 9,
+    }).success,
+  ).toBe(false);
 });

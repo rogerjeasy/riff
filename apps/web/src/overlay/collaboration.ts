@@ -63,6 +63,15 @@ export function renderCollaboration(
   if (remaining !== undefined && !over) values.push(`${clock(remaining)} left`);
   if (projection.contributions !== undefined)
     values.push(`${projection.contributions} from this channel`);
+  if (projection.bursts !== undefined) values.push(`${projection.bursts} bursts`);
+  if (projection.tier) values.push(`tier ${projection.tier}`);
+  // After an opted-in raid handoff every channel says where the round continues.
+  if (projection.presenter)
+    values.push(
+      projection.presenter === projection.roleLabel
+        ? 'continuing here after the raid'
+        : `continuing with ${projection.presenter}`,
+    );
   root.setAttribute(
     'aria-label',
     [

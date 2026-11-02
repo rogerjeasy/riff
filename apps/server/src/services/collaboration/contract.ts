@@ -11,7 +11,18 @@ export const SHARED_LIMITS = Object.freeze({
   inviteMs: 900000,
   leaseMs: 10000,
   pollMs: 2000,
+  /** How long the host may choose to wait for a lost required channel. */
+  waitMs: 120000,
 });
+/**
+ * What a role's command does inside the one pinned shared definition. Absent means
+ * `contribute` (the original single shared action). `burst` and `unlock:<milestone>` map to
+ * the definition's own version 2 commands, so no role gains authority the definition lacks.
+ */
+export const sharedActionSchema = z
+  .string()
+  .regex(/^(contribute|burst|unlock:[a-z][a-z0-9-]{0,31})$/, 'Unknown shared action');
+export type SharedAction = z.infer<typeof sharedActionSchema>;
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/);
 const safeText = (max: number) =>
   z
@@ -35,9 +46,10 @@ export const roleSchema = z
       .regex(/^![a-z0-9_-]{1,32}$/)
       .refine((s) => s !== '!riff', 'Reserved command'),
     required: z.boolean(),
+    action: sharedActionSchema.optional(),
     fields: z
-      .array(z.enum(['score', 'remaining', 'contributions']))
-      .max(3)
+      .array(z.enum(['score', 'remaining', 'contributions', 'mechanics']))
+      .max(4)
       .refine((v) => new Set(v).size === v.length),
   })
   .strict();
@@ -63,25 +75,67 @@ export const contractSchema = z
     tests: scenariosSchema,
     title: safeText(120),
     roles: rolesSchema,
+    /** Opt-in, approved by every channel: a raid from the host may hand off presentation. */
+    raidHandoff: z.boolean().optional(),
   })
   .strict()
   .superRefine((contract, ctx) => {
-    const definition = contract.artifact.manifest.experience;
-    // Version 2 mechanics are not part of the reviewed shared projection yet.
-    if (
-      !definition ||
-      definition.version !== 1 ||
-      definition.teams.length ||
-      definition.objective.kind !== 'collective-goal'
-    )
-      ctx.addIssue({ code: 'custom', message: 'Sharing requires a teamless cooperative round' });
+    const problem = sharedProblem(contract.artifact.manifest.experience, contract.roles);
+    if (problem) ctx.addIssue({ code: 'custom', message: problem });
   });
+type Definition = NonNullable<z.infer<typeof artifactSchema>['manifest']['experience']>;
+/**
+ * Shared sessions are cooperative and teamless. Version 2 burst and milestones work on the
+ * one community side. Health needs two or more opposing teams (and is therefore impossible
+ * here); best-of-N `match` is excluded because its intermissions reset the shared pool and
+ * would need a separate reviewed continuity model for departures and raid handoff.
+ */
+export function sharedProblem(
+  definition: Definition | null | undefined,
+  roles: readonly Pick<SharedRole, 'action'>[],
+): string | null {
+  if (!definition || definition.teams.length)
+    return 'Sharing requires a teamless cooperative round';
+  const kind = definition.objective.kind;
+  if (kind !== 'collective-goal' && !(kind === 'burst' && definition.version === 2))
+    return 'Sharing requires a teamless cooperative round';
+  if (definition.version === 2 && (definition.mechanics?.match || definition.mechanics?.health))
+    return 'Shared rounds support burst and milestones; best-of-N matches and health are excluded';
+  for (const role of roles)
+    if (actionCommand(definition, role.action) === null)
+      return 'Every role action must use a command from the approved definition';
+  if (!objectiveReachable(definition, roles))
+    return 'At least one role must be able to reach the shared objective';
+  return null;
+}
+/** The definition command a role action dispatches, or null when the definition lacks it. */
+export function actionCommand(definition: Definition, action: SharedAction | undefined) {
+  if (!action || action === 'contribute') return definition.contribution.command;
+  if (definition.version !== 2) return null;
+  if (action === 'burst') return definition.mechanics?.burst?.command ?? null;
+  const id = action.slice('unlock:'.length);
+  return definition.mechanics?.milestones.find((m) => m.id === id)?.unlock?.command ?? null;
+}
+/** Whether these roles' actions can still complete the objective (contributions or bursts). */
+export function objectiveReachable(
+  definition: Definition,
+  roles: readonly Pick<SharedRole, 'action'>[],
+) {
+  const actions = new Set(roles.map((r) => r.action ?? 'contribute'));
+  if (definition.objective.kind === 'burst' && definition.mechanics?.burst?.command)
+    return actions.has('burst');
+  return actions.has('contribute');
+}
 export type SharedContract = z.infer<typeof contractSchema>;
 /** Exact public recipe identity; approval excludes no rule, role or test. */
 export function contractDigest(contract: Omit<SharedContract, 'digest'> | SharedContract): string {
-  const { id, versionId, artifactId, artifact, tests, title, roles } = contract;
+  // Optional additions (raidHandoff, role.action) serialize away when absent, so digests of
+  // agreements created before them stay stable.
+  const { id, versionId, artifactId, artifact, tests, title, roles, raidHandoff } = contract;
   return createHash('sha256')
-    .update(JSON.stringify({ id, versionId, artifactId, artifact, tests, title, roles }))
+    .update(
+      JSON.stringify({ id, versionId, artifactId, artifact, tests, title, roles, raidHandoff }),
+    )
     .digest('hex');
 }
 export const sharedStatusSchema = z.enum(['waiting', 'running', 'paused', 'finished']);
@@ -105,6 +159,11 @@ export const projectionSchema = z
       .min(0)
       .max(SESSION_LIMITS.maxParticipants * SESSION_LIMITS.resourcePerParticipant)
       .optional(),
+    /** Version 2 community standing, granted by the `mechanics` field. */
+    bursts: z.number().int().min(0).max(1000).optional(),
+    tier: z.number().int().min(0).max(4).optional(),
+    /** Role label of the channel presenting after an approved raid handoff. */
+    presenter: safeText(60).optional(),
   })
   .strict();
 export type SharedProjection = z.infer<typeof projectionSchema>;
@@ -139,13 +198,36 @@ export interface SharedMember {
   expiresAt: number;
   approved: boolean;
   leaseUntil: number;
+  /** The host chose to continue without this required role; it no longer gates play. */
+  dropped?: boolean;
+  /** The host chose to wait for this lost role until this time. */
+  waitUntil?: number;
+  /** This role presents the shared session after an approved raid handoff. */
+  presenting?: boolean;
+  /** This (raiding) role handed off presentation; its departure no longer pauses play. */
+  released?: boolean;
+}
+/** One audited host decision: continuation choices and raid handoffs. */
+export interface SharedDecisionRecord {
+  code: string;
+  at: number;
 }
 export interface SharedView {
   contract: SharedContract;
   revision: number;
   status: z.infer<typeof sharedStatusSchema>;
   reason: string | null;
-  members: { roleId: string; approved: boolean; connected: boolean }[];
+  members: {
+    roleId: string;
+    approved: boolean;
+    connected: boolean;
+    dropped: boolean;
+    presenting: boolean;
+  }[];
+  /** Required roles that are gone while play is paused: the host's continuation choice. */
+  lost: string[];
+  waitUntil: number | null;
+  decisions: SharedDecisionRecord[];
 }
 export class CollaborationError extends Error {
   constructor(
@@ -165,11 +247,24 @@ export function sharedPresentation(contract: SharedContract, roleId: string) {
     throw new CollaborationError('BLOCKED', 'The approved shared role is missing.');
   const audience = contract.artifact.manifest.trigger.audience;
   const who = audience.includes('viewer') ? 'Everyone' : audience.join(' or ');
+  const burst = rule.version === 2 ? rule.mechanics?.burst : null;
+  const milestone =
+    role.action?.startsWith('unlock:') && rule.version === 2
+      ? rule.mechanics?.milestones.find((m) => `unlock:${m.id}` === role.action)
+      : undefined;
+  const effect =
+    role.action === 'burst' && burst
+      ? `${burst.participants} different viewers within ${Math.ceil(burst.windowMs / 1000)}s trigger ${burst.label}${burst.points ? ` (+${burst.points} points)` : ''}.`
+      : milestone?.unlock
+        ? `unlocks after ${milestone.label} · +${milestone.unlock.points} points, one ${rule.resource.name} each.`
+        : `${rule.resource.perParticipant} ${rule.resource.name} per person this round.`;
   return {
     title: contract.title,
     roleLabel: role.label,
-    instructions: `${role.label}: ${who} can type ${role.command} · ${rule.resource.perParticipant} ${rule.resource.name} per person this round.`,
-    ...(role.fields.includes('score') && rule.objective.target !== null
+    instructions: `${role.label}: ${who} can type ${role.command} · ${effect}`,
+    ...(role.fields.includes('score') &&
+    rule.objective.kind === 'collective-goal' &&
+    rule.objective.target !== null
       ? { target: rule.objective.target }
       : {}),
   };

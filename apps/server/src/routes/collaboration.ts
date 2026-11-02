@@ -63,12 +63,12 @@ export function registerCollaborationRoutes(
   });
   privateAction(
     '/create',
-    z.object({ versionId: uuid, roles: rolesSchema }).strict(),
-    async ({ versionId, roles }) => {
+    z.object({ versionId: uuid, roles: rolesSchema, raidHandoff: z.boolean().optional() }).strict(),
+    async ({ versionId, roles, raidHandoff }) => {
       if (!deps.configured) throw new Error('Configure RIFF_SECRET before connecting channels.');
       if (['connected', 'paused'].includes(deps.member.status().state))
         throw new Error('Leave the current shared session first.');
-      return { session: await deps.coordinator.create(versionId, roles) };
+      return { session: await deps.coordinator.create(versionId, roles, raidHandoff ?? false) };
     },
   );
   privateAction(
@@ -115,7 +115,7 @@ export function registerCollaborationRoutes(
       .object({
         sessionId: uuid,
         expectedRevision: z.number().int().nonnegative(),
-        action: z.enum(['start', 'pause', 'resume']),
+        action: z.enum(['start', 'pause', 'resume', 'wait', 'continue', 'end']),
       })
       .strict(),
     ({ sessionId, expectedRevision, action }) => ({
@@ -165,6 +165,16 @@ export function registerCollaborationRoutes(
   );
   peer('heartbeat', empty, (token) => deps.coordinator.heartbeat(token));
   peer('input', inputSchema, (token, body) => deps.coordinator.input(token, body));
+  peer(
+    'handoff',
+    z
+      .object({
+        eventId: z.string().min(1).max(100),
+        fromChannelId: z.string().regex(/^\d{1,32}$/),
+      })
+      .strict(),
+    (token, body) => deps.coordinator.handoff(token, body),
+  );
   peer('leave', empty, (token) => {
     deps.coordinator.leave(token);
     return { ok: true };

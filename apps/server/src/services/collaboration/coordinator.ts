@@ -17,8 +17,10 @@ import {
   type CollaborationRow,
 } from '../../db/repositories/collaboration.js';
 import {
+  actionCommand,
   CollaborationError,
   contractSchema,
+  objectiveReachable,
   sharedPresentation,
   contractDigest,
   inputSchema,
@@ -155,10 +157,54 @@ export function createCoordinator(deps: {
   }
   /** How a finished round ended, in the words both channels see. */
   function endReason(row: CollaborationRow) {
-    const target = definition(row).objective.target;
-    return target !== null && (row.snapshot.scores.community ?? 0) >= target
+    const rule = definition(row);
+    const target = rule.objective.target;
+    return row.snapshot.outcome === 'goal' ||
+      (rule.objective.kind === 'collective-goal' &&
+        target !== null &&
+        (row.snapshot.scores.community ?? 0) >= target)
       ? 'The goal was reached together.'
       : 'Time ran out before the goal.';
+  }
+  const roleOf = (row: CollaborationRow, member: SharedMember) =>
+    row.contract.roles.find((r) => r.id === member.roleId);
+  /** Required roles still gating play: not dropped by the host and not released by a raid. */
+  function gating(row: CollaborationRow) {
+    return row.members.filter((m) => roleOf(row, m)?.required && !m.dropped && !m.released);
+  }
+  const connected = (m: SharedMember) => m.approved && m.leaseUntil > now();
+  const lostOf = (row: CollaborationRow) => gating(row).filter((m) => !connected(m));
+  const labels = (row: CollaborationRow, members: SharedMember[]) =>
+    members.map((m) => roleOf(row, m)?.label ?? m.roleId).join(', ');
+  const waitDeadline = (row: CollaborationRow) =>
+    Math.min(...row.members.map((m) => m.waitUntil ?? Infinity));
+  /** Persist a host decision with its audit receipt in one transaction. */
+  function decide(row: CollaborationRow, code: string, eventId = `audit:${randomUUID()}`) {
+    store.atomic(() => {
+      save(row);
+      store.receipt(row.id, eventId, code, now());
+    });
+    return row;
+  }
+  /** Shared resume checks for start, resume, continue-without and an answered wait. */
+  function resumable(row: CollaborationRow, all: boolean) {
+    if (hostBlocked())
+      return fail('BLOCKED', 'Resume this channel before resuming the shared session.');
+    ensureHealthy(row);
+    const needed = all ? row.members : gating(row);
+    if (needed.some((m) => !connected(m)))
+      return fail(
+        'BLOCKED',
+        'Every required channel must approve and connect before shared play starts.',
+      );
+    if (store.list().some((other) => other.id !== row.id && other.status === 'running'))
+      return fail('LIMIT', 'Pause the other shared session before starting this one.');
+    fence(row.id);
+    row.snapshot = resumeSession(row.snapshot, Math.max(now(), row.snapshot.updatedAt));
+    row.status = 'running';
+    row.started = true;
+    row.reason = null;
+    row.members.forEach((m) => delete m.waitUntil);
   }
   /** While waiting, say exactly who is missing instead of a stale creation-time message. */
   function reasonOf(row: CollaborationRow): string | null {
@@ -174,6 +220,7 @@ export function createCoordinator(deps: {
   function projection(row: CollaborationRow, member: SharedMember): SharedProjection {
     const role = present(row.contract.roles.find((r) => r.id === member.roleId));
     const rule = definition(row);
+    const presenter = row.members.find((m) => m.presenting);
     const snapshot =
       row.status === 'running'
         ? advanceSession(row.snapshot, Math.max(now(), row.snapshot.updatedAt), rule)
@@ -188,12 +235,24 @@ export function createCoordinator(deps: {
       status: row.status,
       reason: reasonOf(row),
       ...(role.fields.includes('score')
-        ? { score: snapshot.scores.community ?? 0, target: present(rule.objective.target) }
+        ? {
+            score: snapshot.scores.community ?? 0,
+            ...(rule.objective.kind === 'collective-goal'
+              ? { target: present(rule.objective.target) }
+              : {}),
+          }
         : {}),
       ...(role.fields.includes('remaining') ? { remaining: snapshot.remainingMs } : {}),
       ...(role.fields.includes('contributions')
         ? { contributions: row.contributions[role.id] ?? 0 }
         : {}),
+      ...(role.fields.includes('mechanics') && snapshot.mechanics
+        ? {
+            bursts: snapshot.mechanics.standings.community?.bursts ?? 0,
+            tier: snapshot.mechanics.standings.community?.unlocked.length ?? 0,
+          }
+        : {}),
+      ...(presenter ? { presenter: present(roleOf(row, presenter)).label } : {}),
     });
   }
   function view(id: string): SharedView {
@@ -206,13 +265,41 @@ export function createCoordinator(deps: {
       members: row.members.map((m) => ({
         roleId: m.roleId,
         approved: m.approved,
-        connected: m.approved && m.leaseUntil > now(),
+        connected: connected(m),
+        dropped: !!m.dropped,
+        presenting: !!m.presenting,
       })),
+      lost: row.status === 'paused' ? lostOf(row).map((m) => m.roleId) : [],
+      waitUntil:
+        row.status === 'paused' && waitDeadline(row) !== Infinity ? waitDeadline(row) : null,
+      decisions: store.decisions(row.id),
     };
+  }
+  /** An explicit host wait ends either by every lost channel returning or by its deadline. */
+  function settleWait(row: CollaborationRow) {
+    if (waitDeadline(row) === Infinity) return;
+    if (!lostOf(row).length) {
+      try {
+        resumable(row, false);
+        decide(row, 'POLICY_RESUMED');
+      } catch {
+        /* Stay paused; the host still holds the explicit choices. */
+      }
+      return;
+    }
+    if (now() < waitDeadline(row)) return;
+    const lost = lostOf(row);
+    row.members.forEach((m) => delete m.waitUntil);
+    row.reason = `${labels(row, lost)} did not return in time. The host can continue without them or end the round.`;
+    decide(row, 'POLICY_WAIT_EXPIRED');
   }
   function tick() {
     if (closed) return;
     for (const stored of store.list()) {
+      if (stored.status === 'paused' && stored.members.some((m) => m.waitUntil !== undefined)) {
+        if (!blocked()) settleWait(required(stored.id));
+        continue;
+      }
       if (stored.status !== 'running') continue;
       const row = required(stored.id);
       if (quarantined.has(row.id)) {
@@ -229,14 +316,11 @@ export function createCoordinator(deps: {
         pause(row, 'The shared behavior is no longer authorized.');
         continue;
       }
-      const requiredMembers = row.members.filter((m) =>
-        row.contract.roles.some((role) => role.id === m.roleId && role.required),
-      );
-      const lost = requiredMembers.filter((m) => !m.approved || m.leaseUntil <= now());
+      const lost = lostOf(row);
       if (lost.length) {
         pause(
           row,
-          'A required channel disconnected. Reconnect it, then explicitly resume.',
+          `${labels(row, lost)} disconnected. The host can wait, continue without them, or end the round.`,
           Math.min(...lost.map((m) => m.leaseUntil)),
         );
         continue;
@@ -277,7 +361,7 @@ export function createCoordinator(deps: {
     return { code, reason, projection: projection(row, member) };
   }
   const api = {
-    create(versionId: string, rawRoles: unknown): SharedView {
+    create(versionId: string, rawRoles: unknown, raidHandoff = false): SharedView {
       if (hostBlocked())
         return fail('BLOCKED', 'Resume this channel before creating a shared session.');
       const roles = rolesSchema.safeParse(rawRoles);
@@ -300,11 +384,13 @@ export function createCoordinator(deps: {
         tests: version.tests,
         title: version.title,
         roles: roles.data,
+        ...(raidHandoff ? { raidHandoff: true } : {}),
       });
       if (!parsed.success)
         return fail(
           'INVALID',
-          'Sharing requires a verified teamless cooperative round with its generated tests.',
+          parsed.error.issues.find((issue) => issue.path.length === 0)?.message ??
+            'Sharing requires a verified teamless cooperative round with its generated tests.',
         );
       const contract: SharedContract = { ...parsed.data, digest: contractDigest(parsed.data) };
       const at = now();
@@ -377,6 +463,8 @@ export function createCoordinator(deps: {
       if (row.status === 'finished') return fail('CONFLICT', 'The shared round has finished.');
       member.approved = true;
       member.leaseUntil = now() + SHARED_LIMITS.leaseMs;
+      // A role the host continued without gates play again once it explicitly rejoins.
+      delete member.dropped;
       save(row);
       return projection(row, member);
     },
@@ -456,7 +544,8 @@ export function createCoordinator(deps: {
             channelId: row.id,
             viewerId: hash(`${role.channelId}:${event.data.viewerId}`),
             roles: event.data.roles,
-            text: definition(row).contribution.command,
+            // Each role dispatches only its own approved definition command.
+            text: present(actionCommand(definition(row), role.action)),
             at,
           });
           // Every required member must still be present when guest work returns.
@@ -534,15 +623,18 @@ export function createCoordinator(deps: {
       member.tokenHash = null;
       member.approved = false;
       member.leaseUntil = 0;
-      if (role.required && row.status === 'running')
-        pause(row, 'A required channel left. Invite it again, then explicitly resume.');
+      if (role.required && !member.dropped && !member.released && row.status === 'running')
+        pause(
+          row,
+          `${role.label} left. The host can wait, continue without them, or end the round.`,
+        );
       else save(row);
       return { ok: true as const };
     },
     control(
       id: string,
       expectedRevision: number,
-      action: 'start' | 'pause' | 'resume',
+      action: 'start' | 'pause' | 'resume' | 'wait' | 'continue' | 'end',
     ): SharedView {
       tick();
       let row = required(id);
@@ -552,9 +644,61 @@ export function createCoordinator(deps: {
         if (row.status === 'running') pause(row, 'Paused by the coordinator.');
         return view(id);
       }
-      if (hostBlocked())
-        return fail('BLOCKED', 'Resume this channel before resuming the shared session.');
-      ensureHealthy(row);
+      if (action === 'end') {
+        // Ending never needs remote channels: it only stops play and reports final results.
+        if (!row.started || row.status === 'finished')
+          return fail('CONFLICT', 'Only a started, unfinished round can be ended.');
+        fence(id);
+        if (row.status === 'running')
+          row.snapshot = pauseSession(
+            row.snapshot,
+            Math.max(now(), row.snapshot.updatedAt),
+            definition(row),
+          );
+        const rule = definition(row);
+        const score = row.snapshot.scores.community ?? 0;
+        row.status = 'finished';
+        row.members.forEach((m) => delete m.waitUntil);
+        row.reason =
+          rule.objective.kind === 'collective-goal' && rule.objective.target !== null
+            ? `The host ended the round at ${score} of ${rule.objective.target} points.`
+            : `The host ended the round at ${score} points.`;
+        decide(row, 'POLICY_END');
+        return view(id);
+      }
+      if (action === 'wait' || action === 'continue') {
+        const lost = lostOf(row);
+        if (row.status !== 'paused' || !lost.length)
+          return fail('CONFLICT', 'No required channel is missing from a paused round.');
+        if (action === 'wait') {
+          const until = now() + SHARED_LIMITS.waitMs;
+          lost.forEach((m) => (m.waitUntil = until));
+          row.reason = `The host is waiting up to ${SHARED_LIMITS.waitMs / 60000} minutes for ${labels(row, lost)} to reconnect.`;
+          decide(row, 'POLICY_WAIT');
+          return view(id);
+        }
+        const gone = new Set([
+          ...lost.map((m) => m.roleId),
+          ...row.members.filter((m) => m.dropped).map((m) => m.roleId),
+        ]);
+        const remaining = row.contract.roles.filter((r) => !gone.has(r.id));
+        if (!remaining.length || !objectiveReachable(definition(row), remaining))
+          return fail(
+            'BLOCKED',
+            'The remaining channels cannot reach the shared objective. Wait or end the round.',
+          );
+        // Revoke the lost memberships: they cannot submit input until invited again.
+        lost.forEach((m) => {
+          m.dropped = true;
+          m.tokenHash = null;
+          m.approved = false;
+          m.leaseUntil = 0;
+        });
+        resumable(row, false);
+        decide(row, 'POLICY_CONTINUE');
+        stopped = false;
+        return view(id);
+      }
       if (
         (action === 'start' && row.started) ||
         (action === 'resume' && !row.started) ||
@@ -562,27 +706,40 @@ export function createCoordinator(deps: {
         row.status === 'running'
       )
         return fail('CONFLICT', 'This shared session cannot use that control right now.');
-      const needed =
-        action === 'start' ? row.contract.roles : row.contract.roles.filter((r) => r.required);
-      if (
-        needed.some(
-          (r) => !row.members.some((m) => m.roleId === r.id && m.approved && m.leaseUntil > now()),
-        )
-      )
-        return fail(
-          'BLOCKED',
-          'Every required channel must approve and connect before shared play starts.',
-        );
-      if (store.list().some((other) => other.id !== id && other.status === 'running'))
-        return fail('LIMIT', 'Pause the other shared session before starting this one.');
-      fence(id);
-      row.snapshot = resumeSession(row.snapshot, Math.max(now(), row.snapshot.updatedAt));
-      row.status = 'running';
-      row.started = true;
-      row.reason = null;
-      row = save(row);
+      const wasWaiting = row.members.some((m) => m.waitUntil !== undefined);
+      resumable(row, action === 'start');
+      row = wasWaiting ? decide(row, 'POLICY_RESUMED') : save(row);
       stopped = false;
       return view(row.id);
+    },
+    /**
+     * Raid handoff (opt-in per agreement): the receiving member reports an incoming raid
+     * from the coordinating channel. It becomes the presenting side, and the raiding host's
+     * own departure no longer pauses play. Authority, state and tokens stay where they are.
+     */
+    handoff(token: string, raid: { eventId: string; fromChannelId: string }) {
+      if (hostBlocked()) return fail('BLOCKED', 'The coordinator is stopped.');
+      tick();
+      const { row, member } = authenticate(token);
+      if (!row.contract.raidHandoff)
+        return fail('BLOCKED', 'This agreement did not opt in to raid handoff.');
+      const host = deps.repo.state().twitchUserId;
+      const hostRole = row.contract.roles.find((r) => r.channelId === host);
+      if (!hostRole || raid.fromChannelId !== host)
+        return fail('UNAUTHORIZED', 'Only a raid from the coordinating channel hands off.');
+      if (member.roleId === hostRole.id)
+        return fail('CONFLICT', 'The coordinating channel cannot hand off to itself.');
+      if (!row.started || row.status === 'finished')
+        return fail('CONFLICT', 'Only a started, unfinished round can hand off.');
+      const eventId = `audit:handoff:${hash(raid.eventId)}`;
+      // Duplicate raid deliveries and repeated raids to the same channel are idempotent.
+      if (member.presenting || store.hasReceipt(row.id, eventId)) return projection(row, member);
+      row.members.forEach((m) => {
+        m.presenting = m.roleId === member.roleId;
+        if (m.roleId === hostRole.id) m.released = true;
+      });
+      decide(row, 'HANDOFF', eventId);
+      return projection(row, member);
     },
     stop(reason: string) {
       stopped = true;

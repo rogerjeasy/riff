@@ -82,6 +82,8 @@ function setup() {
       case 'leave':
         coordinator.leave(token);
         return { ok: true };
+      case 'handoff':
+        return coordinator.handoff(token, body as { eventId: string; fromChannelId: string });
     }
   };
   return {
@@ -615,4 +617,43 @@ it('treats a safety stop without any membership as a no-op, keeping earlier expl
   });
   member.stop('Your channel stopped. Request a new invitation to rejoin.');
   expect(member.status().reason).toBe('You left this shared experience.');
+}, 30000);
+
+it('reports an opted-in raid from the host and shows the receiving channel as presenter', async () => {
+  const s = setup();
+  const session = await s.coordinator.create(s.version.id, s.roles, true);
+  const own = s.coordinator.invite(session.contract.id, 'repair');
+  const invite = s.coordinator.invite(session.contract.id, 'steer');
+  const received: unknown[] = [];
+  const member = createCollaborationMember({
+    database: s.database,
+    repo: s.repo,
+    sealer: createSealer('test-key-material-for-shared-session-members'),
+    identity: () => '200',
+    ready: () => true,
+    blocked: () => false,
+    transport: s.peer,
+    publish: (p) => received.push(p),
+    now: () => 1000,
+  });
+  cleanup.push(() => member.close());
+  expect(member.wantsRaids()).toBe(false);
+  const review = await member.review('https://coordinator.example', invite.token);
+  await member.approve(review.contract.digest);
+  s.coordinator.approve(own.token, session.contract.digest);
+  s.coordinator.control(
+    session.contract.id,
+    s.coordinator.view(session.contract.id).revision,
+    'start',
+  );
+  expect(member.wantsRaids()).toBe(true);
+  // Raids from channels outside the agreement are not reported.
+  expect(await member.raid({ id: '999', eventId: 'other' })).toBe(false);
+  expect(await member.raid({ id: '100', eventId: 'raid-1' })).toBe(true);
+  expect(member.status().projection?.presenter).toBe('Steer ship');
+  expect(await member.raid({ id: '100', eventId: 'raid-1' })).toBe(true);
+  expect(s.coordinator.view(session.contract.id).decisions).toHaveLength(1);
+  member.stop('Local emergency stop');
+  expect(received.at(-1)).toBeNull();
+  expect(await member.raid({ id: '100', eventId: 'raid-2' })).toBe(false);
 }, 30000);

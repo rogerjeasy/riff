@@ -111,7 +111,7 @@ export function createTwitchConnection(deps: {
   wantsChatWrite?: () => boolean;
   onRedemption?: (redemption: NormalizedRedemption) => void;
   /** F23: an incoming raid, recorded for the "raiders only" shoutout policy. */
-  onRaid?: (raider: { id: string; login: string; displayName: string }) => void;
+  onRaid?: (raider: { id: string; login: string; displayName: string; eventId: string }) => void;
   /** Event families host features need even without a live interaction (raids for F23). */
   hostTriggers?: () => readonly EventTriggerName[];
   /** F11: Riff output sent as the broadcaster, remembered to drop its EventSub echo. */
@@ -267,6 +267,7 @@ export function createTwitchConnection(deps: {
               id: event.viewerId,
               login: event.viewerLogin,
               displayName: event.viewerName,
+              eventId: event.id,
             });
           void runtime.handleTwitchEvent({
             id: event.id,

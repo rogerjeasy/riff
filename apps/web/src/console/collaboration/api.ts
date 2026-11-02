@@ -8,6 +8,7 @@ import {
   issuedInvitationSchema,
   type SharedRole,
 } from '../../collaboration/schema.js';
+export type SharedControl = 'start' | 'pause' | 'resume' | 'wait' | 'continue' | 'end';
 // Console lives two levels below src; use explicit browser-only HTTP boundaries.
 const post = (suffix: string, body: unknown, signal?: AbortSignal) =>
   request('POST', `/api/collaboration/${suffix}`, body, signal);
@@ -15,10 +16,10 @@ export const collaborationApi = {
   async status(signal?: AbortSignal) {
     return statusSchema.parse(await request('GET', '/api/collaboration', undefined, signal));
   },
-  async create(versionId: string, roles: SharedRole[], signal?: AbortSignal) {
+  async create(versionId: string, roles: SharedRole[], raidHandoff: boolean, signal?: AbortSignal) {
     return z
       .object({ session: sharedViewSchema })
-      .parse(await post('create', { versionId, roles }, signal)).session;
+      .parse(await post('create', { versionId, roles, raidHandoff }, signal)).session;
   },
   async invite(sessionId: string, roleId: string, signal?: AbortSignal) {
     return issuedInvitationSchema.parse(await post('invite', { sessionId, roleId }, signal));
@@ -42,7 +43,7 @@ export const collaborationApi = {
   async control(
     sessionId: string,
     expectedRevision: number,
-    action: 'start' | 'pause' | 'resume',
+    action: SharedControl,
     signal?: AbortSignal,
   ) {
     return z

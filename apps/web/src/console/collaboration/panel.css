@@ -488,3 +488,12 @@
 .shared-another {
   justify-self: start;
 }
+/* F36: explicit host choice after a required channel leaves. */
+.shared-continuation {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}

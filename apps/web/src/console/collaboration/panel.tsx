@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Version } from '../../lib/types.js';
 import { CODE_LABEL } from '../format.js';
-import { collaborationApi } from './api.js';
+import { collaborationApi, type SharedControl } from './api.js';
 import {
   inviteCode,
   parseInvite,
@@ -25,6 +25,41 @@ const fieldNames = {
   score: 'Shared score and goal',
   remaining: 'Time left in the round',
   contributions: 'This channel’s contributions',
+  mechanics: 'Bursts and milestone tier',
+};
+type Rules = NonNullable<ShareableVersion['manifest']['experience']>;
+/** Each role action available in one definition, with the command it maps to. */
+function roleActions(rules: Rules | null | undefined) {
+  if (!rules) return [];
+  const actions = [{ value: 'contribute', label: `Contribute (${rules.contribution.command})` }];
+  const m = rules.version === 2 ? rules.mechanics : undefined;
+  if (m?.burst?.command)
+    actions.push({ value: 'burst', label: `${m.burst.label} burst (${m.burst.command})` });
+  for (const milestone of m?.milestones ?? [])
+    if (milestone.unlock)
+      actions.push({
+        value: `unlock:${milestone.id}`,
+        label: `${milestone.label} unlock (${milestone.unlock.command})`,
+      });
+  return actions;
+}
+/** What one role's command does, in words a creator can approve. */
+function actionText(rules: Rules, action: string | undefined) {
+  const m = rules.version === 2 ? rules.mechanics : undefined;
+  if (action === 'burst' && m?.burst)
+    return `Each one joins a ${m.burst.label} burst: ${m.burst.participants} different viewers within ${Math.ceil(m.burst.windowMs / 1000)}s add ${m.burst.points} points.`;
+  const milestone = m?.milestones.find((x) => `unlock:${x.id}` === action);
+  if (milestone?.unlock)
+    return `After ${milestone.label} is reached, each one spends one ${rules.resource.name} for ${milestone.unlock.points} points.`;
+  return `Each one counts as one tested ${rules.contribution.command}.`;
+}
+const DECISION: Record<string, string> = {
+  POLICY_WAIT: 'Host chose to wait',
+  POLICY_WAIT_EXPIRED: 'Wait ran out',
+  POLICY_RESUMED: 'Resumed after the channel returned',
+  POLICY_CONTINUE: 'Host continued without the missing channel',
+  POLICY_END: 'Host ended the round',
+  HANDOFF: 'Raid handed the round to another channel',
 };
 const MEMBER_STATE: Record<MemberState, string> = {
   idle: 'Not in a shared round',
@@ -38,6 +73,22 @@ const ROUND_STATE: Record<SharedView['status'], { text: string; tone: string }> 
   running: { text: 'Live', tone: 'good' },
   paused: { text: 'Paused', tone: 'warn' },
   finished: { text: 'Finished', tone: 'muted' },
+};
+const CONTROL_PENDING: Record<SharedControl, string> = {
+  start: 'Starting shared round',
+  resume: 'Resuming shared round',
+  pause: 'Pausing shared round',
+  wait: 'Waiting for the missing channel',
+  continue: 'Continuing without the missing channel',
+  end: 'Ending the shared round',
+};
+const CONTROL_DONE: Record<SharedControl, string> = {
+  start: 'Shared round is live.',
+  resume: 'Shared round is live.',
+  pause: 'Shared round paused.',
+  wait: 'Waiting up to 2 minutes. Every channel sees this.',
+  continue: 'Shared round continues without the missing channel.',
+  end: 'Shared round ended. Final results stay on every overlay.',
 };
 const roleDraft = (index: number, channelId = ''): SharedRole => ({
   id: `role-${index + 1}`,
@@ -124,10 +175,15 @@ function Review({ review, own }: { review: MemberReview; own: boolean }) {
         Play <strong>{review.contract.title}</strong> as <strong>{role.label}</strong>
       </h3>
       <p className="shared-lead">
-        Your viewers type <code>{role.command}</code>. Each one counts as one tested{' '}
-        <code>{rules.contribution.command}</code> toward a shared goal of{' '}
-        <strong>{rules.objective.target} points</strong> in a {clock(rules.durationMs)} round,
-        together with {others.map((r) => r.label).join(' and ')}.
+        Your viewers type <code>{role.command}</code>. {actionText(rules, role.action)} The shared
+        goal is{' '}
+        <strong>
+          {rules.objective.kind === 'burst'
+            ? `${rules.objective.target} bursts`
+            : `${rules.objective.target} points`}
+        </strong>{' '}
+        in a {clock(rules.durationMs)} round, together with{' '}
+        {others.map((r) => r.label).join(' and ')}.
       </p>
       <dl className="shared-facts">
         <div>
@@ -157,8 +213,16 @@ function Review({ review, own }: { review: MemberReview; own: boolean }) {
           <dt>If you leave</dt>
           <dd>
             {role.required
-              ? 'The shared round pauses until you return.'
+              ? 'The shared round pauses. The host chooses to wait for you, continue without you, or end it.'
               : 'The other channels keep playing.'}
+          </dd>
+        </div>
+        <div>
+          <dt>Raid handoff</dt>
+          <dd>
+            {review.contract.raidHandoff
+              ? 'On: if the host raids a channel in this round, that channel presents the rest. No credentials move.'
+              : 'Off: raids never change who presents this round.'}
           </dd>
         </div>
       </dl>
@@ -168,6 +232,7 @@ function Review({ review, own }: { review: MemberReview; own: boolean }) {
             <strong>{r.label}</strong>
             <span>
               {r.id === role.id ? 'you' : `channel ${r.channelId}`} · <code>{r.command}</code> ·{' '}
+              {r.action && r.action !== 'contribute' ? `${r.action} · ` : ''}
               {r.required ? 'required' : 'optional'}
             </span>
           </li>
@@ -237,7 +302,16 @@ function LiveRound(props: {
         {projection.contributions !== undefined && (
           <span>{projection.contributions} from your channel</span>
         )}
+        {projection.bursts !== undefined && <span>{projection.bursts} bursts</span>}
+        {projection.tier !== undefined && <span>Tier {projection.tier}</span>}
       </p>
+      {projection.presenter && (
+        <p className="note">
+          {projection.presenter === projection.roleLabel
+            ? 'After the raid, your channel presents the rest of this round.'
+            : `After the raid, ${projection.presenter} presents the rest of this round.`}
+        </p>
+      )}
       {projection.status !== 'finished' && <p>{projection.instructions}</p>}
       {projection.status === 'finished' && (
         <p className="note">
@@ -273,6 +347,7 @@ export function CollaborationPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [another, setAnother] = useState(false);
+  const [raidHandoff, setRaidHandoff] = useState(false);
   const opened = useRef(false);
   const epoch = useRef(0);
   const busy = useRef(false);
@@ -398,9 +473,15 @@ export function CollaborationPanel({
     (v) =>
       v.evidence.verification.ok &&
       !['failed', 'discarded', 'quarantined'].includes(v.status) &&
-      v.manifest.experience?.objective.kind === 'collective-goal' &&
-      v.manifest.experience.version === 1 &&
-      v.manifest.experience.teams.length === 0,
+      !!v.manifest.experience &&
+      v.manifest.experience.teams.length === 0 &&
+      (v.manifest.experience.objective.kind === 'collective-goal' ||
+        (v.manifest.experience.version === 2 &&
+          v.manifest.experience.objective.kind === 'burst')) &&
+      !(
+        v.manifest.experience.version === 2 &&
+        (v.manifest.experience.mechanics?.match || v.manifest.experience.mechanics?.health)
+      ),
   );
   const versionId = shareable.some((v) => v.id === selected) ? selected : (shareable[0]?.id ?? '');
   const memberState = status?.member.state ?? 'idle';
@@ -416,7 +497,10 @@ export function CollaborationPanel({
     : null;
   const editRole = (index: number, patch: Partial<SharedRole>) =>
     setRoles((current) => current.map((role, i) => (i === index ? { ...role, ...patch } : role)));
-  const invalidRoles = !rolesSchema.safeParse(roles).success;
+  const actions = roleActions(shareable.find((v) => v.id === versionId)?.manifest.experience);
+  const invalidRoles =
+    !rolesSchema.safeParse(roles).success ||
+    roles.some((r) => r.action && !actions.some((a) => a.value === r.action));
   const sessions = status?.sessions ?? [];
   const current = sessions.filter((s) => s.status !== 'finished');
   const past = sessions.filter((s) => s.status === 'finished');
@@ -662,7 +746,7 @@ export function CollaborationPanel({
                 }
                 onControl={(action) =>
                   void run(
-                    action === 'pause' ? 'Pausing shared round' : 'Starting shared round',
+                    CONTROL_PENDING[action],
                     (signal) =>
                       collaborationApi.control(
                         session.contract.id,
@@ -671,7 +755,7 @@ export function CollaborationPanel({
                         signal,
                       ),
                     false,
-                    action === 'pause' ? 'Shared round paused.' : 'Shared round is live.',
+                    CONTROL_DONE[action],
                   )
                 }
               />
@@ -774,6 +858,21 @@ export function CollaborationPanel({
                             />
                             Required for shared play
                           </label>
+                          {actions.length > 1 && (
+                            <label>
+                              Role {index + 1} action
+                              <select
+                                value={role.action ?? 'contribute'}
+                                onChange={(e) => editRole(index, { action: e.target.value })}
+                              >
+                                {actions.map((a) => (
+                                  <option key={a.value} value={a.value}>
+                                    {a.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
                           <span className="note">Overlay shows:</span>
                           {publicFields.map((field) => (
                             <label className="shared-check" key={field}>
@@ -805,6 +904,16 @@ export function CollaborationPanel({
                       </fieldset>
                     );
                   })}
+                  <label className="shared-check">
+                    <input
+                      type="checkbox"
+                      checked={raidHandoff}
+                      disabled={disabled}
+                      onChange={(e) => setRaidHandoff(e.target.checked)}
+                    />
+                    Allow raid handoff: if I raid a channel in this round, it presents the rest
+                    (every channel approves this)
+                  </label>
                   <div className="shared-actions">
                     <button
                       className="button small ghost"
@@ -826,7 +935,8 @@ export function CollaborationPanel({
                       onClick={() =>
                         void run(
                           'Creating agreement',
-                          (signal) => collaborationApi.create(versionId, roles, signal),
+                          (signal) =>
+                            collaborationApi.create(versionId, roles, raidHandoff, signal),
                           false,
                           'Agreement created. Approve your own role, then invite the other channels.',
                         )
@@ -910,7 +1020,7 @@ function HostedRound(props: {
   onInvite: (role: SharedRole) => void;
   onCopied: (key: string) => void;
   onHide: (key: string) => void;
-  onControl: (action: 'start' | 'pause' | 'resume') => void;
+  onControl: (action: SharedControl) => void;
 }) {
   const { session } = props;
   const memberOf = (role: SharedRole) => session.members.find((m) => m.roleId === role.id);
@@ -921,7 +1031,11 @@ function HostedRound(props: {
     return !!m?.approved && !!m.connected;
   };
   const mineReady = mine ? ready(mine) : false;
-  const needed = session.contract.roles.filter((r) => session.status === 'waiting' || r.required);
+  const needed = session.contract.roles.filter(
+    (r) => session.status === 'waiting' || (r.required && !memberOf(r)?.dropped),
+  );
+  const lost = session.contract.roles.filter((r) => session.lost.includes(r.id));
+  const presenter = session.contract.roles.find((r) => memberOf(r)?.presenting);
   const missing = needed.filter((r) => !ready(r));
   const round = ROUND_STATE[session.status];
   const action =
@@ -936,6 +1050,49 @@ function HostedRound(props: {
         <span className={`pill ${round.tone}`}>{round.text}</span>
       </header>
       {session.reason && <p className="note">{session.reason}</p>}
+      {presenter && (
+        <p className="note">After your raid, {presenter.label} presents the rest of this round.</p>
+      )}
+      {lost.length > 0 && (
+        <section className="shared-continuation" aria-label="Missing channel choice">
+          <strong>
+            {lost.map((r) => r.label).join(', ')} {lost.length > 1 ? 'are' : 'is'} missing. What
+            should happen?
+          </strong>
+          {session.waitUntil !== null && (
+            <p className="note">
+              Waiting · {clock(session.waitUntil - props.now)} left. The round resumes on its own if
+              they reconnect.
+            </p>
+          )}
+          <div className="shared-actions">
+            <button
+              type="button"
+              className="button small"
+              disabled={props.disabled || session.waitUntil !== null}
+              onClick={() => props.onControl('wait')}
+            >
+              Wait 2 minutes
+            </button>
+            <button
+              type="button"
+              className="button small"
+              disabled={props.disabled}
+              onClick={() => props.onControl('continue')}
+            >
+              Continue without {lost.map((r) => r.label).join(', ')}
+            </button>
+            <button
+              type="button"
+              className="button small stop"
+              disabled={props.disabled}
+              onClick={() => props.onControl('end')}
+            >
+              End and show results
+            </button>
+          </div>
+        </section>
+      )}
       <ol className="shared-steps">
         <li data-done={mineReady || undefined}>
           <div className="shared-step-head">
@@ -1071,6 +1228,18 @@ function HostedRound(props: {
           </div>
         </li>
       </ol>
+      {session.decisions.length > 0 && (
+        <details className="shared-fingerprint">
+          <summary>Host decisions · {session.decisions.length}</summary>
+          <ul>
+            {session.decisions.map((d, i) => (
+              <li key={i}>
+                {DECISION[d.code] ?? d.code} · {new Date(d.at).toLocaleTimeString()}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <details className="shared-fingerprint">
         <summary>Agreement fingerprint</summary>
         <p className="shared-digest">{session.contract.digest}</p>

@@ -785,18 +785,24 @@ The operator-local home-channel model remains: channels join over scoped bearer 
 not by a caller-controlled channel header or shared private repository access.
 
 Contracts pin verified teamless cooperative behavior, generated tests and 2–4 unique
-roles/channels/commands/field grants to SHA-256. Every creator independently verifies
-and explicitly approves the digest, then the owner starts with revision CAS. Shared
-role commands map explicitly to the pinned contribution command; audience roles stay
-local. One running coordinator session, 20 retained sessions, 10,000 receipts/session,
+roles/channels/commands/actions/field grants plus the raid-handoff opt-in to SHA-256.
+Every creator independently verifies and explicitly approves the digest, then the owner
+starts with revision CAS. Each role's optional `action` maps its command to one command of
+the pinned definition: `contribute` (default), version 2 `burst`, or `unlock:<milestone>`;
+validation rejects actions the definition lacks and requires that some role can reach the
+objective, so no role gains authority beyond the definition. Version 2 burst/milestones are
+shared on the community side (`mechanics` grant projects bursts and tier); best-of-N
+`match` and `health` (which needs opposing teams) are refused. Audience roles stay local.
+Absent optional fields serialize away, so older agreement digests stay valid. One running coordinator session, 20 retained sessions, 10,000 receipts/session,
 128 pending coordinator inputs and 32 local inputs bound storage/work. State and receipt
 commit together before publication. Generated cosmetic effects stay in the separate
 shared isolate; only aggregates and approved instructions reach recipient brokers.
 No new SDK capability is granted.
 
 Private guarded API: GET `/api/collaboration`; POST suffixes `/create`, `/invite`,
-`/review-owner`, `/review`, `/recheck`, `/approve`, `/control`, `/leave`.
-Peer POST `/peer/collaboration/{review,approve,heartbeat,input,leave}` requires a scoped
+`/review-owner`, `/review`, `/recheck`, `/approve`, `/control` (start, pause, resume,
+wait, continue, end), `/leave`.
+Peer POST `/peer/collaboration/{review,approve,heartbeat,input,leave,handoff}` requires a scoped
 bearer and rejects browser-origin requests. It has no creator authority. Invitations
 expire in 15 minutes; tokens are hashed at the coordinator, sealed at the member,
 never included in status or overlay projections. HTTP transport accepts explicit
@@ -807,7 +813,17 @@ it only when it is short and single-line. Shared-command chat is queued, never a
 so the channel's serialized chat pipeline does not wait on the network.
 
 Two-second member polling renews 10-second leases. Required loss freezes at lease expiry;
-optional departure follows the approved continuation policy. Coordinator restart pauses;
+optional departure follows the approved continuation policy. While paused with a missing
+required role the owner chooses `wait` (2 minutes; auto-resumes only if every gating role
+returns, otherwise reports expiry), `continue` (revokes the missing memberships after
+re-checking that the remaining actions still reach the objective) or `end` (finishes with
+final results, allowed while locally stopped). Choices and raid handoffs are audit receipts
+(`audit:` event ids) returned as `decisions`; members see the state through the reason.
+Raid handoff is opt-in per agreement and keeps the single coordinator: a member that
+receives an incoming raid (its own EventSub) from another agreement channel calls peer
+`handoff`; the coordinator accepts it only from its own channel id, marks the receiving
+role as presenter (projected as `presenter`) and releases the host role from gating.
+Duplicate raid ids and repeat raids are idempotent; no token or state moves. Coordinator restart pauses;
 local restart requires verification/approval. Local panic/leave fences before DB/network,
 and uncertain remote approvals are revoked best effort. Stale in-flight responses and
 inputs cannot rehydrate output. A failed state write requires explicit resume. Host

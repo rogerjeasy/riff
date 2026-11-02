@@ -9,7 +9,11 @@ const text = (max: number) =>
     .refine((s) => ![...s].some((c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127));
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,31}$/);
-export const publicFields = ['score', 'remaining', 'contributions'] as const;
+export const publicFields = ['score', 'remaining', 'contributions', 'mechanics'] as const;
+/** What a role's command does in the one shared definition (absent = contribute). */
+export const sharedActionSchema = z
+  .string()
+  .regex(/^(contribute|burst|unlock:[a-z][a-z0-9-]{0,31})$/);
 export const roleSchema = z
   .object({
     id,
@@ -20,9 +24,10 @@ export const roleSchema = z
       .regex(/^![a-z0-9_-]{1,32}$/)
       .refine((s) => s !== '!riff'),
     required: z.boolean(),
+    action: sharedActionSchema.optional(),
     fields: z
       .array(z.enum(publicFields))
-      .max(3)
+      .max(4)
       .refine((v) => new Set(v).size === v.length),
   })
   .strict();
@@ -53,6 +58,9 @@ export const projectionSchema = z
     target: z.number().int().positive().max(2560000).optional(),
     remaining: z.number().int().min(0).max(3600000).optional(),
     contributions: z.number().int().min(0).max(25600).optional(),
+    bursts: z.number().int().min(0).max(1000).optional(),
+    tier: z.number().int().min(0).max(4).optional(),
+    presenter: text(60).optional(),
     // Added locally from the approved contract (never by the coordinator) for display.
     partners: z.array(text(60)).max(3).optional(),
   })
@@ -66,6 +74,7 @@ export const contractSchema = z
     artifactId: digest,
     title: text(120),
     roles: rolesSchema,
+    raidHandoff: z.boolean().optional(),
     artifact: z
       .object({
         source: z.string().max(32768),
@@ -98,11 +107,16 @@ export const contractSchema = z
     tests: z.array(z.unknown()).min(3).max(100),
   })
   .strict()
-  .refine(
-    (v) =>
-      v.artifact.manifest.experience.teams.length === 0 &&
-      v.artifact.manifest.experience.objective.kind === 'collective-goal',
-  );
+  .refine((v) => {
+    const experience = v.artifact.manifest.experience;
+    return (
+      experience.teams.length === 0 &&
+      (experience.objective.kind === 'collective-goal' ||
+        (experience.objective.kind === 'burst' && experience.version === 2)) &&
+      !experience.mechanics?.match &&
+      !experience.mechanics?.health
+    );
+  });
 export const sharedViewSchema = z
   .object({
     contract: contractSchema,
@@ -110,8 +124,23 @@ export const sharedViewSchema = z
     status: state,
     reason: z.string().max(240).nullable(),
     members: z
-      .array(z.object({ roleId: id, approved: z.boolean(), connected: z.boolean() }).strict())
+      .array(
+        z
+          .object({
+            roleId: id,
+            approved: z.boolean(),
+            connected: z.boolean(),
+            dropped: z.boolean(),
+            presenting: z.boolean(),
+          })
+          .strict(),
+      )
       .max(4),
+    lost: z.array(id).max(4),
+    waitUntil: z.number().int().nonnegative().nullable(),
+    decisions: z
+      .array(z.object({ code: z.string().max(40), at: z.number().int().nonnegative() }).strict())
+      .max(50),
   })
   .strict();
 export const reviewSchema = z

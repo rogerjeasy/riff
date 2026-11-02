@@ -1,4 +1,4 @@
-import { and, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq, like } from 'drizzle-orm';
 import type { DatabaseConnection } from '../client.js';
 import { collaborationSessions, collaborationReceipts } from '../schema.js';
 export type CollaborationRow = typeof collaborationSessions.$inferSelect;
@@ -62,6 +62,22 @@ export function collaborationRepository(connection: DatabaseConnection, channelI
           )
           .get()?.value ?? 0
       );
+    },
+    /** Audited host decisions (continuation choices, raid handoffs), oldest first. */
+    decisions(sessionId: string) {
+      return db
+        .select({ code: collaborationReceipts.code, at: collaborationReceipts.at })
+        .from(collaborationReceipts)
+        .where(
+          and(
+            eq(collaborationReceipts.channelId, channelId),
+            eq(collaborationReceipts.sessionId, sessionId),
+            like(collaborationReceipts.eventId, 'audit:%'),
+          ),
+        )
+        .orderBy(asc(collaborationReceipts.at))
+        .limit(50)
+        .all();
     },
     receipt(sessionId: string, eventId: string, code: string, at: number) {
       db.insert(collaborationReceipts).values({ channelId, sessionId, eventId, code, at }).run();

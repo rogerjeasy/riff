@@ -44,7 +44,7 @@ async function bounded(response: Response, limit: number): Promise<string> {
   }
 }
 
-export type PeerAction = 'review' | 'approve' | 'heartbeat' | 'input' | 'leave';
+export type PeerAction = 'review' | 'approve' | 'heartbeat' | 'input' | 'leave' | 'handoff';
 export type PeerTransport = ReturnType<typeof createPeerTransport>;
 /** Bounded authenticated requests. No redirects, URL secrets, cookies, or automatic event retries. */
 export function createPeerTransport(fetcher: typeof fetch = globalThis.fetch) {

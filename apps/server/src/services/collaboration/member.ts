@@ -154,9 +154,16 @@ export function createCollaborationMember(deps: {
     if (
       (!role.fields.includes('score') && (next.score !== undefined || next.target !== undefined)) ||
       (!role.fields.includes('remaining') && next.remaining !== undefined) ||
-      (!role.fields.includes('contributions') && next.contributions !== undefined)
+      (!role.fields.includes('contributions') && next.contributions !== undefined) ||
+      (!role.fields.includes('mechanics') && (next.bursts !== undefined || next.tier !== undefined))
     )
       throw new Error('The coordinator sent fields outside the approved view.');
+    // A presenter appears only after an opted-in raid handoff, and names an approved role.
+    if (
+      next.presenter !== undefined &&
+      (!c.contract.raidHandoff || !c.contract.roles.some((r) => r.label === next.presenter))
+    )
+      throw new Error('The coordinator named a presenter outside the approved agreement.');
     if (projection && next.revision < projection.revision) return;
     publish(next);
   }
@@ -407,6 +414,36 @@ export function createCollaborationMember(deps: {
       inputQueue = operation;
       // Claim the message without waiting: the channel's serialized chat pipeline must never
       // stall on a coordinator round trip. Results arrive through projection updates.
+      return true;
+    },
+    /** Raids only matter while connected to an agreement that opted in to raid handoff. */
+    wantsRaids() {
+      return !!connection?.contract.raidHandoff && (state === 'connected' || state === 'paused');
+    },
+    /**
+     * F36 raid handoff: an incoming raid (this channel's own EventSub) from another channel in
+     * the agreement is reported to the coordinator, which verifies it came from the
+     * coordinating channel. Duplicate deliveries are idempotent there.
+     */
+    async raid(raider: { id: string; eventId: string }) {
+      const c = connection;
+      if (
+        !c ||
+        !api.wantsRaids() ||
+        !usable() ||
+        !c.contract.roles.some((r) => r.id !== c.roleId && r.channelId === raider.id)
+      )
+        return false;
+      const atEpoch = epoch;
+      const value = await deps.transport(
+        c.origin,
+        c.token,
+        'handoff',
+        { eventId: raider.eventId, fromChannelId: raider.id },
+        controller.signal,
+      );
+      if (atEpoch !== epoch || !usable()) return false;
+      project(value);
       return true;
     },
     /** Resolves once every queued shared contribution has been answered (tests, shutdown). */

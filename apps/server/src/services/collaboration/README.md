@@ -6,9 +6,13 @@ roles, commands and public-field grants to one digest. `member.ts` owns this
 instance's independent verification, local approval, encrypted credentials and
 synchronous output fence. `transport.ts` bounds authenticated peer requests.
 
-The initial contract supports verified teamless collective-goal rounds. Channels
-have distinct command/role labels, field grants and contribution totals, while each
-command maps explicitly to the same pinned cooperative action. This does not add
+Contracts support verified teamless cooperative rounds: version 1 collective goals and
+version 2 collective-goal or burst objectives with burst and milestones. Each role has its
+own command, label, field grants, contribution total and `action`: `contribute` (default),
+`burst` or `unlock:<milestone>`, each mapped to that definition's own command, so roles
+have distinct mechanics without new authority. Validation rejects actions the definition
+lacks and requires a role that can reach the objective. Best-of-N `match` (intermissions
+reset the shared pool) and `health` (needs opposing teams) are excluded. This does not add
 new guest capabilities, arbitrary distributed state mutation or remote cosmetic calls.
 Generated cosmetic effects run inside the coordinator isolate but are not broadcast;
 only approved aggregate state reaches each receiving channel's own overlay broker.
@@ -21,6 +25,16 @@ only approved aggregate state reaches each receiving channel's own overlay broke
 - Members poll every 2 seconds; required leases expire after 10 seconds. Loss pauses
   at the lease deadline. Required rejoin needs a new invitation after leave and
   explicit owner resume. Optional-member loss follows the approved continue policy.
+- Required loss gives the owner an explicit choice (`/control` `wait` | `continue` | `end`).
+  Wait lasts 2 minutes and auto-resumes only when every gating role is back; expiry is
+  reported. Continue re-checks that the remaining actions reach the objective and revokes
+  the missing memberships. End finishes with final results, even while locally stopped.
+  Every choice is an `audit:` receipt listed as `decisions`.
+- Raid handoff (opt-in `raidHandoff`, approved in the digest): a member receiving an
+  incoming raid from another agreement channel reports it via peer `handoff`. The
+  coordinator accepts only a raid from its own channel id, marks that member presenter
+  (`presenter` in every projection) and stops the host role gating play. The coordinator
+  itself does not migrate; duplicate raid ids are idempotent and no token moves.
 - Shared Chat source identities deduplicate echoed/retried messages. Only original
   channel inputs use that channel's authenticated badges. Viewer identities are
   channel-namespaced; raw participant state and credentials never enter projections.
