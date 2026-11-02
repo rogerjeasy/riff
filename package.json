@@ -28,6 +28,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:tooling && pnpm check:secrets",
     "check:boundaries": "node scripts/check-boundaries.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
+    "check:unverified": "node scripts/count-unverified.mjs",
     "doctor": "node scripts/doctor.mjs",
     "smoke": "node --import tsx scripts/smoke.ts",
     "db:generate": "pnpm --filter @riff/server db:generate",
