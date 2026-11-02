@@ -138,6 +138,7 @@ it('describes event triggers in plain words instead of a reserved command', () =
       audience: ['viewer'],
       maxPerViewer: 5,
       windowMs: 60_000,
+      kind: 'twitch.event',
       event: { kind: 'cheer', minimum: 100 },
     },
     limits: { effectsPerEvent: 5, effectsPerMinute: 60 },
@@ -153,9 +154,21 @@ it('describes event triggers in plain words instead of a reserved command', () =
   expect(
     triggerInstruction({
       ...manifest,
-      trigger: { ...manifest.trigger, event: null, command: '!tomato' },
+      trigger: { command: '!tomato', audience: ['viewer'], maxPerViewer: 5, windowMs: 60_000 },
     }),
   ).toBe('Type !tomato');
+  expect(
+    triggerSummary({
+      trigger: {
+        command: '!hydrate',
+        audience: ['viewer'],
+        maxPerViewer: 5,
+        windowMs: 60_000,
+        kind: 'points.redeem',
+        reward: 'Hydrate',
+      },
+    }),
+  ).toBe('Someone redeems “Hydrate”');
 });
 
 it('rehearses an event trigger privately with synthetic events through the preview route', async () => {
@@ -168,6 +181,7 @@ it('rehearses an event trigger privately with synthetic events through the previ
       audience: ['viewer'],
       maxPerViewer: 5,
       windowMs: 60_000,
+      kind: 'twitch.event',
       event: { kind: 'cheer', minimum: 100 },
     },
     limits: { effectsPerEvent: 5, effectsPerMinute: 60 },

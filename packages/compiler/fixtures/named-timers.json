@@ -2,7 +2,7 @@
   "provenance": {
     "transport": "offline",
     "model": null,
-    "promptVersion": "riff-compiler/11",
+    "promptVersion": "riff-compiler/12",
     "note": "Deterministic named-timer template responses recorded locally; no live model call or credentials."
   },
   "records": [

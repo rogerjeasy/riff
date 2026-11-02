@@ -21,6 +21,7 @@ const cheerManifest = {
     audience: ['viewer' as const],
     maxPerViewer: 3,
     windowMs: 60_000,
+    kind: 'twitch.event' as const,
     event: { kind: 'cheer' as const, minimum: 100 },
   },
   limits: { effectsPerEvent: 3, effectsPerMinute: 90 },
@@ -76,6 +77,7 @@ describe('F19 manifest contract', () => {
       trigger: Record<string, unknown>;
     };
     delete manifest.trigger.event;
+    delete manifest.trigger.kind;
     expect(manifestSchema.safeParse(manifest).success).toBe(false);
   });
 

@@ -20,7 +20,7 @@ describe('Channel Points and Predictions compiler contract', () => {
     const manifest = COMPILE_OUTPUT_JSON_SCHEMA.properties.manifest.anyOf[1];
     const trigger = manifest.properties.trigger;
     expect(trigger.required).toEqual(expect.arrayContaining(['kind', 'reward']));
-    expect(trigger.properties.kind.enum).toEqual(['chat.command', 'points.redeem']);
+    expect(trigger.properties.kind.enum).toEqual(['chat.command', 'points.redeem', 'twitch.event']);
     expect(manifest.properties.capabilities.items.enum).toContain('predictions');
     const step = COMPILE_OUTPUT_JSON_SCHEMA.properties.tests.items.properties.steps.items;
     expect(step.required).toContain('kind');
@@ -31,7 +31,7 @@ describe('Channel Points and Predictions compiler contract', () => {
     expect(prompt).toContain('points.redeem');
     expect(prompt).toContain('riff.predictions.propose');
     expect(prompt).toMatch(/creator opens it and alone/);
-    expect(PROMPT_VERSION).toBe('riff-compiler/11');
+    expect(PROMPT_VERSION).toBe('riff-compiler/12');
   });
 
   it('compiles the hydrate redemption intent offline into a points.redeem candidate', () => {

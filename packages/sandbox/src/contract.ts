@@ -62,6 +62,88 @@ export const eventTriggerSchema = z
 const hasNoControlCharacters = (s: string) =>
   ![...s].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127);
 
+const audienceSchema = z
+  .array(roleSchema)
+  .min(1)
+  .max(4)
+  .refine((list) => new Set(list).size === list.length, 'Audience roles must be unique');
+// Key order is identity-relevant (artifactIdentity hashes the parsed manifest): every
+// trigger variant keeps command, audience, maxPerViewer, windowMs, kind, reward, event.
+const triggerPolicy = {
+  audience: audienceSchema,
+  maxPerViewer: z
+    .number()
+    .int()
+    .min(TRIGGER_LIMITS.maxPerViewer.min)
+    .max(TRIGGER_LIMITS.maxPerViewer.max),
+  windowMs: z.number().int().min(TRIGGER_LIMITS.windowMs.min).max(TRIGGER_LIMITS.windowMs.max),
+};
+const chatCommand = z.string().regex(new RegExp(TRIGGER_LIMITS.commandPattern), {
+  error: 'Chat and Channel Points triggers use a lowercase !command (^![a-z0-9_-]{1,32}$)',
+});
+const rewardTitle = z
+  .string()
+  .min(1)
+  .refine(
+    (title) =>
+      title.trim() === title &&
+      Array.from(title).length <= CHANNEL_POINTS_LIMITS.rewardTitleLength &&
+      hasNoControlCharacters(title),
+    'Reward titles are 1 to 45 trimmed characters',
+  );
+const noReward = z
+  .null({ error: 'Only trigger.kind "points.redeem" carries a reward; use reward null' })
+  .optional();
+const noEvent = z
+  .null({ error: 'Only trigger.kind "twitch.event" carries an event; use event null' })
+  .optional();
+/**
+ * One trigger, one source, discriminated by `kind` (absent means chat.command, so
+ * existing chat artifacts keep their identity). Combinations such as a reward on a
+ * Twitch event or an event on a redemption cannot parse.
+ */
+export const triggerSchema = z.discriminatedUnion(
+  'kind',
+  [
+    z
+      .object({
+        command: chatCommand,
+        ...triggerPolicy,
+        kind: z.literal('chat.command').optional(),
+        reward: noReward,
+        event: noEvent,
+      })
+      .strict(),
+    z
+      .object({
+        command: chatCommand,
+        ...triggerPolicy,
+        kind: z.literal('points.redeem'),
+        reward: rewardTitle,
+        event: noEvent,
+      })
+      .strict(),
+    z
+      .object({
+        command: z.string().regex(new RegExp(EVENT_COMMAND_PATTERN), {
+          error: 'Twitch event triggers use the reserved command "@" + event.kind',
+        }),
+        ...triggerPolicy,
+        kind: z.literal('twitch.event'),
+        reward: noReward,
+        event: eventTriggerSchema,
+      })
+      .strict(),
+  ],
+  {
+    // A missing trigger keeps zod's default wording ("received undefined").
+    error: (issue) =>
+      issue.input === undefined || typeof issue.input !== 'object'
+        ? undefined
+        : `trigger.kind is one of ${TRIGGER_KINDS.join(', ')} (absent means chat.command)`,
+  },
+);
+
 export const manifestSchema = z
   .object({
     sdkVersion: z.enum(['0.3.0', SDK_VERSION]),
@@ -70,42 +152,7 @@ export const manifestSchema = z
       .array(z.enum(CAPABILITIES))
       .max(CAPABILITIES.length)
       .refine((list) => new Set(list).size === list.length, 'Capabilities must be unique'),
-    trigger: z
-      .object({
-        command: z
-          .string()
-          .regex(new RegExp(`${TRIGGER_LIMITS.commandPattern}|${EVENT_COMMAND_PATTERN}`)),
-        audience: z
-          .array(roleSchema)
-          .min(1)
-          .max(4)
-          .refine((list) => new Set(list).size === list.length, 'Audience roles must be unique'),
-        maxPerViewer: z
-          .number()
-          .int()
-          .min(TRIGGER_LIMITS.maxPerViewer.min)
-          .max(TRIGGER_LIMITS.maxPerViewer.max),
-        windowMs: z
-          .number()
-          .int()
-          .min(TRIGGER_LIMITS.windowMs.min)
-          .max(TRIGGER_LIMITS.windowMs.max),
-        kind: z.enum(TRIGGER_KINDS).optional(),
-        reward: z
-          .string()
-          .min(1)
-          .refine(
-            (title) =>
-              title.trim() === title &&
-              Array.from(title).length <= CHANNEL_POINTS_LIMITS.rewardTitleLength &&
-              hasNoControlCharacters(title),
-            'Reward titles are 1 to 45 trimmed characters',
-          )
-          .nullable()
-          .optional(),
-        event: eventTriggerSchema.nullable().optional(),
-      })
-      .strict(),
+    trigger: triggerSchema,
     limits: z
       .object({
         effectsPerEvent: z.number().int().min(1).max(EFFECT_LIMITS.perEvent),
@@ -136,26 +183,33 @@ export const manifestSchema = z
         message:
           'Timers are not available inside stateful experiences; round deadlines are host-owned',
       });
-    const redeems = manifest.trigger.kind === 'points.redeem';
-    if (redeems && !manifest.trigger.reward)
-      ctx.addIssue({ code: 'custom', message: 'points.redeem triggers name the reward title' });
-    if (!redeems && manifest.trigger.reward)
-      ctx.addIssue({ code: 'custom', message: 'Only points.redeem triggers carry a reward' });
-    // Redemptions carry no chat badges, so no narrower audience can be verified.
+    const trigger = manifest.trigger;
+    const redeems = trigger.kind === 'points.redeem';
+    const platform = trigger.kind === 'twitch.event';
+    // Redemptions and EventSub notifications carry no chat badges, so no narrower
+    // audience can be verified for either source.
     if (
-      redeems &&
-      (manifest.trigger.audience.length !== 1 || manifest.trigger.audience[0] !== 'viewer')
+      (redeems || platform) &&
+      (trigger.audience.length !== 1 || trigger.audience[0] !== 'viewer')
     )
-      ctx.addIssue({ code: 'custom', message: "points.redeem audience must be ['viewer']" });
-    if (redeems && manifest.experience)
-      ctx.addIssue({ code: 'custom', message: 'Sessions are chat-only; remove the experience' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['trigger', 'audience'],
+        message: `${trigger.kind} triggers use audience ['viewer']; they carry no chat roles`,
+      });
+    if ((redeems || platform) && manifest.experience)
+      ctx.addIssue({
+        code: 'custom',
+        path: ['experience'],
+        message: 'Sessions are chat-only; remove the experience',
+      });
     if (
-      (redeems || manifest.capabilities.includes('predictions')) &&
+      (redeems || platform || manifest.capabilities.includes('predictions')) &&
       manifest.sdkVersion !== '0.4.0'
     )
       ctx.addIssue({
         code: 'custom',
-        message: 'Channel Points triggers and predictions require SDK 0.4.0',
+        message: 'Channel Points, Twitch event triggers and predictions require SDK 0.4.0',
       });
     const native = manifest.capabilities.filter((c) =>
       (TWITCH_ACTION_CAPABILITIES as readonly string[]).includes(c),
@@ -168,48 +222,27 @@ export const manifestSchema = z
     const privileged: readonly string[] = TWITCH_ACTION_LIMITS.privilegedAudience;
     if (
       (manifest.capabilities.includes('polls') || manifest.capabilities.includes('shoutout')) &&
-      manifest.trigger.audience.some((role) => !privileged.includes(role))
+      trigger.audience.some((role) => !privileged.includes(role))
     )
       ctx.addIssue({
         code: 'custom',
         message: 'Polls and shoutouts may only be triggered by moderators or the broadcaster',
       });
-    // F22 models Channel Points as trigger.kind 'points.redeem'; F19 models platform events
-    // as trigger.event. One trigger has exactly one source.
-    if (manifest.trigger.event && (redeems || manifest.trigger.reward))
-      ctx.addIssue({
-        code: 'custom',
-        path: ['trigger', 'event'],
-        message: 'A trigger is either a Channel Points redemption or a Twitch event, not both',
-      });
-    const event = manifest.trigger.event;
-    if (event) {
-      if (manifest.trigger.command !== eventTriggerCommand(event.kind))
+    if (trigger.kind === 'twitch.event') {
+      const event = trigger.event;
+      if (trigger.command !== eventTriggerCommand(event.kind))
         ctx.addIssue({
           code: 'custom',
           path: ['trigger', 'command'],
           message: `Event triggers use the reserved command ${eventTriggerCommand(event.kind)}`,
         });
-      if (manifest.experience)
-        ctx.addIssue({ code: 'custom', message: 'Event triggers cannot drive a session' });
       if (event.kind === 'subscribe' && event.minimum !== 1)
         ctx.addIssue({
           code: 'custom',
           path: ['trigger', 'event', 'minimum'],
           message: 'Every subscribe event has amount 1; use minimum 1',
         });
-      if (manifest.trigger.audience.length !== 1 || manifest.trigger.audience[0] !== 'viewer')
-        ctx.addIssue({
-          code: 'custom',
-          path: ['trigger', 'audience'],
-          message: "Event triggers use audience ['viewer']; EventSub carries no chat roles",
-        });
-    } else if (!new RegExp(TRIGGER_LIMITS.commandPattern).test(manifest.trigger.command))
-      ctx.addIssue({
-        code: 'custom',
-        path: ['trigger', 'command'],
-        message: 'Reserved @event commands need trigger.event',
-      });
+    }
   });
 export const artifactSchema = z
   .object({
@@ -232,7 +265,10 @@ export const eventSchema = z
     kind: z.literal('points.redeem').optional(),
     twitch: twitchEventDetailSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((event) => !(event.kind && event.twitch), {
+    message: 'An event is a chat message, a redemption or a Twitch event, never two',
+  });
 const boundedText = (max: number) =>
   z
     .string()
@@ -378,7 +414,10 @@ export const scenarioStepSchema = z
       .nullable()
       .optional(),
   })
-  .strict();
+  .strict()
+  .refine((step) => !(step.kind && step.twitch), {
+    message: 'A step is a chat message, a redemption (kind) or a Twitch event (twitch), never two',
+  });
 export const scenarioSchema = z
   .object({
     name: z.string().min(1).max(120),

@@ -6,6 +6,7 @@ export {
   createPreviewEngine,
   DECISION_MESSAGES,
   matchesCommand,
+  matchesTrigger,
   type AdmissionState,
   type ChannelBudget,
   type EngineOptions,
@@ -19,8 +20,10 @@ export {
   eventSchema,
   manifestSchema,
   scenarioSchema,
+  scenarioStepSchema,
   scenariosSchema,
   eventTriggerSchema,
+  triggerSchema,
   twitchEventDetailSchema,
 } from './contract.js';
 export {

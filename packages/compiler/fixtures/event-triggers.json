@@ -2,7 +2,7 @@
   "provenance": {
     "transport": "offline",
     "model": null,
-    "promptVersion": "riff-compiler/11",
+    "promptVersion": "riff-compiler/12",
     "note": "Deterministic F19 template responses recorded locally; no live model call or credentials."
   },
   "records": [
@@ -30,6 +30,7 @@
             "audience": ["viewer"],
             "maxPerViewer": 5,
             "windowMs": 60000,
+            "kind": "twitch.event",
             "event": {
               "kind": "cheer",
               "minimum": 100
@@ -327,6 +328,7 @@
             "audience": ["viewer"],
             "maxPerViewer": 5,
             "windowMs": 60000,
+            "kind": "twitch.event",
             "event": {
               "kind": "raid",
               "minimum": 1
@@ -586,6 +588,7 @@
             "audience": ["viewer"],
             "maxPerViewer": 5,
             "windowMs": 60000,
+            "kind": "twitch.event",
             "event": {
               "kind": "gift",
               "minimum": 5
@@ -882,6 +885,7 @@
             "audience": ["viewer"],
             "maxPerViewer": 5,
             "windowMs": 60000,
+            "kind": "twitch.event",
             "event": {
               "kind": "subscribe",
               "minimum": 1
@@ -1137,6 +1141,7 @@
             "audience": ["viewer"],
             "maxPerViewer": 5,
             "windowMs": 60000,
+            "kind": "twitch.event",
             "event": {
               "kind": "resub",
               "minimum": 12

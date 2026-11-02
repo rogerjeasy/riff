@@ -50,3 +50,5 @@ call.
 `riff-compiler/10`: merges the F21/F23 polls, announcements and shoutouts rules into the same pack; `twitch-actions.json` and every fixture re-labelled for pack 9 were re-labelled again with no content change.
 
 `riff-compiler/11`: merges the F19 Twitch event-trigger rules and curated cheer/raid examples into the same pack; `event-triggers.json` and every fixture re-labelled for pack 10 were re-labelled again with no content change.
+
+`riff-compiler/12`: unifies the trigger model under one discriminated `trigger.kind` (`chat.command`, `points.redeem`, `twitch.event`). `event-triggers.json` was regenerated so each event trigger carries `kind: "twitch.event"`; every other fixture was re-labelled with no content change (chat and Channel Points identities are unchanged).

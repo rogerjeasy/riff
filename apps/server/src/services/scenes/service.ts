@@ -38,7 +38,7 @@ function instructionsFor(version: VersionRow): string[] {
     ? 'Everyone'
     : describeAudience(manifest.trigger.audience);
   const e = manifest.experience;
-  if (manifest.trigger.event) return [describeTrigger(manifest.trigger)];
+  if (manifest.trigger.kind === 'twitch.event') return [describeTrigger(manifest.trigger)];
   if (!e)
     return [
       `${who}: type ${manifest.trigger.command} · ${manifest.trigger.maxPerViewer} per ${describeWindow(manifest.trigger.windowMs)}`.slice(

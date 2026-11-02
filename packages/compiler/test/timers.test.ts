@@ -106,7 +106,7 @@ describe('timer prompt pack', () => {
     expect(fixture.provenance).toMatchObject({
       transport: 'offline',
       model: null,
-      promptVersion: 'riff-compiler/11',
+      promptVersion: 'riff-compiler/12',
     });
     expect(fixture.records.map((record) => record.intent)).toEqual([HYDRATION, COUNTDOWN]);
     for (const record of fixture.records) {

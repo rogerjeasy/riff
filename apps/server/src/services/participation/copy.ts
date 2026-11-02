@@ -247,7 +247,7 @@ export function ruleCopy(manifest: PermissionManifest, language: ParticipationLa
     return c.unit(value, number(value), minutes ? 'minute' : 'second');
   };
   const instructions: string[] = [];
-  if (t.event) {
+  if (t.kind === 'twitch.event') {
     instructions.push(
       `${EVENT_COPY[language][t.event.kind](t.event.minimum, number(t.event.minimum))} · ${c.rolling(number(t.maxPerViewer), window())}`,
     );

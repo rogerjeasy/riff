@@ -73,7 +73,7 @@ export function createRehearsalPreset(
     const key = `step-${steps.length + 1}`;
     // F19: event triggers rehearse with labeled synthetic Twitch events at the threshold,
     // never fabricated EventSub transport messages.
-    const trigger = manifest.trigger.event;
+    const trigger = manifest.trigger.kind === 'twitch.event' ? manifest.trigger.event : null;
     const synthetic = trigger && text === manifest.trigger.command;
     const event = {
       id: `${preset}-${key}`,

@@ -142,19 +142,26 @@ export interface Manifest {
   experience?: ExperienceDefinition | null;
   sdkVersion: string;
   capabilities: string[];
-  trigger: {
-    command: string;
-    audience: Role[];
-    maxPerViewer: number;
-    windowMs: number;
-    /** F22: `points.redeem` triggers run on linked Channel Points redemptions only. */
-    kind?: 'chat.command' | 'points.redeem';
-    reward?: string | null;
-    /** F19: set when the interaction runs on a Twitch event instead of chat. */
-    event?: { kind: TwitchEventKind; minimum: number } | null;
-  };
+  trigger: ManifestTrigger;
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
+interface TriggerPolicy {
+  command: string;
+  audience: Role[];
+  maxPerViewer: number;
+  windowMs: number;
+}
+/** Mirrors the SDK's discriminated trigger: `kind` alone decides the source. */
+export type ManifestTrigger =
+  | (TriggerPolicy & { kind?: 'chat.command'; reward?: null; event?: null })
+  /** F22: runs on linked Channel Points redemptions only. */
+  | (TriggerPolicy & { kind: 'points.redeem'; reward: string; event?: null })
+  /** F19: runs on one Twitch event kind; command is the reserved `@kind` token. */
+  | (TriggerPolicy & {
+      kind: 'twitch.event';
+      reward?: null;
+      event: { kind: TwitchEventKind; minimum: number };
+    });
 export interface Stage {
   id: string;
   label: string;

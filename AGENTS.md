@@ -982,7 +982,8 @@ validator expose the same capability set. No dependencies or env vars were added
 Authority and outcomes are separate. SDK 0.4.0 manifests may set `trigger.kind:
 'points.redeem'` with `trigger.reward` (1–45 characters); audience must be `['viewer']`
 (redemptions carry no badges) and no experience is allowed. Chat never matches such a
-trigger and redemptions never match chat triggers (`matchesTrigger`). The `predictions`
+trigger and redemptions never match chat triggers (`matchesTrigger`; see "Unified trigger
+model" below). The `predictions`
 capability (`riff.predictions.propose`) is in CAPABILITIES, the QuickJS bridge and the
 manifest validator; it validates one proposal per event against documented Twitch bounds
 (title ≤45, 2–10 distinct outcomes ≤25, 30–1800 s) and returns it in the decision. Guest
@@ -1066,9 +1067,9 @@ response for polls on non-Affiliate channels is not documented.
 `normalizeTwitchEvent` validates payloads with zod, keeps anonymous gifts/cheers anonymous
 (`viewerId` `anonymous`), clamps amounts and sanitizes viewer text (§4).
 
-SDK 0.4.0 manifests may declare `trigger.event {kind, minimum}`; `trigger.command` must
-then equal the reserved non-chat token `@kind`, audience is `['viewer']` and experience is
-null. This is additive: chat artifacts keep their identity. Handlers read
+SDK 0.4.0 manifests may declare `trigger.kind: 'twitch.event'` with `trigger.event {kind,
+minimum}`; `trigger.command` must then equal the reserved non-chat token `@kind`, audience
+is `['viewer']` and experience is null. This is additive: chat artifacts keep their identity. Handlers read
 `event.twitch {kind, amount, tier, anonymous, gift}`. The engine admits platform events
 through the shared path (dedupe → kind/UNRELATED → `BELOW_MINIMUM` → per-viewer window →
 channel budget); chat interactions ignore platform events and rounds never receive them.
@@ -1088,10 +1089,18 @@ transport messages. The console's Twitch event triggers panel shows availability
 missing consent and subscription state with scoped consent links; the private stage adds a
 synthetic event simulator. Recipe adaptation of event triggers is not supported yet.
 
-Trigger sources are modelled two ways: F22 Channel Points use `trigger.kind:
-'points.redeem'` + `trigger.reward`, F19 platform events use `trigger.event`. Both are
-supported; the manifest validator rejects a trigger that sets both, and engines never
-admit a Twitch event for chat or Channel Points triggers. Unifying them under one
-`trigger.kind` is a pending design decision. `/auth/twitch` accepts `?features=`
+### Unified trigger model
+
+The manifest trigger is ONE discriminated union on `trigger.kind` (SDK `ManifestTrigger`,
+sandbox `triggerSchema`, web `ManifestTrigger`): `chat.command` (the default when `kind`
+is omitted, so chat artifacts keep byte-identical identity), `points.redeem` (requires
+`reward`, `event` null/absent) and `twitch.event` (requires `event {kind, minimum}`,
+`reward` null/absent, `command` the reserved `@kind`). Any other combination fails to parse
+with a field-specific message; event-side inputs (`ChatEvent`, scenario steps) may not
+carry both a redemption `kind` and a `twitch` detail. `matchesTrigger` is the single
+routing rule: each kind admits only its own source, then `twitch.event` applies
+`BELOW_MINIMUM`. Server consumers (`eventTriggers`, instructions, participation copy,
+version diffs) and the web branch on `kind`, never on the presence of `event`. Prompt pack
+`riff-compiler/12` documents it in one TASK_RULES section. `/auth/twitch` accepts `?features=`
 (Channel Points/Predictions), `?feature=` (polls/announcements/shoutouts) and
 `?triggers=` (event families) together and always keeps granted scopes.

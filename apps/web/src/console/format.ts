@@ -1,4 +1,5 @@
 import type { Decision, DecisionCode, Manifest, Role } from '../lib/types.js';
+import type { TwitchEventKind } from './twitch/contracts.js';
 
 export const formatWindow = (ms: number) =>
   ms % 3_600_000 === 0
@@ -61,26 +62,26 @@ export const CODE_LABEL: Record<DecisionCode, string> = {
   BELOW_MINIMUM: 'Below minimum',
 };
 
-const EVENT_TRIGGER_TEXT: Record<
-  NonNullable<Manifest['trigger']['event']>['kind'],
-  (minimum: number) => string
-> = {
+const EVENT_TRIGGER_TEXT: Record<TwitchEventKind, (minimum: number) => string> = {
   subscribe: () => 'Someone subscribes',
   gift: (n) => (n > 1 ? `Someone gifts ${n}+ subs` : 'Someone gifts subs'),
   resub: (n) => (n > 1 ? `Someone resubscribes for ${n}+ months` : 'Someone resubscribes'),
   cheer: (n) => `Someone cheers ${n}+ bits`,
   raid: (n) => (n > 1 ? `A raid of ${n}+ viewers arrives` : 'A raid arrives'),
 };
-/** What starts an interaction, in plain words: a chat command or a Twitch event (F19). */
+/** What starts an interaction, in plain words, keyed on `trigger.kind`. */
 export function triggerSummary(manifest: Pick<Manifest, 'trigger'>): string {
-  const event = manifest.trigger.event;
-  return event
-    ? EVENT_TRIGGER_TEXT[event.kind](event.minimum)
-    : `Someone types ${manifest.trigger.command}`;
+  const trigger = manifest.trigger;
+  if (trigger.kind === 'twitch.event')
+    return EVENT_TRIGGER_TEXT[trigger.event.kind](trigger.event.minimum);
+  if (trigger.kind === 'points.redeem') return `Someone redeems “${trigger.reward}”`;
+  return `Someone types ${trigger.command}`;
 }
-/** Overlay instruction line; event triggers tell viewers what to do instead of a command. */
+/** Overlay instruction line; only chat triggers tell viewers to type a command. */
 export function triggerInstruction(manifest: Pick<Manifest, 'trigger'>): string {
-  return manifest.trigger.event ? triggerSummary(manifest) : `Type ${manifest.trigger.command}`;
+  return manifest.trigger.kind === 'twitch.event' || manifest.trigger.kind === 'points.redeem'
+    ? triggerSummary(manifest)
+    : `Type ${manifest.trigger.command}`;
 }
 export const tone = (code: string | null): 'good' | 'warn' | 'bad' | 'muted' =>
   code === 'ACCEPTED' ||
@@ -121,17 +122,18 @@ export function explain(
   manifest: Manifest,
 ): string {
   const t = manifest.trigger;
+  const ev = t.kind === 'twitch.event' ? t.event : null;
   const n = decision.effects.length;
   const a = decision.allowance;
   const asset = decision.effects[0]?.asset ?? 'effect';
   switch (decision.code) {
     case 'BELOW_MINIMUM':
-      return `${viewer}’s ${t.event?.kind ?? 'event'} is below the ${t.event?.minimum ?? ''} minimum, so nothing ran.`;
+      return `${viewer}’s ${ev?.kind ?? 'event'} is below the ${ev?.minimum ?? ''} minimum, so nothing ran.`;
     case 'ACCEPTED':
       // Rehearsals route native Twitch actions to a simulated sink; say what would happen.
       if (decision.actions?.length && decision.mode === 'preview')
-        return `${t.event ? `${triggerSummary(manifest)} (${viewer})` : `${viewer} typed ${t.command}`} — simulated Twitch, nothing sent: ${decision.actions.map(describeAction).join('; ')}.${n ? ` Plus ${n} visual effect${n === 1 ? '' : 's'}.` : ''}`;
-      if (t.event)
+        return `${ev ? `${triggerSummary(manifest)} (${viewer})` : `${viewer} typed ${t.command}`} — simulated Twitch, nothing sent: ${decision.actions.map(describeAction).join('; ')}.${n ? ` Plus ${n} visual effect${n === 1 ? '' : 's'}.` : ''}`;
+      if (ev)
         return `${triggerSummary(manifest)} (${viewer}) — ${n === 1 ? `a ${asset} flies` : `${n} ${asset}s fly`}. ${a ? `${a.used} of ${a.max} used this ${formatWindow(t.windowMs)}.` : ''}`;
       if (manifest.experience)
         return `${viewer}: ${decision.reason} ${decision.effects.length ? `${decision.effects.length} visual effect${decision.effects.length === 1 ? '' : 's'}.` : 'No visual effect.'}`;
@@ -141,7 +143,7 @@ export function explain(
     case 'AUDIENCE':
       return `${viewer} can’t trigger this — only ${audienceLabel(t.audience)} can.`;
     case 'UNRELATED':
-      if (t.event) return `That isn’t a ${t.event.kind}, so this interaction ignored it.`;
+      if (ev) return `That isn’t a ${ev.kind}, so this interaction ignored it.`;
       return `“${text.slice(0, 40)}” isn’t ${t.command}, so it was ignored.`;
     case 'DUPLICATE':
       return 'The same chat message arrived twice. It counted once and threw nothing extra.';

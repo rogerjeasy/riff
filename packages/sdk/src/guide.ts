@@ -183,10 +183,11 @@ and/or broadcaster. \`chat.announce\` may use any audience; keep effectsPerMinut
 ## Twitch event triggers (subs, gifts, resubs, cheers, raids)
 
 Instead of a chat command, a projectile interaction may run on ONE Twitch event kind.
-Set trigger.event = { kind, minimum } and trigger.command = '@' + kind (a reserved
-token chat can never match). kind is subscribe | gift | resub | cheer | raid.
-experience must be null and audience must be ['viewer']. minimum is an integer
-1..1000000 compared with event.twitch.amount; use 1 when no threshold is stated.
+Set trigger.kind = 'twitch.event', trigger.event = { kind, minimum } and
+trigger.command = '@' + kind (a reserved token chat can never match); reward is null.
+event.kind is subscribe | gift | resub | cheer | raid. experience must be null and
+audience must be ['viewer']. minimum is an integer 1..1000000 compared with
+event.twitch.amount; use 1 when no threshold is stated.
 
 event.twitch = { kind, amount, tier, anonymous, gift }:
 - subscribe: a new (not resub) subscription; amount 1; gift true when gifted.
@@ -200,7 +201,7 @@ Viewer-supplied text is control-stripped and capped at 500 characters.
 
 Event admission order: DUPLICATE → UNRELATED (chat text, or a different event kind) →
 BELOW_MINIMUM (amount < minimum, 0 effects) → VIEWER_LIMIT → CHANNEL_LIMIT → ACCEPTED.
-Chat-command interactions return UNRELATED for every Twitch event.
+Chat-command and Channel Points interactions return UNRELATED for every Twitch event.
 Example: \`async (event, riff) => { const n = Math.min(10, Math.ceil(event.twitch.amount / 100)); for (let i = 0; i < n; i++) await riff.overlay.emit({ kind: 'projectile', asset: 'star', x: riff.util.random() }); }\`
 
 Event scenario steps set twitch to the synthetic event and text to '' (or a message);
@@ -223,6 +224,19 @@ expect:'ACCEPTED', effects:1, session:null }. Cover a happy event, a BELOW_MINIM
   },
   limits: { effectsPerEvent: 1, effectsPerMinute: 60 }   // 1..10 and 1..120
 }
+
+## Trigger kinds (one trigger, one source)
+
+trigger.kind is the single discriminator; each kind admits only its own source:
+- 'chat.command' (the default when kind is omitted): chat text equal to command.
+  reward and event are null or absent.
+- 'points.redeem': a linked Channel Points redemption. reward is the reward title
+  (required), command is a console handle viewers never type, event is null.
+- 'twitch.event': one Twitch event kind. event = { kind, minimum } (required), command
+  is '@' + event.kind, reward is null.
+Any other combination (a reward on a chat or event trigger, an event on a chat or
+redemption trigger, a missing reward or event) is rejected. Redemption and event
+triggers use audience ['viewer'] and no experience, because they carry no chat roles.
 
 ## Host admission order (scenario expectations must follow it exactly)
 
@@ -281,8 +295,8 @@ reward title (1..45 characters, e.g. 'Hydrate'). The creator links that title to
 reward Riff created on Twitch; only that reward's redemptions reach the handler, and
 chat text never matches it. trigger.command stays required as the console handle
 (e.g. '!hydrate') and must not be typed by viewers. Redemptions carry no chat badges,
-so trigger.audience MUST be ['viewer']; experience must be absent or null. Chat
-triggers omit kind or use 'chat.command' with reward:null.
+so trigger.audience MUST be ['viewer']; experience must be absent or null; event is
+null. Chat triggers omit kind or use 'chat.command' with reward:null and event:null.
 For a redemption event.kind is 'points.redeem', roles is ['viewer'] and event.text is
 the viewer's sanitized input ('' when the reward asks none). Admission is the same
 order as chat (DUPLICATE → UNRELATED → VIEWER_LIMIT → CHANNEL_LIMIT → ACCEPTED);

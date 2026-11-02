@@ -80,7 +80,8 @@ export function Rehearsal(props: {
     redeems && message.trim().toLowerCase() === command
       ? { text: '', kind: 'points.redeem' }
       : { text: message };
-  const eventTrigger = version?.manifest.trigger.event ?? null;
+  const trigger = version?.manifest.trigger;
+  const eventTrigger = trigger?.kind === 'twitch.event' ? trigger.event : null;
   const instruction = version ? triggerInstruction(version.manifest) : `Type ${command}`;
 
   useEffect(() => {

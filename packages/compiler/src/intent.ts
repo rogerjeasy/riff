@@ -5,6 +5,7 @@ import {
   type ProjectileAsset,
   type ExperienceDefinition,
   type EventTrigger,
+  type TriggerKind,
 } from '@riff/sdk';
 
 import { extractExperienceHints, type MechanicHints } from './experience-hints.js';
@@ -165,7 +166,7 @@ export interface ManifestView {
     audience: AudienceRole[];
     maxPerViewer: number;
     windowMs: number;
-    kind?: 'chat.command' | 'points.redeem' | undefined;
+    kind?: TriggerKind | undefined;
     reward?: string | null | undefined;
     event?: EventTrigger | null | undefined;
   };
@@ -399,7 +400,12 @@ export function checkIntent(
   }
   // F19: the Twitch event family and threshold are explicit facts like a command.
   const eventHints = extractEventHints(intent);
-  if (eventHints || t.event || p?.event) {
+  // trigger.kind is the single source of truth; an event field on another kind is ignored.
+  const eventOf = (trigger: ManifestView['trigger'] | undefined) =>
+    trigger?.kind === 'twitch.event' ? (trigger.event ?? null) : null;
+  const tEvent = eventOf(t);
+  const pEvent = eventOf(p);
+  if (eventHints || tEvent || pEvent) {
     const eventText = (event: EventTrigger | null | undefined) =>
       event ? `${event.kind} ≥ ${event.minimum}` : 'chat command';
     const statedEvent = eventHints
@@ -411,11 +417,11 @@ export function checkIntent(
       'event',
       'Twitch event',
       statedEvent,
-      eventText(t.event),
-      p ? eventText(p.event) : null,
+      eventText(tEvent),
+      p ? eventText(pEvent) : null,
       !eventHints ||
-        (t.event?.kind === eventHints.kind &&
-          (eventHints.minimum === null || eventHints.minimum === t.event.minimum)),
+        (tEvent?.kind === eventHints.kind &&
+          (eventHints.minimum === null || eventHints.minimum === tEvent.minimum)),
     ]);
   }
   return rows.map(([aspect, label, stated, actual, before, agrees]) => ({

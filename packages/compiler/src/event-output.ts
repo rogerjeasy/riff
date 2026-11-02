@@ -162,9 +162,10 @@ function scenarios(trigger: EventTrigger, effects: (amount: number) => number): 
  * only projectile effects, so confetti and banners become clearly stated bursts.
  */
 export function compileEventOffline(request: CompileRequest): CompileOutput | null {
-  const base = request.base?.manifest as { trigger?: { event?: EventTrigger | null } } | undefined;
+  const base = request.base?.manifest as
+    { trigger?: { kind?: string; event?: EventTrigger | null } } | undefined;
   const hints = extractEventHints(request.intent);
-  const previous = base?.trigger?.event ?? null;
+  const previous = base?.trigger?.kind === 'twitch.event' ? (base.trigger.event ?? null) : null;
   if (!hints && !(previous && !extractIntentHints(request.intent).command)) return null;
   const kind = hints?.kind ?? previous?.kind;
   if (!kind) return null;
@@ -190,11 +191,16 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
   if (kind === 'cheer' || kind === 'gift')
     assumptions.push('Anonymous cheers and gifts share one allowance.');
   const trigger: EventTrigger = { kind, minimum };
+  const when = describeTrigger({
+    kind: 'twitch.event',
+    command: eventTriggerCommand(kind),
+    event: trigger,
+  });
   const perEvent = MAX_BURST;
   return {
     kind: 'candidate',
     title: request.base?.title ?? p.title,
-    summary: `${describeTrigger({ command: eventTriggerCommand(kind), event: trigger })}: ${p.what.toLowerCase()}.`,
+    summary: `${when}: ${p.what.toLowerCase()}.`,
     question: null,
     choices: [],
     unsupportedReason: null,
@@ -210,6 +216,7 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
         audience: ['viewer'],
         maxPerViewer: PER_VIEWER,
         windowMs: WINDOW_MS,
+        kind: 'twitch.event',
         event: trigger,
       },
       limits: {
@@ -219,7 +226,7 @@ export function compileEventOffline(request: CompileRequest): CompileOutput | nu
     },
     tests: scenarios(trigger, p.effects),
     behavior: {
-      when: describeTrigger({ command: eventTriggerCommand(kind), event: trigger }),
+      when,
       what: p.what,
       who: kind === 'raid' ? 'Any channel that raids you' : 'Anyone on Twitch who does it',
       howMuch: `${p.scale}; up to ${PER_VIEWER} per account in any 60 seconds`,

@@ -365,8 +365,8 @@ comments removed). Normalization validates each payload with zod, hides anonymou
 gifts/cheers behind one `anonymous` identity, clamps amounts and sanitizes resub/cheer
 text and display names.
 
-Manifests may declare `trigger.event {kind, minimum}` with the reserved command `@kind`
-(SDK 0.4.0, additive; chat artifacts keep their identity). Events carry `event.twitch`
+Manifests may declare `trigger.kind: 'twitch.event'` with `trigger.event {kind, minimum}`
+and the reserved command `@kind` (SDK 0.4.0, additive; chat artifacts keep their identity). Events carry `event.twitch`
 and enter the same engine admission (dedupe → kind → `BELOW_MINIMUM` → per-viewer window
 → channel budget) and live queue, durable admission records, panic fences and overlay path
 as chat. Prompt pack `riff-compiler/7` (merged as `riff-compiler/11`) and the offline
@@ -385,6 +385,13 @@ Integration (prompt pack `riff-compiler/11`): F19 merged after F18/F21/F22/F31. 
 shared `admit` loop keeps timer, prediction-proposal and native-action side effects for
 chat and platform events; redemptions keep their own linked-automation path. The
 manifest validator rejects a trigger that is both `points.redeem` and `trigger.event`.
+
+Trigger unification (prompt pack `riff-compiler/12`): the manifest trigger is one
+discriminated union on `trigger.kind` — `chat.command` (default when omitted),
+`points.redeem` (requires `reward`) and `twitch.event` (requires `event`). Mixed triggers
+cannot parse, and `matchesTrigger` routes each kind only to its own source. Chat and
+Channel Points artifact identities are byte-identical to pack 11; the never-shipped F19
+fixtures were regenerated with `kind: 'twitch.event'`.
 Incoming raids feed F23's "raiders only" shoutout policy (`recordRaid`), and selecting
 that policy subscribes to `channel.raid` on its own (server test). `/auth/twitch`
 accepts `?features=`, `?feature=` and `?triggers=` together.

@@ -55,8 +55,7 @@ Last integration: branch `feat/close-feature-gaps`, 2026-11-02. `pnpm check` res
 
 ## Open design decisions
 
-1. **Two trigger models.** Channel Points use `trigger.kind: 'points.redeem'` with `trigger.reward`, while Twitch events use `trigger.event`. The validator rejects a manifest that sets both. The open question is whether to unify them under one discriminated trigger.
-2. **Automatic raider shoutout.** This needs a host-owned rule that allows `shoutout` from a `raid` event trigger.
+1. **Automatic raider shoutout.** This needs a host-owned rule that allows `shoutout` from a `raid` event trigger.
 
 ## Live validation still outstanding
 

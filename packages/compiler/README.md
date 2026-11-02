@@ -46,3 +46,8 @@ Prompt pack `riff-compiler/11` adds the F19 Twitch event-trigger rules (`trigger
 with the reserved `@kind` command, per-step `twitch`) and curated cheer/raid examples;
 the strict schema now carries `trigger.kind`, `trigger.reward` and `trigger.event` together,
 and the validator rejects a trigger that sets both `points.redeem` and `event`.
+
+Prompt pack `riff-compiler/12` unifies the trigger model: `trigger.kind` is the single
+discriminator (`chat.command` | `points.redeem` | `twitch.event`); `reward` belongs only
+to `points.redeem` and `event` only to `twitch.event`. TASK_RULES has one "Trigger kinds"
+section and the offline event compiler emits `kind: 'twitch.event'`.

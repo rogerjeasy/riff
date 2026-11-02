@@ -2,7 +2,7 @@
   "provenance": {
     "transport": "offline",
     "model": null,
-    "promptVersion": "riff-compiler/11",
+    "promptVersion": "riff-compiler/12",
     "note": "Deterministic offline template outputs for F21/F23 native Twitch actions. No live model request."
   },
   "cases": [

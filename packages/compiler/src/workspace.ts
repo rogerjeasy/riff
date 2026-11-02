@@ -5,7 +5,7 @@ import { compileEventOffline } from './event-output.js';
 import type { CompileRequest } from './contract.js';
 
 /** Bumped whenever the prompt pack changes; recorded with every compile run. */
-export const PROMPT_VERSION = 'riff-compiler/11';
+export const PROMPT_VERSION = 'riff-compiler/12';
 
 const EXPERIENCE_INTENTS = [
   'Tomato Battle: viewers join Red with !red or Blue with !blue, then use !throw to throw tomatoes. Give each participant 3 throws for a 120 second round; the team with the highest score wins.',
@@ -75,12 +75,19 @@ Rules for candidates:
   ["overlay","timer"], sdkVersion 0.4.0 and experience null. Never use setTimeout.
   Timer tests use step.timers {fired,effects} on a later step (e.g. unrelated chat at
   the due time); every other step uses timers:null.
-- Channel Points: "when someone redeems 'Hydrate'" uses trigger.kind "points.redeem",
-  trigger.reward "Hydrate" (the reward title), audience ["viewer"], experience null and a
-  lowercase console handle command such as "!hydrate". Chat triggers use kind
-  "chat.command" and reward null. Redemption scenario steps set kind "points.redeem"
-  and text "" (chat steps use kind null); include a chat step typing the handle that is
-  UNRELATED. The host fulfils or refunds redemptions; never claim the handler does.
+- Trigger kinds (one trigger, one source; trigger.kind is the only discriminator):
+  * "chat.command": command is the lowercase !command; reward null; event null.
+  * "points.redeem": reward is the reward title; command is a lowercase console handle
+    such as "!hydrate"; event null; audience ["viewer"]; experience null.
+  * "twitch.event": event {kind, minimum}; command is '@'+event.kind; reward null;
+    audience ["viewer"]; experience null.
+  Never set reward or event on any other kind; the validator rejects every mixed trigger.
+  Scenario steps mirror the source: chat steps use kind null and twitch null; redemption
+  steps kind "points.redeem" and twitch null; event steps kind null and a twitch object.
+- Channel Points: "when someone redeems 'Hydrate'" uses trigger.kind "points.redeem" and
+  trigger.reward "Hydrate". Redemption steps use text ""; include a chat step typing the
+  handle that is UNRELATED. The host fulfils or refunds redemptions; never claim the
+  handler does.
 - Predictions: the handler may only PROPOSE with riff.predictions.propose({title,
   outcomes, windowSeconds}) and capability "predictions". The creator opens it and alone
   picks the winner, locks or cancels; requests to auto-resolve, pick winners, or settle
@@ -167,9 +174,8 @@ Rules for candidates:
   is available. The host independently validates empty, populated, exhausted, paused and
   finished states, and later revalidates current live progress at exact approval.
   Incompatible score/team/objective changes require explicit full reset, never rewrite scores.
-- Twitch event triggers (subs, gifts, resubs, cheers, raids): set trigger.event
-  {kind, minimum} and trigger.command '@'+kind; trigger.kind "chat.command" and reward
-  null; audience ['viewer']; experience null; capabilities ['overlay'] (add
+- Twitch event triggers (subs, gifts, resubs, cheers, raids): trigger.kind
+  "twitch.event" (see Trigger kinds); capabilities ['overlay'] (add
   "chat.announce" only when an announcement is asked for; polls and shoutouts need a
   moderator/broadcaster chat trigger, so they cannot be event-triggered). minimum is the stated threshold (bits, gifted subs, resub
   months, raid viewers) or 1 when unstated; subscribe always uses 1. Pick a
@@ -180,9 +186,6 @@ Rules for candidates:
   twitch {kind, amount, tier, anonymous, gift}; chat steps carry twitch:null. Include
   BELOW_MINIMUM when minimum > 1 and an ordinary chat message expecting UNRELATED.
   behavior.when is plain language, e.g. "Someone cheers 100+ bits".
-- Chat and Channel Points interactions set trigger.event null and every step's twitch
-  null; event-trigger steps use kind null. Never combine trigger.event with
-  trigger.kind "points.redeem" (the validator rejects it).
 - title: 2-3 words, Title Case.`;
 
 function editSection(request: CompileRequest) {

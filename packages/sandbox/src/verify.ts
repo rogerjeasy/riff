@@ -255,7 +255,7 @@ export function hostScenarios(manifest: PermissionManifest): Scenario[] {
   if (manifest.experience?.mechanics) return mechanicsHostScenarios(manifest);
   if (manifest.experience) return sessionHostScenarios(manifest);
   if (manifest.trigger.kind === 'points.redeem') return redemptionHostScenarios(manifest);
-  if (manifest.trigger.event) return eventHostScenarios(manifest);
+  if (manifest.trigger.kind === 'twitch.event') return eventHostScenarios(manifest);
   const { command, audience, maxPerViewer, windowMs } = manifest.trigger;
   // Proposal-only handlers emit no overlay effect: assert admission, not effect count.
   const produced = manifest.capabilities.includes('overlay') ? -1 : -2;
@@ -434,8 +434,8 @@ export function syntheticTwitchEvent(
  * ignored and the per-viewer allowance holds for events too.
  */
 function eventHostScenarios(manifest: PermissionManifest): Scenario[] {
+  if (manifest.trigger.kind !== 'twitch.event') return [];
   const event = manifest.trigger.event;
-  if (!event) return [];
   const { maxPerViewer } = manifest.trigger;
   const other = event.kind === 'raid' ? 'cheer' : 'raid';
   const step = (

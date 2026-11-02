@@ -71,7 +71,7 @@ describe('points.redeem manifests', () => {
 });
 
 describe('Channel Points and Twitch event triggers', () => {
-  it('a trigger is either a points.redeem redemption or a trigger.event, never both', () => {
+  it('a trigger is either a points.redeem redemption or a twitch.event, never both', () => {
     const cheer = { kind: 'cheer', minimum: 100 };
     expect(
       manifestSchema.safeParse({
@@ -88,7 +88,7 @@ describe('Channel Points and Twitch event triggers', () => {
           audience: ['viewer'],
           maxPerViewer: 2,
           windowMs: 60_000,
-          kind: 'chat.command',
+          kind: 'twitch.event',
           reward: null,
           event: cheer,
         },
@@ -99,7 +99,8 @@ describe('Channel Points and Twitch event triggers', () => {
   it('Channel Points and chat triggers ignore Twitch platform events', async () => {
     const engine = createPreviewEngine({ source: splash, manifest: redeemManifest }, 7);
     const twitch = { kind: 'cheer', amount: 500, tier: null, anonymous: false, gift: false };
-    expect((await engine.dispatch({ ...redemption('r1'), twitch })).code).toBe('UNRELATED');
+    // An event claiming to be both a redemption and a Twitch event is malformed.
+    expect((await engine.dispatch({ ...redemption('r1'), twitch })).code).toBe('INVALID_EVENT');
     expect((await engine.dispatch({ ...chat('c1', '!hydrate', ['viewer'], 1), twitch })).code).toBe(
       'UNRELATED',
     );

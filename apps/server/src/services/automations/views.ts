@@ -50,17 +50,15 @@ export function diffVersions(from: VersionRow | undefined, to: VersionRow): Chan
     y > x ? 'more' : y < x ? 'less' : 'same';
   push('command', 'Command', a.trigger.command, b.trigger.command, 'same');
   // F19: switching to a Twitch event or lowering its threshold widens what triggers it.
-  if (a.trigger.event || b.trigger.event)
+  const before = a.trigger.kind === 'twitch.event' ? a.trigger.event : null;
+  const after = b.trigger.kind === 'twitch.event' ? b.trigger.event : null;
+  if (before || after)
     push(
       'event',
       'Twitch event',
       describeTrigger(a.trigger),
       describeTrigger(b.trigger),
-      !b.trigger.event
-        ? 'same'
-        : a.trigger.event?.kind !== b.trigger.event.kind
-          ? 'more'
-          : cmp(-a.trigger.event.minimum, -b.trigger.event.minimum),
+      !after ? 'same' : before?.kind !== after.kind ? 'more' : cmp(-before.minimum, -after.minimum),
     );
   push(
     'audience',

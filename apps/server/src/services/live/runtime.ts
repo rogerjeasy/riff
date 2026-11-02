@@ -178,7 +178,7 @@ export function createLiveRuntime(deps: {
         return `Redeem “${t.reward ?? ''}” with Channel Points · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       const who = t.audience.includes('viewer') ? '' : ` (${describeAudience(t.audience)})`;
       const experience = experienceOf(version);
-      if (t.event) return describeTrigger(t);
+      if (t.kind === 'twitch.event') return describeTrigger(t);
       if (!experience)
         return `Type ${t.command} in chat${who} · ${t.maxPerViewer} per ${describeWindow(t.windowMs)}`;
       // Rounds spend a lifetime allowance and may need a team first; never imply a
@@ -1007,8 +1007,8 @@ export function createLiveRuntime(deps: {
     eventTriggers(): TwitchEventKind[] {
       const kinds = new Set<TwitchEventKind>();
       for (const { version } of engines.values()) {
-        const kind = (version.manifest as PermissionManifest).trigger.event?.kind;
-        if (kind) kinds.add(kind);
+        const trigger = (version.manifest as PermissionManifest).trigger;
+        if (trigger.kind === 'twitch.event') kinds.add(trigger.event.kind);
       }
       return [...kinds];
     },

@@ -102,24 +102,48 @@ export interface TimerOptions {
 /** A queued timer side effect staged by one handler invocation; applied only on success. */
 export type TimerOp =
   { op: 'start'; name: string; ms: number; repeat: boolean } | { op: 'cancel'; name: string };
+/** Rate policy shared by every trigger source. */
+export interface TriggerPolicy {
+  /** Any listed role is eligible. `viewer` means everyone in chat. */
+  audience: AudienceRole[];
+  maxPerViewer: number;
+  windowMs: number;
+}
+/**
+ * A chat command. `kind` may be omitted (the default), so existing chat artifacts keep
+ * their identity. Chat text matches after trimming and lowercasing.
+ */
+export interface ChatCommandTrigger extends TriggerPolicy {
+  kind?: 'chat.command' | undefined;
+  /** Lowercase `!command`. */
+  command: string;
+  reward?: null | undefined;
+  event?: null | undefined;
+}
+/** F22: a linked Channel Points redemption. Chat text never matches it. */
+export interface PointsRedeemTrigger extends TriggerPolicy {
+  kind: 'points.redeem';
+  /** Console handle such as `!hydrate`; viewers never type it. */
+  command: string;
+  /** Reward title the creator links (1..45 characters). */
+  reward: string;
+  event?: null | undefined;
+}
+/** F19: one Twitch platform event kind. Chat and redemptions never match it. */
+export interface TwitchEventTrigger extends TriggerPolicy {
+  kind: 'twitch.event';
+  /** Reserved non-chat token, always eventTriggerCommand(event.kind), e.g. `@raid`. */
+  command: string;
+  reward?: null | undefined;
+  event: EventTrigger;
+}
+/** One trigger, one source: `kind` is the single discriminator. */
+export type ManifestTrigger = ChatCommandTrigger | PointsRedeemTrigger | TwitchEventTrigger;
 export interface PermissionManifest {
   sdkVersion: typeof SDK_VERSION | '0.3.0';
   experience?: ExperienceDefinition | null | undefined;
   capabilities: Capability[];
-  trigger: {
-    /** Lowercase `!command`. Chat text matches after trimming and lowercasing. */
-    command: string;
-    /** Any listed role is eligible. `viewer` means everyone in chat. */
-    audience: AudienceRole[];
-    maxPerViewer: number;
-    windowMs: number;
-    /** Absent or `chat.command` for chat. `points.redeem` never matches chat text. */
-    kind?: TriggerKind | undefined;
-    /** Reward title the creator links for `points.redeem`; null/absent for chat. */
-    reward?: string | null | undefined;
-    /** F19: run on a Twitch event instead of chat; command is then eventTriggerCommand(kind). */
-    event?: EventTrigger | null | undefined;
-  };
+  trigger: ManifestTrigger;
   limits: { effectsPerEvent: number; effectsPerMinute: number };
 }
 export interface ProjectileEffect {
@@ -499,10 +523,18 @@ export type * from './recipes.js';
 export type * from './participation.js';
 export type * from './production.js';
 
-/** Trigger sources. `chat.command` is the default when a manifest omits `trigger.kind`. */
-export const TRIGGER_KINDS = ['chat.command', 'points.redeem'] as const;
+/**
+ * Trigger sources, discriminated by `trigger.kind`. `chat.command` is the default when a
+ * manifest omits it; `points.redeem` requires `reward`; `twitch.event` requires `event`.
+ */
+export const TRIGGER_KINDS = ['chat.command', 'points.redeem', 'twitch.event'] as const;
 export type TriggerKind = (typeof TRIGGER_KINDS)[number];
-export type RedemptionKind = Exclude<TriggerKind, 'chat.command'>;
+/** The event-side marker for a Channel Points redemption (platform events use `twitch`). */
+export type RedemptionKind = 'points.redeem';
+/** Resolve the trigger source; an omitted kind is a chat command. */
+export function triggerKind(trigger: { kind?: TriggerKind | undefined }): TriggerKind {
+  return trigger.kind ?? 'chat.command';
+}
 /**
  * Twitch-documented Channel Points and Predictions bounds
  * (https://dev.twitch.tv/docs/api/reference/#create-custom-rewards,

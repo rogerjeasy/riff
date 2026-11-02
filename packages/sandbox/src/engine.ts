@@ -14,6 +14,8 @@ import {
   TWITCH_ACTION_LIMITS,
   type SessionSnapshot,
   type TimerOp,
+  type ManifestTrigger,
+  type TwitchEventKind,
 } from '@riff/sdk';
 import { z } from 'zod';
 import { instrumentHandler } from './instrument.js';
@@ -119,13 +121,29 @@ export function matchesCommand(text: string, command: string) {
   return text.trim().toLowerCase() === command.toLowerCase();
 }
 
-/** Chat triggers match commands in chat; `points.redeem` triggers match only redemptions. */
+/**
+ * The single routing rule, keyed on `trigger.kind`: each kind admits only its own source.
+ * chat.command matches chat text only; points.redeem matches linked redemptions only;
+ * twitch.event matches its own Twitch event kind only (the minimum is checked after).
+ */
 export function matchesTrigger(
-  event: { text: string; kind?: 'points.redeem' | undefined },
-  trigger: { command: string; kind?: 'chat.command' | 'points.redeem' | undefined },
+  event: {
+    text: string;
+    kind?: 'points.redeem' | undefined;
+    twitch?: { kind: TwitchEventKind } | null | undefined;
+  },
+  trigger: ManifestTrigger,
 ) {
-  if (trigger.kind === 'points.redeem') return event.kind === 'points.redeem';
-  return event.kind === undefined && matchesCommand(event.text, trigger.command);
+  switch (trigger.kind) {
+    case 'points.redeem':
+      return event.kind === 'points.redeem' && !event.twitch;
+    case 'twitch.event':
+      return event.kind === undefined && event.twitch?.kind === trigger.event.kind;
+    default:
+      return (
+        event.kind === undefined && !event.twitch && matchesCommand(event.text, trigger.command)
+      );
+  }
 }
 
 /** Create isolated host state. Example: const engine = createEngine(artifact, { seed: 42 }). */
@@ -297,15 +315,9 @@ export function createEngine(candidate: unknown, options: EngineOptions) {
     state.lastAt = event.at;
     state.seen.set(event.id, event.at);
     if (experience) return runSession(event);
-    // F19: event triggers admit only their Twitch event kind; chat and Channel Points
-    // triggers never admit a Twitch platform event.
-    if (trigger.event) {
-      if (event.kind || event.twitch?.kind !== trigger.event.kind)
-        return decision(event.id, 'UNRELATED', base);
-      if (event.twitch.amount < trigger.event.minimum)
-        return decision(event.id, 'BELOW_MINIMUM', base);
-    } else if (event.twitch || !matchesTrigger(event, trigger))
-      return decision(event.id, 'UNRELATED', base);
+    if (!matchesTrigger(event, trigger)) return decision(event.id, 'UNRELATED', base);
+    if (trigger.kind === 'twitch.event' && (event.twitch?.amount ?? 0) < trigger.event.minimum)
+      return decision(event.id, 'BELOW_MINIMUM', base);
     if (!event.roles.some((role) => trigger.audience.includes(role)))
       return decision(event.id, 'AUDIENCE', base);
     const history = (state.viewers.get(event.viewerId) ?? []).filter(

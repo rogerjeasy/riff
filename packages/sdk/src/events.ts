@@ -52,7 +52,7 @@ export interface EventTrigger {
 export const ANONYMOUS_VIEWER_ID = 'anonymous';
 
 /**
- * Event-triggered manifests set `trigger.command` to this reserved, non-chat token so
+ * `twitch.event` manifests set `trigger.command` to this reserved, non-chat token so
  * every existing command consumer keeps a stable identifier. Chat text never matches
  * it. Example: eventTriggerCommand('cheer') === '@cheer'.
  */
@@ -72,15 +72,18 @@ const EVENT_PHRASE: Readonly<Record<TwitchEventKind, (minimum: number) => string
 };
 
 /**
- * Plain-language trigger description for any manifest trigger.
- * Example: describeTrigger({ command: '@cheer', event: { kind: 'cheer', minimum: 100 } })
+ * Plain-language trigger description for any manifest trigger, keyed on `trigger.kind`.
+ * Example: describeTrigger({ kind: 'twitch.event', command: '@cheer', event: { kind: 'cheer', minimum: 100 } })
  * returns 'Someone cheers 100+ bits'.
  */
 export function describeTrigger(trigger: {
+  kind?: 'chat.command' | 'points.redeem' | 'twitch.event' | undefined;
   command: string;
+  reward?: string | null | undefined;
   event?: EventTrigger | null | undefined;
 }): string {
-  return trigger.event
-    ? EVENT_PHRASE[trigger.event.kind](trigger.event.minimum)
-    : `Someone types ${trigger.command} in chat`;
+  if (trigger.kind === 'twitch.event' && trigger.event)
+    return EVENT_PHRASE[trigger.event.kind](trigger.event.minimum);
+  if (trigger.kind === 'points.redeem') return `Someone redeems “${trigger.reward ?? ''}”`;
+  return `Someone types ${trigger.command} in chat`;
 }

@@ -387,7 +387,8 @@ export function App() {
                       resetSession,
                     );
                     notify(
-                      version.manifest.trigger.event
+                      version.manifest.trigger.kind === 'twitch.event' ||
+                        version.manifest.trigger.kind === 'points.redeem'
                         ? `Live! ${triggerSummary(version.manifest)} now triggers it.`
                         : `Live! Viewers can now type ${version.manifest.trigger.command}.`,
                     );
