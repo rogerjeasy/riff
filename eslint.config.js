@@ -10,7 +10,6 @@ export default tseslint.config(
       '.cache/**',
       '.local/**',
       '.superpowers/**',
-      '.claude/**',
       '**/test-results/**',
       '**/playwright-report/**',
       'packages/compiler/fixtures/**',
