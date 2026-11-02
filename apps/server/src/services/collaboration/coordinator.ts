@@ -41,6 +41,7 @@ const fail = (code: CollaborationError['code'], message: string): never => {
 };
 
 const INCIDENT_REASON = 'The shared behavior stopped after an execution incident.';
+const WAIT_PREFIX = 'The host is waiting up to';
 function present<T>(value: T | null | undefined): T {
   if (value == null) return fail('BLOCKED', 'Shared session evidence is incomplete.');
   return value;
@@ -101,6 +102,7 @@ export function createCoordinator(deps: {
     );
     row.status = row.snapshot.phase === 'finished' ? 'finished' : 'paused';
     row.reason = reason;
+    clearWait(row);
     try {
       return save(row);
     } catch (error) {
@@ -178,8 +180,34 @@ export function createCoordinator(deps: {
     members.map((m) => roleOf(row, m)?.label ?? m.roleId).join(', ');
   const waitDeadline = (row: CollaborationRow) =>
     Math.min(...row.members.map((m) => m.waitUntil ?? Infinity));
-  /** Persist a host decision with its audit receipt in one transaction. */
-  function decide(row: CollaborationRow, code: string, eventId = `audit:${randomUUID()}`) {
+  /**
+   * The explicit wait marker: every waiting member carries `waitUntil` AND the pause reason
+   * is the exact wait text the host chose. Any other pause, stop or restart clears it.
+   */
+  const waitText = (row: CollaborationRow, lost: SharedMember[]) =>
+    `${WAIT_PREFIX} ${SHARED_LIMITS.waitMs / 60000} minutes for ${labels(row, lost)} to reconnect.`;
+  const waiting = (row: CollaborationRow) =>
+    row.status === 'paused' &&
+    waitDeadline(row) !== Infinity &&
+    !!row.reason?.startsWith(WAIT_PREFIX);
+  function clearWait(row: CollaborationRow) {
+    row.members.forEach((m) => delete m.waitUntil);
+  }
+  /**
+   * Persist a host decision with its audit receipt in one transaction. Host-initiated
+   * decisions are capped per session; system follow-ups (wait expiry/resume) are bounded by
+   * the waits that caused them. Both stay inside the session receipt cap.
+   */
+  function decide(
+    row: CollaborationRow,
+    code: string,
+    eventId = `audit:${randomUUID()}`,
+    host = true,
+  ) {
+    if (store.receiptCount(row.id) >= SHARED_LIMITS.receipts)
+      return fail('LIMIT', 'Shared event history is full. Start a new session.');
+    if (host && store.decisions(row.id).length >= SHARED_LIMITS.decisions)
+      return fail('LIMIT', 'This session reached its host decision limit. End the round.');
     store.atomic(() => {
       save(row);
       store.receipt(row.id, eventId, code, now());
@@ -204,7 +232,7 @@ export function createCoordinator(deps: {
     row.status = 'running';
     row.started = true;
     row.reason = null;
-    row.members.forEach((m) => delete m.waitUntil);
+    clearWait(row);
   }
   /** While waiting, say exactly who is missing instead of a stale creation-time message. */
   function reasonOf(row: CollaborationRow): string | null {
@@ -275,13 +303,27 @@ export function createCoordinator(deps: {
       decisions: store.decisions(row.id),
     };
   }
-  /** An explicit host wait ends either by every lost channel returning or by its deadline. */
+  /**
+   * An explicit host wait ends either by every lost channel returning or by its deadline.
+   * Only the exact wait pause may auto-resume, and never while this channel is stopped:
+   * a stop cancels the wait so the host must choose again (local emergency stop wins).
+   */
   function settleWait(row: CollaborationRow) {
-    if (waitDeadline(row) === Infinity) return;
+    if (!waiting(row)) {
+      clearWait(row);
+      save(row);
+      return;
+    }
+    if (blocked()) {
+      clearWait(row);
+      row.reason = 'The local channel stopped during the wait. The host must choose again.';
+      decide(row, 'POLICY_WAIT_CANCELLED', undefined, false);
+      return;
+    }
     if (!lostOf(row).length) {
       try {
         resumable(row, false);
-        decide(row, 'POLICY_RESUMED');
+        decide(row, 'POLICY_RESUMED', undefined, false);
       } catch {
         /* Stay paused; the host still holds the explicit choices. */
       }
@@ -289,15 +331,15 @@ export function createCoordinator(deps: {
     }
     if (now() < waitDeadline(row)) return;
     const lost = lostOf(row);
-    row.members.forEach((m) => delete m.waitUntil);
+    clearWait(row);
     row.reason = `${labels(row, lost)} did not return in time. The host can continue without them or end the round.`;
-    decide(row, 'POLICY_WAIT_EXPIRED');
+    decide(row, 'POLICY_WAIT_EXPIRED', undefined, false);
   }
   function tick() {
     if (closed) return;
     for (const stored of store.list()) {
-      if (stored.status === 'paused' && stored.members.some((m) => m.waitUntil !== undefined)) {
-        if (!blocked()) settleWait(required(stored.id));
+      if (stored.status !== 'running' && stored.members.some((m) => m.waitUntil !== undefined)) {
+        settleWait(required(stored.id));
         continue;
       }
       if (stored.status !== 'running') continue;
@@ -339,12 +381,29 @@ export function createCoordinator(deps: {
       }
     }
   }
+  /** Outgoing raids this coordinator observed itself, by target channel (memory only). */
+  const raids = new Map<string, { eventId: string; until: number }>();
+  function applyHandoff(row: CollaborationRow, roleId: string, hostRoleId: string, raid: string) {
+    const eventId = `audit:handoff:${hash(raid)}`;
+    // One handoff per session: once a presenter exists, later raids change nothing.
+    if (row.members.some((m) => m.presenting) || store.hasReceipt(row.id, eventId)) return false;
+    row.members.forEach((m) => {
+      m.presenting = m.roleId === roleId;
+      if (m.roleId === hostRoleId) m.released = true;
+    });
+    decide(row, 'HANDOFF', eventId, false);
+    return true;
+  }
   // Restart never silently advances a shared round. All member leases must be renewed.
   for (const original of store.list()) {
     const row = required(original.id);
     row.members.forEach((m) => {
       m.leaseUntil = 0;
     });
+    // A restart cancels any wait: the host must choose again after reconnecting.
+    if (waiting(row))
+      row.reason = 'The coordinator restarted during a wait. The host must choose again.';
+    clearWait(row);
     if (row.status === 'running') {
       row.snapshot = pauseSession(row.snapshot, row.snapshot.updatedAt, definition(row));
       row.status = 'paused';
@@ -658,7 +717,7 @@ export function createCoordinator(deps: {
         const rule = definition(row);
         const score = row.snapshot.scores.community ?? 0;
         row.status = 'finished';
-        row.members.forEach((m) => delete m.waitUntil);
+        clearWait(row);
         row.reason =
           rule.objective.kind === 'collective-goal' && rule.objective.target !== null
             ? `The host ended the round at ${score} of ${rule.objective.target} points.`
@@ -671,9 +730,11 @@ export function createCoordinator(deps: {
         if (row.status !== 'paused' || !lost.length)
           return fail('CONFLICT', 'No required channel is missing from a paused round.');
         if (action === 'wait') {
+          if (hostBlocked()) return fail('BLOCKED', 'Resume this channel before choosing to wait.');
+          if (waiting(row)) return fail('CONFLICT', 'The host is already waiting.');
           const until = now() + SHARED_LIMITS.waitMs;
           lost.forEach((m) => (m.waitUntil = until));
-          row.reason = `The host is waiting up to ${SHARED_LIMITS.waitMs / 60000} minutes for ${labels(row, lost)} to reconnect.`;
+          row.reason = waitText(row, lost);
           decide(row, 'POLICY_WAIT');
           return view(id);
         }
@@ -706,16 +767,47 @@ export function createCoordinator(deps: {
         row.status === 'running'
       )
         return fail('CONFLICT', 'This shared session cannot use that control right now.');
-      const wasWaiting = row.members.some((m) => m.waitUntil !== undefined);
+      const wasWaiting = waiting(row);
       resumable(row, action === 'start');
       row = wasWaiting ? decide(row, 'POLICY_RESUMED') : save(row);
       stopped = false;
       return view(row.id);
     },
     /**
-     * Raid handoff (opt-in per agreement): the receiving member reports an incoming raid
-     * from the coordinating channel. It becomes the presenting side, and the raiding host's
-     * own departure no longer pauses play. Authority, state and tokens stay where they are.
+     * F36 raid handoff, verified by the coordinator itself: this (coordinating) channel's own
+     * EventSub reports its outgoing raid. Every started, unfinished, opted-in session whose
+     * role belongs to the raided channel makes that role the presenter and releases the
+     * host role from gating play. One handoff per session; duplicate raid events are
+     * idempotent. Authority, state and tokens stay where they are.
+     */
+    /** Subscribe to this channel's outgoing raids only while a handoff could apply. */
+    wantsRaids() {
+      return (
+        !closed &&
+        store.list().some((r) => r.contract.raidHandoff && r.started && r.status !== 'finished')
+      );
+    },
+    recordRaid(raid: { eventId: string; toChannelId: string }) {
+      if (hostBlocked()) return [];
+      const at = now();
+      raids.set(raid.toChannelId, { eventId: raid.eventId, until: at + SHARED_LIMITS.raidMs });
+      const host = deps.repo.state().twitchUserId;
+      const changed: string[] = [];
+      for (const stored of store.list()) {
+        if (!stored.contract.raidHandoff || !stored.started || stored.status === 'finished')
+          continue;
+        const row = required(stored.id);
+        const target = row.contract.roles.find((r) => r.channelId === raid.toChannelId);
+        const hostRole = row.contract.roles.find((r) => r.channelId === host);
+        if (!target || !hostRole || target.id === hostRole.id) continue;
+        if (applyHandoff(row, target.id, hostRole.id, raid.eventId)) changed.push(row.id);
+      }
+      return changed;
+    },
+    /**
+     * The raided member's confirmation. Accepted only when this coordinator recorded its own
+     * outgoing raid to exactly that member's channel within the validity window; a member's
+     * claim alone never sets a presenter.
      */
     handoff(token: string, raid: { eventId: string; fromChannelId: string }) {
       if (hostBlocked()) return fail('BLOCKED', 'The coordinator is stopped.');
@@ -725,21 +817,21 @@ export function createCoordinator(deps: {
         return fail('BLOCKED', 'This agreement did not opt in to raid handoff.');
       const host = deps.repo.state().twitchUserId;
       const hostRole = row.contract.roles.find((r) => r.channelId === host);
+      const role = present(roleOf(row, member));
       if (!hostRole || raid.fromChannelId !== host)
         return fail('UNAUTHORIZED', 'Only a raid from the coordinating channel hands off.');
-      if (member.roleId === hostRole.id)
+      if (role.id === hostRole.id)
         return fail('CONFLICT', 'The coordinating channel cannot hand off to itself.');
       if (!row.started || row.status === 'finished')
         return fail('CONFLICT', 'Only a started, unfinished round can hand off.');
-      const eventId = `audit:handoff:${hash(raid.eventId)}`;
-      // Duplicate raid deliveries and repeated raids to the same channel are idempotent.
-      if (member.presenting || store.hasReceipt(row.id, eventId)) return projection(row, member);
-      row.members.forEach((m) => {
-        m.presenting = m.roleId === member.roleId;
-        if (m.roleId === hostRole.id) m.released = true;
-      });
-      decide(row, 'HANDOFF', eventId);
-      return projection(row, member);
+      const recorded = raids.get(role.channelId);
+      if (!recorded || recorded.until < now())
+        return fail(
+          'UNAUTHORIZED',
+          'The coordinating channel has not recorded a raid to this channel.',
+        );
+      applyHandoff(row, role.id, hostRole.id, recorded.eventId);
+      return projection(required(row.id), member);
     },
     stop(reason: string) {
       stopped = true;
@@ -748,12 +840,17 @@ export function createCoordinator(deps: {
       try {
         for (const row of store.list()) {
           fence(row.id);
-          if (row.status === 'running')
-            try {
-              pause(row, reason.slice(0, 240) || 'Stopped');
-            } catch {
-              /* Stay stopped in memory. */
+          try {
+            if (row.status === 'running') pause(row, reason.slice(0, 240) || 'Stopped');
+            else if (row.members.some((m) => m.waitUntil !== undefined)) {
+              // A stop always cancels a pending wait; the host must choose again.
+              clearWait(row);
+              row.reason = 'The local channel stopped during the wait. The host must choose again.';
+              save(row);
             }
+          } catch {
+            /* Stay stopped in memory. */
+          }
         }
       } catch {
         /* Local emergency stop cannot wait for storage. */

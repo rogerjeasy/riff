@@ -566,8 +566,8 @@ adds `burst`, `elimination`, `match` and `unlock` presets (`mechanicPresetsFor`)
 mechanics change except labels or a longer break is reset-required. Prompt pack
 `riff-compiler/7` documents the primitives and adds Shield Wall/Castle Siege examples;
 `fixtures/stateful-mechanics.json` records the four offline intents. No tables,
-routes, env vars, dependencies or bridge capabilities were added. Collaboration still
-accepts only version 1 teamless cooperative rounds. Participation copy (F40) explains
+routes, env vars, dependencies or bridge capabilities were added. Collaboration (F36)
+shares teamless burst/milestone rounds; it refuses `match` and `health`. Participation copy (F40) explains
 these mechanics in en/fr/es/de and names elimination as its own outcome.
 
 Experience definition version 3 (same SDK 0.4.0 bridge, additive) carries exactly one
@@ -817,13 +817,19 @@ optional departure follows the approved continuation policy. While paused with a
 required role the owner chooses `wait` (2 minutes; auto-resumes only if every gating role
 returns, otherwise reports expiry), `continue` (revokes the missing memberships after
 re-checking that the remaining actions still reach the objective) or `end` (finishes with
-final results, allowed while locally stopped). Choices and raid handoffs are audit receipts
-(`audit:` event ids) returned as `decisions`; members see the state through the reason.
-Raid handoff is opt-in per agreement and keeps the single coordinator: a member that
-receives an incoming raid (its own EventSub) from another agreement channel calls peer
-`handoff`; the coordinator accepts it only from its own channel id, marks the receiving
-role as presenter (projected as `presenter`) and releases the host role from gating.
-Duplicate raid ids and repeat raids are idempotent; no token or state moves. Coordinator restart pauses;
+final results, allowed while locally stopped). The wait marker is the exact wait reason
+plus `waitUntil`; any other pause, local stop/panic (a blocked tick cancels it) or restart
+clears it, so a stale wait never auto-resumes; `wait` itself needs an unblocked channel.
+Choices and raid handoffs are `audit:` receipts returned as `decisions`, capped at 32 host
+decisions and inside the 10,000-receipt cap; members see the state through the reason.
+Raid handoff is opt-in per agreement and keeps the single coordinator. It is verified by
+the coordinator itself: while an opted-in session is started, the coordinating channel
+subscribes to its own outgoing `channel.raid` (`from_broadcaster_user_id`, no scope) and
+`recordRaid` remembers the target for 5 minutes and marks that target's role presenter
+(projected as `presenter`), releasing the host role from gating. Peer `handoff` (the raided
+member's own incoming-raid report) succeeds only for the member whose channel is that
+recorded target; a claim alone changes nothing. One handoff per session; duplicate raid
+events are idempotent; raids seen while stopped are ignored; no token or state moves. Coordinator restart pauses;
 local restart requires verification/approval. Local panic/leave fences before DB/network,
 and uncertain remote approvals are revoked best effort. Stale in-flight responses and
 inputs cannot rehydrate output. A failed state write requires explicit resume. Host

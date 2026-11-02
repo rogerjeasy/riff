@@ -13,6 +13,10 @@ export const SHARED_LIMITS = Object.freeze({
   pollMs: 2000,
   /** How long the host may choose to wait for a lost required channel. */
   waitMs: 120000,
+  /** Host-initiated continuation decisions per session (audit receipts). */
+  decisions: 32,
+  /** How long an outgoing raid this coordinator observed can confirm a handoff. */
+  raidMs: 300000,
 });
 /**
  * What a role's command does inside the one pinned shared definition. Absent means

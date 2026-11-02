@@ -34,6 +34,12 @@ import type { LiveRuntime } from '../live/runtime.js';
 import type { Sealer } from '../auth/secrets.js';
 import { createEchoLedger, type EchoLedger } from './echo-ledger.js';
 
+/** The two ids of a `channel.raid` payload Riff needs to recognise its own outgoing raid. */
+const outgoingRaidEvent = z.object({
+  from_broadcaster_user_id: z.string().regex(/^\d{1,32}$/),
+  to_broadcaster_user_id: z.string().regex(/^\d{1,32}$/),
+});
+
 const tokenSchema = z.object({
   accessToken: z.string(),
   refreshToken: z.string(),
@@ -112,6 +118,12 @@ export function createTwitchConnection(deps: {
   onRedemption?: (redemption: NormalizedRedemption) => void;
   /** F23: an incoming raid, recorded for the "raiders only" shoutout policy. */
   onRaid?: (raider: { id: string; login: string; displayName: string; eventId: string }) => void;
+  /**
+   * F36: this channel raided another channel (`channel.raid` with from_broadcaster_user_id).
+   * Subscribed only while `wantsOutgoingRaids()`; the coordinator verifies raid handoff with it.
+   */
+  onOutgoingRaid?: (raid: { eventId: string; toChannelId: string }) => void;
+  wantsOutgoingRaids?: () => boolean;
   /** Event families host features need even without a live interaction (raids for F23). */
   hostTriggers?: () => readonly EventTriggerName[];
   /** F11: Riff output sent as the broadcaster, remembered to drop its EventSub echo. */
@@ -150,6 +162,8 @@ export function createTwitchConnection(deps: {
   let broadcaster: string | null = null;
   // Per-session EventSub state for platform triggers; reset on every fresh session.
   const eventSubs = new Map<EventTriggerName, SubscriptionState>();
+  // Outgoing raids use a different condition than the incoming `raid` trigger family.
+  let outgoingRaids: 'idle' | 'pending' | 'active' | 'failed' = 'idle';
   let status: TwitchStatus =
     config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' };
   const setStatus = (next: TwitchStatus) => {
@@ -198,6 +212,7 @@ export function createTwitchConnection(deps: {
     broadcaster = broadcasterId;
     sessionId = null;
     eventSubs.clear();
+    outgoingRaids = 'idle';
     const helixClient = createHelixClient({
       clientId: config.clientId,
       getAccessToken: accessToken,
@@ -213,6 +228,7 @@ export function createTwitchConnection(deps: {
         // A fresh session: Twitch holds no subscriptions for it yet.
         sessionId = welcomed;
         eventSubs.clear();
+        outgoingRaids = 'idle';
         const trigger = TRIGGERS['chat.message'];
         await helixClient.createEventSubSubscription({
           type: trigger.type,
@@ -242,6 +258,18 @@ export function createTwitchConnection(deps: {
         await syncEventSubscriptions();
       },
       onNotification(notification) {
+        const outgoing = outgoingRaidEvent.safeParse(notification.event);
+        if (
+          notification.subscriptionType === TRIGGERS.raid.type &&
+          outgoing.success &&
+          outgoing.data.from_broadcaster_user_id === broadcasterId
+        ) {
+          deps.onOutgoingRaid?.({
+            eventId: notification.messageId,
+            toChannelId: outgoing.data.to_broadcaster_user_id,
+          });
+          return;
+        }
         if (notification.subscriptionType === TRIGGERS['points.redeem'].type) {
           const redemption = normalizeRedemption(notification.event, {
             messageId: notification.messageId,
@@ -358,6 +386,31 @@ export function createTwitchConnection(deps: {
   /** One pass: create each missing subscription live interactions need and consent allows. */
   async function syncOnce(): Promise<void> {
     const granted = readTokens()?.scopes ?? [];
+    if (
+      outgoingRaids === 'idle' &&
+      deps.wantsOutgoingRaids?.() &&
+      sessionId &&
+      broadcaster &&
+      helix
+    ) {
+      const id = sessionId;
+      outgoingRaids = 'pending';
+      try {
+        // Docs: channel.raid needs no authorization; set exactly one of from_/to_broadcaster_user_id.
+        await helix.createEventSubSubscription({
+          type: TRIGGERS.raid.type,
+          version: TRIGGERS.raid.version,
+          condition: { from_broadcaster_user_id: broadcaster },
+          sessionId: id,
+        });
+        if (sessionId === id) outgoingRaids = 'active';
+      } catch (error) {
+        if (sessionId === id) outgoingRaids = 'failed';
+        deps.log?.(
+          `Outgoing raid subscription failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        );
+      }
+    }
     for (const name of wantedTriggers()) {
       const current = eventSubs.get(name)?.state;
       if (current === 'active' || current === 'pending' || current === 'revoked') continue;
@@ -592,6 +645,7 @@ export function createTwitchConnection(deps: {
       helix = null;
       sessionId = null;
       eventSubs.clear();
+      outgoingRaids = 'idle';
       repo.updateState({ twitchTokens: null, twitchUserId: null, twitchLogin: null });
       setStatus(config && sealer ? { state: 'disconnected' } : { state: 'unconfigured' });
     },

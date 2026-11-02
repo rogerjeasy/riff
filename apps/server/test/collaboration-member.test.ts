@@ -649,6 +649,9 @@ it('reports an opted-in raid from the host and shows the receiving channel as pr
   expect(member.wantsRaids()).toBe(true);
   // Raids from channels outside the agreement are not reported.
   expect(await member.raid({ id: '999', eventId: 'other' })).toBe(false);
+  // The member's report alone is not enough; the coordinator records its own outgoing raid.
+  await expect(member.raid({ id: '100', eventId: 'raid-1' })).rejects.toThrow();
+  s.coordinator.recordRaid({ eventId: 'raid-1', toChannelId: '200' });
   expect(await member.raid({ id: '100', eventId: 'raid-1' })).toBe(true);
   expect(member.status().projection?.presenter).toBe('Steer ship');
   expect(await member.raid({ id: '100', eventId: 'raid-1' })).toBe(true);

@@ -358,6 +358,15 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
           app.log.warn({ err: error }, 'recording a raid failed');
         });
     },
+    // F36: the coordinating channel verifies raid handoff from its own outgoing raids.
+    wantsOutgoingRaids: () => shared.current?.coordinator.wantsRaids() ?? false,
+    onOutgoingRaid: (raid) => {
+      try {
+        if (shared.current?.coordinator.recordRaid(raid).length) hub.publish('studio', null);
+      } catch (error) {
+        app.log.warn({ err: error }, 'recording an outgoing raid failed');
+      }
+    },
     hostTriggers: () =>
       twitchFeaturesRef.current?.wantsRaids() || shared.current?.member.wantsRaids()
         ? ['raid']

@@ -30,11 +30,15 @@ only approved aggregate state reaches each receiving channel's own overlay broke
   reported. Continue re-checks that the remaining actions reach the objective and revokes
   the missing memberships. End finishes with final results, even while locally stopped.
   Every choice is an `audit:` receipt listed as `decisions`.
-- Raid handoff (opt-in `raidHandoff`, approved in the digest): a member receiving an
-  incoming raid from another agreement channel reports it via peer `handoff`. The
-  coordinator accepts only a raid from its own channel id, marks that member presenter
-  (`presenter` in every projection) and stops the host role gating play. The coordinator
-  itself does not migrate; duplicate raid ids are idempotent and no token moves.
+- Raid handoff (opt-in `raidHandoff`, approved in the digest) is coordinator-verified:
+  the coordinating channel subscribes to its own outgoing `channel.raid` while an
+  opted-in session is started; `recordRaid` keeps the target for 5 minutes and marks that
+  target role presenter (`presenter` in every projection), releasing the host role from
+  gating. Peer `handoff` from the raided member succeeds only when its channel is that
+  recorded target. One handoff per session; duplicates are idempotent; raids observed
+  while stopped are ignored. The coordinator itself does not migrate and no token moves.
+- Waits are marked by the exact wait reason plus `waitUntil`; other pauses, stop/panic and
+  restart clear them, so only the chosen wait can auto-resume. Host decisions cap at 32.
 - Shared Chat source identities deduplicate echoed/retried messages. Only original
   channel inputs use that channel's authenticated badges. Viewer identities are
   channel-namespaced; raw participant state and credentials never enter projections.

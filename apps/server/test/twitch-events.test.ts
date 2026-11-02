@@ -249,6 +249,31 @@ describe('F19 live routing', () => {
     ]);
   }, 180_000);
 
+  it('F36: subscribes to its own outgoing raids only while a raid handoff could apply', async () => {
+    const { sockets, subscriptions } = await boot(['user:read:chat']);
+    await app!.ready();
+    const coordinator = app!.riff.collaboration.coordinator;
+    const recorded: { eventId: string; toChannelId: string }[] = [];
+    coordinator.wantsRaids = () => true;
+    coordinator.recordRaid = (raid) => {
+      recorded.push(raid);
+      return [];
+    };
+    app!.riff.hub.publish('studio', null);
+    await wait(() =>
+      subscriptions.some(
+        (s) => s.type === 'channel.raid' && s.condition.from_broadcaster_user_id === BROADCASTER,
+      ),
+    );
+    // An outgoing raid from this channel reaches the coordinator with its target channel.
+    notify(sockets[0]!, 'raid', 'raid-out-1', {
+      from_broadcaster_user_id: BROADCASTER,
+      to_broadcaster_user_id: '4242',
+    });
+    await wait(() => recorded.length > 0);
+    expect(recorded).toEqual([{ eventId: 'raid-out-1', toChannelId: '4242' }]);
+  }, 180_000);
+
   it('drops platform events while panicked and never routes them to chat commands', async () => {
     const { effects } = await boot(['user:read:chat']);
     await approve('Let viewers throw tomatoes with !tomato, three per person per minute.');

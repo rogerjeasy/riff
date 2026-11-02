@@ -306,44 +306,106 @@ it('keeps local emergency stop independent of continuation choices', () => {
   const f = setup();
   f.start();
   f.coordinator.leave(f.tokens.steer!);
-  f.control('wait');
   f.panic(true);
-  const again = f.coordinator.invite.bind(f.coordinator);
-  expect(() => again(f.contract.id, 'steer')).toThrow('Resume this channel');
+  // A wait cannot be chosen while this channel is stopped; ending still can.
+  expect(() => f.control('wait')).toThrow('Resume this channel');
   expect(() => f.control('continue')).toThrow('Resume this channel');
-  f.now(2000);
-  expect(f.coordinator.view(f.contract.id).status).toBe('paused');
-  // Ending only stops play, so it stays available while the channel is stopped.
+  expect(() => f.coordinator.invite(f.contract.id, 'steer')).toThrow('Resume this channel');
   expect(f.control('end').status).toBe('finished');
 });
 
-it('hands presentation to a raided member only with consent, once per raid', () => {
+it('never auto-resumes a wait after a panic or stop, even when the channel returns', () => {
+  for (const interrupt of ['panic', 'stop'] as const) {
+    const f = setup();
+    f.start();
+    f.coordinator.leave(f.tokens.steer!);
+    f.control('wait');
+    const again = f.coordinator.invite(f.contract.id, 'steer');
+    if (interrupt === 'panic') {
+      f.panic(true);
+      f.coordinator.tick(); // the blocked tick cancels the wait
+      f.panic(false);
+    } else f.coordinator.stop('Emergency stop');
+    f.now(3000);
+    f.coordinator.heartbeat(f.tokens.repair!);
+    f.coordinator.approve(again.token, f.contract.digest);
+    const view = f.coordinator.view(f.contract.id);
+    expect(view.status).toBe('paused');
+    expect(view.waitUntil).toBeNull();
+    expect(view.reason).toContain('must choose again');
+  }
+});
+
+it('never lets a stale wait resume a session paused for another reason', () => {
+  const f = setup();
+  f.start();
+  f.coordinator.leave(f.tokens.steer!);
+  f.control('wait');
+  const again = f.coordinator.invite(f.contract.id, 'steer');
+  f.coordinator.approve(again.token, f.contract.digest);
+  // The returning channel answered the wait; play resumed and the marker is gone.
+  expect(f.coordinator.view(f.contract.id).status).toBe('running');
+  f.control('pause');
+  f.coordinator.tick();
+  expect(f.coordinator.view(f.contract.id)).toMatchObject({
+    status: 'paused',
+    reason: 'Paused by the coordinator.',
+    waitUntil: null,
+  });
+});
+
+it('caps host decisions and rejects a second wait while one is pending', () => {
+  const f = setup();
+  f.start();
+  f.coordinator.leave(f.tokens.steer!);
+  f.control('wait');
+  expect(() => f.control('wait')).toThrow('already waiting');
+  let at = 1000;
+  let waits = 1;
+  // Each expired wait adds one host decision and one system follow-up, all capped.
+  expect(() => {
+    while (waits < 40) {
+      at += 120001;
+      f.now(at);
+      f.coordinator.tick();
+      f.control('wait');
+      waits++;
+    }
+  }).toThrow('decision limit');
+  expect(waits).toBeLessThan(32);
+  expect(f.coordinator.view(f.contract.id).decisions.length).toBeLessThanOrEqual(33);
+});
+
+it('hands presentation only to the channel this coordinator itself raided', () => {
   const plain = setup();
   plain.start();
+  expect(plain.coordinator.recordRaid({ eventId: 'r0', toChannelId: '200' })).toEqual([]);
   expect(() =>
-    plain.coordinator.handoff(plain.tokens.steer!, { eventId: 'raid-1', fromChannelId: '100' }),
+    plain.coordinator.handoff(plain.tokens.steer!, { eventId: 'r0', fromChannelId: '100' }),
   ).toThrow('did not opt in');
 
   const f = setup({ raidHandoff: true });
-  expect(() =>
-    f.coordinator.handoff(f.tokens.steer!, { eventId: 'early', fromChannelId: '100' }),
-  ).toThrow();
   f.start();
+  // A member's claim alone, with no outgoing raid recorded by the coordinator, is refused.
   expect(() =>
-    f.coordinator.handoff(f.tokens.steer!, { eventId: 'raid-x', fromChannelId: '300' }),
-  ).toThrow('coordinating channel');
+    f.coordinator.handoff(f.tokens.steer!, { eventId: 'claimed', fromChannelId: '100' }),
+  ).toThrow('has not recorded a raid');
+  expect(f.coordinator.view(f.contract.id).members.some((m) => m.presenting)).toBe(false);
+  // The coordinator's own EventSub sees its outgoing raid to channel 200 (Navigation).
+  expect(f.coordinator.recordRaid({ eventId: 'raid-1', toChannelId: '200' })).toEqual([
+    f.contract.id,
+  ]);
+  // A different member cannot spoof itself into the presenter seat.
   expect(() =>
-    f.coordinator.handoff(f.tokens.repair!, { eventId: 'raid-self', fromChannelId: '100' }),
-  ).toThrow('itself');
-  const projection = f.coordinator.handoff(f.tokens.steer!, {
-    eventId: 'raid-1',
-    fromChannelId: '100',
-  });
-  expect(projection.presenter).toBe('Navigation');
+    f.coordinator.handoff(f.tokens.guns!, { eventId: 'raid-1', fromChannelId: '100' }),
+  ).toThrow('has not recorded a raid');
+  expect(
+    f.coordinator.handoff(f.tokens.steer!, { eventId: 'raid-1', fromChannelId: '100' }).presenter,
+  ).toBe('Navigation');
   expect(f.coordinator.heartbeat(f.tokens.guns!).presenter).toBe('Navigation');
-  // Duplicate deliveries of the same raid are idempotent.
-  f.coordinator.handoff(f.tokens.steer!, { eventId: 'raid-1', fromChannelId: '100' });
-  f.coordinator.handoff(f.tokens.steer!, { eventId: 'raid-2', fromChannelId: '100' });
+  // Duplicate deliveries and later raids are idempotent: one handoff per session.
+  f.coordinator.recordRaid({ eventId: 'raid-1', toChannelId: '200' });
+  f.coordinator.recordRaid({ eventId: 'raid-2', toChannelId: '300' });
   const view = f.coordinator.view(f.contract.id);
   expect(view.decisions.map((d) => d.code)).toEqual(['HANDOFF']);
   expect(view.members.find((m) => m.roleId === 'steer')?.presenting).toBe(true);
@@ -354,4 +416,15 @@ it('hands presentation to a raided member only with consent, once per raid', () 
   expect(f.coordinator.view(f.contract.id).status).toBe('running');
   // No credential moves: the host's revoked token stays revoked.
   expect(() => f.coordinator.heartbeat(f.tokens.repair!)).toThrow();
+});
+
+it('ignores outgoing raids observed while this channel is stopped', () => {
+  const f = setup({ raidHandoff: true });
+  f.start();
+  f.panic(true);
+  expect(f.coordinator.recordRaid({ eventId: 'r', toChannelId: '200' })).toEqual([]);
+  f.panic(false);
+  expect(() =>
+    f.coordinator.handoff(f.tokens.steer!, { eventId: 'r', fromChannelId: '100' }),
+  ).toThrow('has not recorded a raid');
 });
