@@ -1,4 +1,10 @@
-import type { RecipePackage, RecipePresentation, RecipeProfile } from '@riff/sdk';
+import type {
+  RecipeLocalizedCopy,
+  RecipePackage,
+  RecipePresentation,
+  RecipeProfile,
+  RecipeStyle,
+} from '@riff/sdk';
 
 type Language = RecipeProfile['language'];
 const EVERYONE: Record<Language, string> = {
@@ -29,8 +35,18 @@ const TEAMS_PER_LINE = 4;
 const MAX_LINES = 4;
 const MAX_LINE_LENGTH = 200;
 
-/** Reviewed recipe presentation plus the recipient's channel name, carried structurally. */
-export type InstalledPresentation = RecipePresentation & { displayName: string };
+/**
+ * Reviewed recipe presentation plus the recipient's channel name, carried structurally.
+ * F29 adds the reviewed accent color and localized headline; the viewer language picks one.
+ */
+export type InstalledPresentation = RecipePresentation & {
+  displayName: string;
+  accent?: string;
+  headline?: RecipeLocalizedCopy;
+};
+/** The headline in `language`, else the first language the publisher or remixer wrote. */
+export const headlineFor = (copy: RecipeLocalizedCopy | undefined, language: string) =>
+  copy?.[language as keyof RecipeLocalizedCopy] ?? Object.values(copy ?? {}).find(Boolean);
 
 /** Translated on-stream guidance for an installed recipe, from the recipient's profile. */
 export function presentationFor(
@@ -39,6 +55,7 @@ export function presentationFor(
     'language' | 'reducedMotion' | 'displayName' | 'highContrast' | 'effectLabels'
   >,
   manifest: RecipePackage['manifest'],
+  style?: RecipeStyle,
 ): InstalledPresentation {
   const { language, displayName } = profile;
   const { trigger, experience } = manifest;
@@ -63,6 +80,8 @@ export function presentationFor(
     );
   }
   return {
+    ...(style?.accent ? { accent: style.accent } : {}),
+    ...(style?.headline ? { headline: style.headline } : {}),
     language,
     displayName,
     reducedMotion: profile.reducedMotion,

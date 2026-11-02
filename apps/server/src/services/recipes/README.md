@@ -97,7 +97,42 @@ least recently. Forwarded client addresses are accepted only through a private/l
 proxy peer; public deployments must restrict direct access to the app behind their
 trusted proxy.
 
-Module layout: `contract.ts` (schemas, digest, limits, readable validation), `secrets.ts`
+## Parameterized remix — F29
+
+An edition may carry optional `parameters` (absent keeps the pre-F29 digest). Each is
+typed and declared once: `command` (chat command), `maxPerViewer` / `windowMs` (integer
+`min`/`max`/`step`), `accent` (`#rrggbb` default plus optional palette of up to eight) and
+copy — `headline` (localized en/fr/es/de default, `maxLength` ≤ 120) or `experienceTitle`
+(round title, `maxLength` ≤ 120). `checkDeclarations` (in `parameters.ts`, run by
+`parsePackage` and export) requires: command and limit parameters only on chat-command
+recipes without rounds; `experienceTitle` only with rounds; bounds inside the host ceilings
+(`PARAMETER_LIMITS`: uses per viewer 1–20 so the regenerated limit scenario fits 24 steps,
+window 1 s–1 h); the published value inside the bounds and reachable by `step`; every
+accent at least 3:1 contrast against the overlay panel backgrounds (`#13121b`, `#000000`).
+Command and number defaults are read from the manifest; color and copy defaults are stored
+in the declaration. Export takes explicit `parameters` (validated strictly); when omitted, a
+derivative of a parameterized import inherits its source's declarations, with its installed
+accent/headline as the new defaults, keeping only those that still fit its rules.
+
+`POST /api/recipes/adapt` with `parameters` (and without `generate`) applies values through
+`applyParameters`: strict values object, undeclared keys refused, commands matching the
+lowercase command pattern, numbers inside bounds and steps, palette and contrast for
+colors, copy trimmed and stripped of control, bidi-override and zero-width characters and
+scanned for credentials. Values go only into structured manifest fields, data-only
+scenarios (command renamed; `limit`/`window` scenarios regenerated for new limits) and a
+host-rendered `style`; the source is never touched and no model is called. Reserved and
+live command collisions are refused before any sandbox work. The candidate then runs the
+same verification, synthetic rehearsal, public-package checks and command rechecks as any
+adaptation, so changed manifests get a new artifact id. Reviews carry
+`parameters {values, changes, style}`; each change is `widened`, `narrowed`, `unchanged`
+or `cosmetic`, and widened limits add an "Authority widened" check line. Install binds the
+review digest (style included), stores `style` with the installation and still creates a
+candidate that needs ordinary approval. The installed presentation leads the instruction
+panel with the headline in the viewer language and the scene projection carries `accent`,
+drawn as the instruction panel edge (high contrast overrides it).
+
+Module layout: `contract.ts` (schemas, digest, limits, readable validation), `parameters.ts`
+(F29 declarations, bounds and deterministic substitution), `secrets.ts`
 (credential scan), `proof.ts` (shared rehearsal proof for adapt and publish),
 `presentation.ts` (translated stream copy and the adaptation intent), `retention.ts`
 (pruning and rate keys), `service.ts` (orchestration).

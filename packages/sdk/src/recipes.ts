@@ -31,6 +31,51 @@ export interface RecipePackage {
   };
   assets: { id: 'tomato' | 'star' | 'heart'; credit: 'Riff'; license: 'project-license' }[];
   lineage: RecipeCredit[];
+  /** F29: publisher-declared editable parameters; absent on editions without any. */
+  parameters?: RecipeParameter[] | undefined;
+}
+/** Localized copy keyed by recipe language; at least one language is present. */
+export type RecipeLocalizedCopy = Partial<Record<RecipeLanguage, string>>;
+/**
+ * F29: one declared, typed, bounded parameter. Command and number defaults are read from
+ * the published manifest; color and copy defaults are carried here because the artifact
+ * has no other place for them. The host applies values, never the model.
+ */
+export type RecipeParameter =
+  | { id: 'command'; kind: 'command'; label: string }
+  | {
+      id: 'maxPerViewer' | 'windowMs';
+      kind: 'number';
+      label: string;
+      min: number;
+      max: number;
+      step: number;
+    }
+  | { id: 'accent'; kind: 'color'; label: string; palette: string[]; default: string }
+  | { id: 'headline'; kind: 'copy'; label: string; maxLength: number; default: RecipeLocalizedCopy }
+  | { id: 'experienceTitle'; kind: 'copy'; label: string; maxLength: number };
+export type RecipeParameterId = RecipeParameter['id'];
+/** Values chosen by a recipient; every key must be declared by the edition. */
+export interface RecipeParameterValues {
+  command?: string | undefined;
+  maxPerViewer?: number | undefined;
+  windowMs?: number | undefined;
+  accent?: string | undefined;
+  headline?: RecipeLocalizedCopy | undefined;
+  experienceTitle?: string | undefined;
+}
+/** Host-rendered cosmetic choices installed alongside a parameterized candidate. */
+export interface RecipeStyle {
+  accent?: string | undefined;
+  headline?: RecipeLocalizedCopy | undefined;
+}
+/** One applied parameter and whether it widens what viewers can make the automation do. */
+export interface RecipeParameterChange {
+  id: RecipeParameterId;
+  field: string;
+  before: string;
+  after: string;
+  authority: 'widened' | 'narrowed' | 'unchanged' | 'cosmetic';
 }
 export interface RecipeProfile {
   revision: number;
@@ -90,6 +135,10 @@ export interface RecipeReview {
   rehearsalHash: string;
   installedVersionId: string | null;
   targetVersionId: string | null;
+  /** F29: present when the candidate came from declared parameters, not the compiler. */
+  parameters?:
+    | { values: RecipeParameterValues; changes: RecipeParameterChange[]; style: RecipeStyle }
+    | undefined;
 }
 export interface RecipeReport {
   id: string;
@@ -120,12 +169,16 @@ export interface RecipeExportInput {
   rightsAttested: true;
   recipeId?: string;
   revision?: number;
+  /** F29: editable parameters to declare; derivatives inherit their source's when omitted. */
+  parameters?: RecipeParameter[];
 }
 export interface RecipeAdaptInput {
   sourceDigest: string;
   profileRevision: number;
   generate?: boolean;
   targetVersionId?: string;
+  /** F29: deterministic host substitution of declared parameters; excludes `generate`. */
+  parameters?: RecipeParameterValues;
 }
 export interface RecipeInstallInput {
   reviewId: string;

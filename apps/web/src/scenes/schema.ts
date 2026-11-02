@@ -228,6 +228,11 @@ export const sceneProjectionSchema = z
     instructions: z.array(z.string().max(200)).max(6).optional(),
     /** Present for a short window after an accepted `!riff help`. */
     help: z.literal(true).optional(),
+    /** F29: reviewed #rrggbb accent drawn on the instruction panel edge. */
+    accent: z
+      .string()
+      .regex(/^#[0-9a-f]{6}$/)
+      .optional(),
   })
   .strict();
 export type SceneProjection = z.infer<typeof sceneProjectionSchema>;

@@ -587,3 +587,68 @@
     width: 100%;
   }
 }
+
+/* F29: declared parameter form, live instruction preview and applied-parameter list. */
+.recipe-parameters {
+  display: grid;
+  gap: 12px;
+  margin-block: 12px 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.recipe-parameters > fieldset {
+  display: grid;
+  gap: 12px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.recipe-parameters legend {
+  font-weight: 700;
+  color: var(--text);
+}
+.recipe-param-color,
+.recipe-param-copy {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  margin: 0;
+  min-width: 0;
+}
+.recipe-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+}
+.recipe-param-preview {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.recipe-param-panel {
+  /* Mirrors the overlay instruction panel so the preview matches what viewers see. */
+  background: #13121b;
+  color: #fff;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-left: 4px solid rgb(255 255 255 / 0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.recipe-param-panel p {
+  margin: 2px 0;
+}
+.recipe-param-changes {
+  display: grid;
+  gap: 6px;
+  padding-left: 18px;
+  overflow-wrap: anywhere;
+}

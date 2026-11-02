@@ -6,6 +6,7 @@ import { defaultScene, sceneSchema, sceneStateSchema } from '../../scenes/schema
 import { Step, Fingerprint, Check } from '../panel-kit.js';
 import { profileSchema, type RecipeProfile, type RecipeState } from './contracts.js';
 import { Differences } from './differences.js';
+import { ParameterChanges, ParameterForm, type ParameterValues } from './parameters.js';
 import { RecipePreview } from './preview.js';
 import { RuleFacts } from './rules.js';
 import type { Mutate, RecipeAction } from './use-recipes.js';
@@ -101,6 +102,20 @@ export function RemixTab({
             ? 'Adaptation and private rehearsal are ready for your review.'
             : 'The exact source rules were verified and rehearsed privately.',
         );
+      },
+    );
+  const applyParameters = (parameters: ParameterValues) =>
+    void mutate(
+      'adapt',
+      {
+        sourceDigest: source,
+        profileRevision: state.profile.revision,
+        parameters,
+        ...(target ? { targetVersionId: target } : {}),
+      },
+      (raw) => {
+        setReviewId(z.object({ review: z.object({ id: z.string() }) }).parse(raw).review.id);
+        setNotice('Parameters applied by the host, then verified and rehearsed privately.');
       },
     );
   const adaptBlocker = !selected
@@ -607,6 +622,15 @@ export function RemixTab({
             Rehearse exact source rules
           </button>
         </div>
+        {selected?.package.parameters?.length ? (
+          <ParameterForm
+            pack={selected.package}
+            language={state.profile.language}
+            disabled={adaptBlocker}
+            busy={busy === 'adapt'}
+            onApply={applyParameters}
+          />
+        ) : null}
         <p className="panel-hint">
           {adaptBlocker ??
             (busy === 'adapt'
@@ -638,6 +662,7 @@ export function RemixTab({
                   } · profile revision ${review.profileRevision} · needs only ${review.requiredTwitchScopes.join(', ')}`}
             </p>
             <h4>What changes for your channel</h4>
+            <ParameterChanges review={review} />
             <Differences differences={review.differences} />
             <ul className="panel-checks">
               {review.checks.map((check) => {

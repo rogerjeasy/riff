@@ -5,6 +5,54 @@ const count = z.number().int().nonnegative();
 const language = z.enum(['en', 'fr', 'es', 'de']);
 const license = z.enum(['MIT', 'CC0-1.0', 'CC-BY-4.0']);
 const asset = z.enum(['tomato', 'star', 'heart']);
+const color = z.string().regex(/^#[0-9a-f]{6}$/);
+const localized = z.object({
+  en: z.string().max(120).optional(),
+  fr: z.string().max(120).optional(),
+  es: z.string().max(120).optional(),
+  de: z.string().max(120).optional(),
+});
+/** F29 declared parameters; the server enforces every bound again. */
+export const parameterSchema = z.discriminatedUnion('id', [
+  z.object({ id: z.literal('command'), kind: z.literal('command'), label: z.string().max(60) }),
+  z.object({
+    id: z.enum(['maxPerViewer', 'windowMs']),
+    kind: z.literal('number'),
+    label: z.string().max(60),
+    min: z.number().int(),
+    max: z.number().int(),
+    step: z.number().int().min(1),
+  }),
+  z.object({
+    id: z.literal('accent'),
+    kind: z.literal('color'),
+    label: z.string().max(60),
+    palette: z.array(color).max(8),
+    default: color,
+  }),
+  z.object({
+    id: z.literal('headline'),
+    kind: z.literal('copy'),
+    label: z.string().max(60),
+    maxLength: z.number().int().min(1).max(120),
+    default: localized,
+  }),
+  z.object({
+    id: z.literal('experienceTitle'),
+    kind: z.literal('copy'),
+    label: z.string().max(60),
+    maxLength: z.number().int().min(1).max(120),
+  }),
+]);
+export type RecipeParameter = z.infer<typeof parameterSchema>;
+export type LocalizedCopy = z.infer<typeof localized>;
+export const parameterChangeSchema = z.object({
+  id: z.string(),
+  field: z.string(),
+  before: z.string(),
+  after: z.string(),
+  authority: z.enum(['widened', 'narrowed', 'unchanged', 'cosmetic']),
+});
 export const recipePackageSchema = z
   .object({
     version: z.literal(1),
@@ -48,6 +96,7 @@ export const recipePackageSchema = z
           .strict(),
       )
       .max(8),
+    parameters: z.array(parameterSchema).max(6).optional(),
   })
   .strict();
 export const profileSchema = z.object({
@@ -105,6 +154,12 @@ export const reviewSchema = z.object({
   targetVersionId: z.string().nullable(),
   proof: proofSchema,
   requiredTwitchScopes: z.tuple([z.literal('user:read:chat')]),
+  parameters: z
+    .object({
+      changes: z.array(parameterChangeSchema).max(6),
+      style: z.object({ accent: color.optional(), headline: localized.optional() }),
+    })
+    .optional(),
 });
 export const publicationSchema = z.object({
   package: recipePackageSchema,

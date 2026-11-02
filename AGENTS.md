@@ -881,6 +881,16 @@ candidate, removing an import it created when any step fails. Activation keeps t
 exact approval. Links from another directory are never fetched: the creator chooses the
 downloaded file and its digest must match. No table, env var or dependency was added.
 
+F29 parameterized remix extends the recipe contract additively: editions may declare
+typed, bounded `parameters` (command, uses per viewer, window, accent color, localized
+headline, round title) that are part of the digest and survive export/import and
+derivative re-export. `adapt` with `parameters` substitutes values on the host into
+manifest fields, data-only tests and host-rendered style — never into source, with no
+model call — then runs the full verification/rehearsal pipeline; widened limits are
+flagged and install still needs ordinary approval. The scene projection gains an optional
+contrast-checked `accent`. Optional SDK recipe types only; no table, migration, route or
+capability is added (details in the recipe service README).
+
 ## Production setup and inclusive participation — F39/F40
 
 Migration 0014 adds channel-scoped `production_state` and `participation_state` JSON rows.

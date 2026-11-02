@@ -18,7 +18,9 @@ import {
   type RecipeInstallInput,
   type RecipePublication,
   type RecipeRemoveInput,
+  type RecipeStyle,
   type SceneDocument,
+  type RecipeParameter,
 } from '@riff/sdk';
 import type { DatabaseConnection } from '../../db/client.js';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
@@ -38,6 +40,7 @@ import {
 } from './contract.js';
 import { rehearseArtifact } from './proof.js';
 import { compatibilityFor, scopeDiff, type TwitchAccess } from './install.js';
+import { applyParameters, checkDeclarations, type AppliedParameters } from './parameters.js';
 import { adaptationIntent, presentationFor, type InstalledPresentation } from './presentation.js';
 import {
   assertReviewRoom,
@@ -291,6 +294,36 @@ export function createRecipeService(deps: {
     return { recipeId: input.recipeId, revision: input.revision ?? latest + 1, latest };
   }
 
+  /**
+   * Explicit declarations are validated strictly. A derivative of a parameterized import
+   * inherits its source's declarations (with its installed color/copy as new defaults),
+   * keeping only those that still fit its own rules.
+   */
+  function exportParameters(
+    input: RecipeExportInput,
+    manifest: Manifest,
+    parent: RecipePackage | undefined,
+    style: RecipeStyle | undefined,
+  ): RecipeParameter[] {
+    if (input.parameters)
+      return input.parameters.length ? checkDeclarations(input.parameters, manifest) : [];
+    const kept: RecipeParameter[] = [];
+    for (const declaration of parent?.parameters ?? []) {
+      const next =
+        declaration.id === 'accent' && style?.accent
+          ? { ...declaration, default: style.accent }
+          : declaration.id === 'headline' && style?.headline
+            ? { ...declaration, default: style.headline }
+            : declaration;
+      try {
+        kept.push(...checkDeclarations([next], manifest));
+      } catch {
+        // A model-adapted derivative may have left a declared bound; it is dropped, not widened.
+      }
+    }
+    return kept;
+  }
+
   async function generateCandidate(
     pack: RecipePackage,
     profile: RecipeProfile,
@@ -522,6 +555,7 @@ export function createRecipeService(deps: {
       const scene =
         sceneRepository(deps.database, repo.channelId).history(version.id).at(-1)?.scene ??
         DEFAULT_SCENE;
+      const parameters = exportParameters(input, manifest, parent, inherited?.installation.style);
       const build = (revision: number) => {
         const content = {
           version: 1 as const,
@@ -571,6 +605,8 @@ export function createRecipeService(deps: {
                 },
               ]
             : [],
+          // Optional so editions without parameters keep their pre-F29 digest.
+          ...(parameters.length ? { parameters } : {}),
         };
         return parsePackage({ ...content, digest: digest(content) });
       };
@@ -685,16 +721,35 @@ export function createRecipeService(deps: {
         throw new RecipeError('NOT_FOUND', 'Choose a local update target.');
       // Bounds and reservations are checked before any model or sandbox work is spent.
       assertReviewRoom(snapshot.reviews, { sourceDigest: pack.digest, targetVersionId: target });
-      if (input.generate && reservedCommands().has(profile.command))
+      if (input.generate && input.parameters)
+        throw new RecipeError(
+          'INVALID',
+          'Choose either declared parameters or a compiler adaptation, not both.',
+        );
+      // F29: declared parameters are applied by the host before any sandbox work; no model call.
+      const applied: AppliedParameters | null = input.parameters
+        ? applyParameters(pack, input.parameters)
+        : null;
+      const proposedCommand = applied
+        ? applied.manifest.trigger.command
+        : input.generate
+          ? profile.command
+          : null;
+      if (proposedCommand && reservedCommands().has(proposedCommand))
         throw new RecipeError(
           'CONFLICT',
           'The proposed command is reserved by host controls or a shared experience. Choose another command.',
         );
+      if (applied) assertCommandsFree(applied.manifest, target);
       return exclusive(async (signal) => {
         let candidate: Candidate, verification: Verification;
         if (input.generate)
           ({ verification, ...candidate } = await generateCandidate(pack, profile, target, signal));
-        else {
+        else if (applied) {
+          candidate = { source: pack.source, manifest: applied.manifest, tests: applied.tests };
+          verification = await verifyCandidate(candidate);
+          assertRunning(signal);
+        } else {
           candidate = { source: pack.source, manifest: pack.manifest, tests: pack.tests };
           verification = await verifyCandidate(candidate);
           assertRunning(signal);
@@ -750,6 +805,13 @@ export function createRecipeService(deps: {
             }),
           },
         );
+        if (applied && Object.keys(applied.style).length)
+          differences.push({
+            field: 'style',
+            before: JSON.stringify(applyParameters(pack, {}).style),
+            after: JSON.stringify(applied.style),
+          });
+        const widened = applied?.changes.filter((change) => change.authority === 'widened') ?? [];
         const body = {
           verification,
           id: randomUUID(),
@@ -768,6 +830,15 @@ export function createRecipeService(deps: {
             ...(input.generate && !mismatches.length
               ? ['Generated rules match the recipient profile']
               : mismatches),
+            ...(applied
+              ? [
+                  'Declared parameters applied by the host within publisher bounds (no model call)',
+                  ...widened.map(
+                    (change) =>
+                      `Authority widened — ${change.field}: ${change.before} → ${change.after}. Approve this version like any other before play.`,
+                  ),
+                ]
+              : []),
             'Normal version and canvas approval still required',
           ],
           rehearsalHash: rehearsal.evidenceHash,
@@ -775,6 +846,15 @@ export function createRecipeService(deps: {
           targetVersionId: target,
           proof,
           requiredTwitchScopes: ['user:read:chat'] as ['user:read:chat'],
+          ...(applied
+            ? {
+                parameters: {
+                  values: applied.values,
+                  changes: applied.changes,
+                  style: applied.style,
+                },
+              }
+            : {}),
         };
         const review = { ...body, digest: digest(body) };
         mutate((record) => {
@@ -851,6 +931,9 @@ export function createRecipeService(deps: {
           automationId,
           sourceDigest: pack.digest,
           profile: structuredClone(record.profile),
+          ...(review.parameters && Object.keys(review.parameters.style).length
+            ? { style: structuredClone(review.parameters.style) }
+            : {}),
         };
         review.installedVersionId = version.id;
         return { versionId: version.id, automationId };
@@ -1007,7 +1090,11 @@ export function createRecipeService(deps: {
         version = repo.version(versionId);
       const manifest = version?.manifest as Manifest | undefined;
       if (!inherited || !manifest?.trigger) return null;
-      return presentationFor(inherited.installation.profile, manifest);
+      return presentationFor(
+        inherited.installation.profile,
+        manifest,
+        inherited.installation.style,
+      );
     },
     close() {
       closed = true;

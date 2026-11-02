@@ -282,6 +282,9 @@ export function createSceneOverlay(
         const layer = layers.get(p.automationId);
         if (layer) {
           layer.dataset.highContrast = String(p.highContrast === true);
+          // Schema-checked #rrggbb only; it is a CSS custom property, never markup.
+          if (p.accent) layer.style.setProperty('--scene-accent', p.accent);
+          else layer.style.removeProperty('--scene-accent');
           layer.lang = p.language ?? 'en';
           // A viewer asked `!riff help`: emphasise the instruction panel for the help window.
           layer.dataset.reducedMotion = String(p.reducedMotion === true);

@@ -260,6 +260,16 @@ it('shows resource limits, objectives and aggregate outcomes without exposing li
   expect(app.riff.participation.presentation(v.id, null)?.instructions.join(' ')).toContain(
     'par manche',
   );
+  // F29: a remix's reviewed headline leads in the channel language and its accent is carried.
+  const styled = app.riff.participation.presentation(v.id, {
+    language: 'es',
+    reducedMotion: false,
+    instructions: [],
+    accent: '#8ecae6',
+    headline: { en: 'Splat away', fr: 'Tomatez !' },
+  });
+  expect(styled?.instructions[0]).toBe('Tomatez !');
+  expect(styled).toMatchObject({ accent: '#8ecae6' });
 });
 it('exports broadcast accessibility and preserves explicitly adopted preferences through recipient review', async () => {
   const a = await setup(),

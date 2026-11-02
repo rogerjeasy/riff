@@ -9,6 +9,7 @@ import {
   type RecipeState,
 } from './contracts.js';
 import { RuleFacts } from './rules.js';
+import { DeclareParameters, declarationsFor, emptyDeclaration } from './declare.js';
 import type { Mutate, RecipeAction } from './use-recipes.js';
 
 const LICENSES = [
@@ -43,6 +44,7 @@ export function ShareTab({
   const [license, setLicense] = useState<License>('MIT');
   const [rights, setRights] = useState(false);
   const [exported, setExported] = useState<RecipePackage | null>(null);
+  const [declaration, setDeclaration] = useState(emptyDeclaration);
   const approved = versions.filter((v) => v.approvedAt !== null && !v.incident);
   const version = approved.find((v) => v.id === versionId);
   const seriesList = Array.from(
@@ -68,6 +70,7 @@ export function ShareTab({
     !rights && 'confirm your distribution rights',
   ].filter(Boolean);
   const reset = () => setExported(null);
+  const parameters = declarationsFor(declaration, version?.manifest, state.profile.language);
 
   return (
     <ol className="panel-steps">
@@ -87,6 +90,8 @@ export function ShareTab({
                 rightsAttested: rights,
                 // The server assigns the next edition number for this series.
                 ...(latest ? { recipeId: latest.package.recipeId } : {}),
+                // Omitted when empty so a remix inherits its source's declarations.
+                ...(parameters.length ? { parameters } : {}),
               },
               (raw) => {
                 setExported(z.object({ package: recipePackageSchema }).parse(raw).package);
@@ -231,6 +236,14 @@ export function ShareTab({
                 preserving its credits.
               </span>
             </label>
+            <DeclareParameters
+              form={declaration}
+              manifest={version?.manifest}
+              onChange={(next) => {
+                setDeclaration(next);
+                reset();
+              }}
+            />
             <div className="recipe-shared-scope">
               <ul className="panel-checks" aria-label="Included">
                 <Check ok>Code, rules, generated tests and safe layout</Check>

@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { isSameOrigin } from './guard.js';
 import { describeError, profileSchema, RecipeError } from '../services/recipes/contract.js';
 import type { RecipeService } from '../services/recipes/service.js';
+import type { RecipeParameter, RecipeParameterValues } from '@riff/sdk';
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const revision = z.number().int().nonnegative().safe();
 /** Operator-local mutations and deliberately separate published-snapshot endpoints. */
@@ -72,6 +73,8 @@ export function registerRecipeRoutes(
         rightsAttested: z.literal(true),
         recipeId: z.string().uuid().optional(),
         revision: revision.min(1).optional(),
+        // F29: shape and bounds are checked by the service against the version's rules.
+        parameters: z.array(z.unknown()).max(6).optional(),
       })
       .strict(),
     (body) => ({
@@ -84,6 +87,7 @@ export function registerRecipeRoutes(
         rightsAttested: body.rightsAttested,
         ...(body.recipeId ? { recipeId: body.recipeId } : {}),
         ...(body.revision !== undefined ? { revision: body.revision } : {}),
+        ...(body.parameters ? { parameters: body.parameters as RecipeParameter[] } : {}),
       }),
     }),
   );
@@ -103,6 +107,8 @@ export function registerRecipeRoutes(
         profileRevision: revision,
         generate: z.boolean().optional(),
         targetVersionId: z.string().uuid().optional(),
+        // F29: values are validated against the edition's declarations by the service.
+        parameters: z.record(z.string(), z.unknown()).optional(),
       })
       .strict(),
     async (body) => ({
@@ -111,6 +117,7 @@ export function registerRecipeRoutes(
         profileRevision: body.profileRevision,
         ...(body.generate !== undefined ? { generate: body.generate } : {}),
         ...(body.targetVersionId ? { targetVersionId: body.targetVersionId } : {}),
+        ...(body.parameters ? { parameters: body.parameters as RecipeParameterValues } : {}),
       }),
     }),
   );

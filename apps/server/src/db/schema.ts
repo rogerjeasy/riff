@@ -9,6 +9,7 @@ import type {
   DirectorState,
   RecipeState,
   RecipeProfile,
+  RecipeStyle,
   ExperienceDefinition,
   SessionTransitionPlan,
   SessionSnapshot,
@@ -633,6 +634,8 @@ export const recipeState = sqliteTable('recipe_state', {
             automationId: string;
             sourceDigest: string;
             profile: RecipeProfile;
+            /** F29: host-rendered accent and headline chosen through declared parameters. */
+            style?: RecipeStyle;
           }
         >;
         rateKeys: Record<string, number[]>;

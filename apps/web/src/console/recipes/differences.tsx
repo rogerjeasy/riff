@@ -7,6 +7,7 @@ const FIELD_LABEL: Record<string, string> = {
   source: 'Code',
   scene: 'Screen layout',
   presentation: 'Language, motion and name',
+  style: 'Accent color and headline',
 };
 const parse = (text: string): unknown => {
   try {

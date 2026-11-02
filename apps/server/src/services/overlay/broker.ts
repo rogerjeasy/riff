@@ -42,6 +42,8 @@ export interface SceneProjection {
   help?: true;
   /** Reviewed viewer language for scoreboard text (F40); absent means English. */
   language?: 'en' | 'fr' | 'es' | 'de';
+  /** F29: reviewed, contrast-checked #rrggbb accent for the instruction panel edge. */
+  accent?: string;
   automationId: string;
   versionId: string;
   revision: number;

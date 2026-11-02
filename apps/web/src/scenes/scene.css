@@ -142,6 +142,10 @@
   }
 }
 
+/* F29: a remix's reviewed accent marks its instruction panel edge (contrast-checked ≥ 3:1). */
+[data-scene-kind='instructions'] .scene-panel {
+  border-left: 4px solid var(--scene-accent, rgb(255 255 255 / 0.08));
+}
 [data-high-contrast='true'] .scene-panel {
   color: #fff;
   background: #000;

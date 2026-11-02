@@ -11,6 +11,7 @@ import {
 } from '@riff/sdk';
 import { definitionCommands, manifestSchema, scenariosSchema } from '@riff/sandbox';
 import { findPrivateText } from './secrets.js';
+import { checkDeclarations } from './parameters.js';
 
 /** Retention and size bounds for one channel's recipe library. */
 export const RECIPE_LIMITS = Object.freeze({
@@ -211,6 +212,8 @@ const packageSchema = z
           .strict(),
       )
       .max(8),
+    // F29: declarations are checked against this edition's manifest in `parsePackage`.
+    parameters: z.array(z.unknown()).min(1).max(6).optional(),
   })
   .strict();
 
@@ -254,6 +257,7 @@ export function parsePackage(raw: unknown): RecipePackage {
   if (result.data.lineage.some((credit) => credit.license !== result.data.license))
     throw new RecipeError('INVALID', 'Keep the original source license and all credits.');
   assertPublic(result.data);
+  if (result.data.parameters) checkDeclarations(result.data.parameters, result.data.manifest);
   return result.data as unknown as RecipePackage;
 }
 

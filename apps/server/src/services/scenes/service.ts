@@ -84,6 +84,7 @@ export function createSceneService(deps: {
     highContrast?: boolean;
     effectLabels?: boolean;
     help?: true;
+    accent?: string;
   } | null;
 }) {
   const { repo, runtime, overlay, hub } = deps;
@@ -267,6 +268,7 @@ export function createSceneService(deps: {
                       ? { effectLabels: presentation.effectLabels }
                       : {}),
                     ...(presentation.help ? { help: true as const } : {}),
+                    ...(presentation.accent ? { accent: presentation.accent } : {}),
                     ...(presentation.language ? { language: presentation.language } : {}),
                   }
                 : {}),

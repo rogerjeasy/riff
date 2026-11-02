@@ -51,7 +51,12 @@ export const HELP_MS = 15000;
 /** Public guidance is recomputed at most this often while studio state is unchanged. */
 export const VIEW_CACHE_MS = 1000;
 /** A recipe's reviewed presentation plus the recipient channel name it is prefixed with. */
-export type InstalledPresentation = RecipePresentation & { displayName?: string | undefined };
+export type InstalledPresentation = RecipePresentation & {
+  displayName?: string | undefined;
+  /** F29: reviewed accent color and localized headline from declared recipe parameters. */
+  accent?: string | undefined;
+  headline?: Partial<Record<string, string>> | undefined;
+};
 export function createParticipationService(deps: {
   database: DatabaseConnection;
   repo: ChannelRepository;
@@ -340,6 +345,10 @@ export function createParticipationService(deps: {
       const prefix = recipe?.displayName;
       const instructions = [...facts.instructions];
       if (prefix) instructions[0] = `${prefix} · ${instructions[0]}`.slice(0, 200);
+      // The reviewed headline leads, in the viewer language when the remixer wrote one.
+      const headline =
+        recipe?.headline?.[language] ?? Object.values(recipe?.headline ?? {}).find(Boolean);
+      if (headline) instructions.unshift(headline.slice(0, 200));
       if (phase) {
         // A finished elimination round shows its own outcome; best-of-N adds "Round 2 of 3".
         const status = phaseCopy(
@@ -366,6 +375,7 @@ export function createParticipationService(deps: {
         reducedMotion: s.reducedMotion || recipe?.reducedMotion === true,
         highContrast: s.highContrast || recipe?.highContrast === true,
         effectLabels: s.effectLabels || recipe?.effectLabels === true,
+        ...(recipe?.accent ? { accent: recipe.accent } : {}),
         // A late arrival's accepted help pulses the guidance even when no text changes.
         ...(helpUntil > now() ? { help: true as const } : {}),
       };
