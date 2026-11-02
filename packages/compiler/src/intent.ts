@@ -347,15 +347,31 @@ export function checkIntent(
       names.every((name) =>
         teams.some((team) => team.id === name || team.label.toLowerCase() === name),
       );
+    // "Each question/stage lasts 40 seconds" states one slot of a staged format; the round
+    // is that slot length times the number of slots (stages or questions).
+    const format = experience
+      ? (experience as { format?: { kind: string; stages?: unknown[]; questions?: unknown[] } })
+          .format
+      : undefined;
+    const slots = format?.stages?.length ?? format?.questions?.length ?? 0;
+    const perSlot =
+      slots > 1 && /\b(?:each|every|per)\s+(?:question|stage|step|round)\b/i.test(intent);
+    const statedTotal =
+      sessionHints.durationMs !== null && perSlot
+        ? sessionHints.durationMs * slots
+        : sessionHints.durationMs;
     rows.push(
       [
         'duration',
         'Round duration',
-        sessionHints.durationMs === null ? null : describeWindow(sessionHints.durationMs),
+        sessionHints.durationMs === null
+          ? null
+          : perSlot
+            ? `${describeWindow(sessionHints.durationMs)} per ${format?.kind === 'quiz' ? 'question' : 'stage'} (${describeWindow(statedTotal ?? 0)} total)`
+            : describeWindow(sessionHints.durationMs),
         experience ? describeWindow(experience.durationMs) : 'no session',
         oldExperience ? describeWindow(oldExperience.durationMs) : null,
-        !!experience &&
-          (sessionHints.durationMs === null || sessionHints.durationMs === experience.durationMs),
+        !!experience && (statedTotal === null || statedTotal === experience.durationMs),
       ],
       [
         'teams',

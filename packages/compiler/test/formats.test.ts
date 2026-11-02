@@ -94,6 +94,33 @@ describe('offline version 3 format templates', () => {
   });
 });
 
+describe('per-slot durations in staged formats', () => {
+  it('reads "each question lasts 40 seconds" as one slot, not the whole round (production regression)', () => {
+    // Recorded from a real Codex compile on production (2026-11-02): 3 questions x 40 s = 2 min
+    // was correct, but the intent check compared 40 s with the 2 min round and rejected it.
+    const intent =
+      'Run a 3-question quiz about the solar system: viewers answer with !a, !b or !c, each question lasts 40 seconds.';
+    const out = compileOffline({ intent: QUIZ, base: null });
+    const manifest = structuredClone(out.manifest) as ManifestView;
+    const experience = manifest.experience as unknown as {
+      durationMs: number;
+      format: { questions: unknown[] };
+    };
+    const slots = experience.format.questions.length;
+    experience.durationMs = 40_000 * slots;
+    const duration = () =>
+      checkIntent(intent.replace('3-question', `${slots}-question`), {
+        source: out.source ?? '',
+        manifest,
+      }).find((c) => c.aspect === 'duration');
+    expect(duration()?.status).toBe('match');
+    expect(duration()?.stated).toContain('per question');
+    // A round that ignores the stated per-question length is still a mismatch.
+    experience.durationMs = 40_000;
+    expect(duration()?.status).toBe('mismatch');
+  });
+});
+
 describe('strict model contract for formats', () => {
   it('requires a nullable format and normalizes null away for older versions', () => {
     const experience = (
