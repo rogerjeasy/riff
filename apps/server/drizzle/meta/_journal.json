@@ -141,6 +141,13 @@
       "when": 1793614754242,
       "tag": "0019_approval_binding_activity_detail",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793641312920,
+      "tag": "0020_viewer_preferences",
+      "breakpoints": true
     }
   ]
 }

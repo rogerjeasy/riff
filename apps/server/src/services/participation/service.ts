@@ -14,6 +14,13 @@ import { participationState } from '../../db/schema.js';
 import type { ChannelRepository } from '../../db/repositories/studio.js';
 import type { LiveChatMessage } from '../live/runtime.js';
 import { copy, fairnessCopy, mechanicsCopy, phaseCopy, ruleCopy } from './copy.js';
+import {
+  createViewerLanguageStore,
+  parseLanguageCommand,
+  viewerKey,
+  VIEWER_COPY,
+  VIEWER_LANGUAGE,
+} from './preferences.js';
 export const languageSchema = z.enum(['en', 'fr', 'es', 'de']);
 export const settingsSchema = z
   .object({
@@ -28,6 +35,8 @@ const recordSchema = z.object({
   viewers: z.record(z.string(), z.number()),
   events: z.record(z.string(), z.number()),
   responses: z.array(z.number()),
+  /** F20: creator toggle for `!riff language`; absent means allowed. */
+  viewerLanguages: z.boolean().optional(),
 });
 const defaults: ParticipationSettings = {
   revision: 0,
@@ -51,6 +60,11 @@ export function createParticipationService(deps: {
   now?: () => number;
   /** The approved, enabled director participation policy (F37/F40), or null when inactive. */
   fairness?: () => 'fifo' | 'first-time' | 'rotation' | null;
+  /**
+   * F20: the host-owned, budgeted chat reply sender (owned by chat authoring). Returns
+   * false when unavailable or out of budget; viewer-directed text then stays on overlay.
+   */
+  reply?: (text: string, replyParentMessageId?: string) => boolean;
 }) {
   const { database, repo } = deps,
     now = deps.now ?? Date.now,
@@ -60,6 +74,24 @@ export function createParticipationService(deps: {
     helpUntil = 0,
     timer: ReturnType<typeof setTimeout> | undefined;
   const cache = new Map<string, { at: number; stamp: string; view: ParticipationView }>();
+  const preferences = createViewerLanguageStore({ database, channelId: repo.channelId, now });
+  /** In-memory F20 windows: per hashed viewer, accepted per channel, replies per channel. */
+  const languageViewers = new Map<string, number>(),
+    languageAccepted: number[] = [],
+    viewerReplies: number[] = [];
+  const within = (times: number[], ms: number, at: number) => {
+    while (times.length && at - (times[0] ?? 0) >= ms) times.shift();
+    return times.length;
+  };
+  /** One viewer-directed reply in the host's budget; false when it was not sent. */
+  function replyTo(message: LiveChatMessage, text: string) {
+    if (!deps.reply) return false;
+    const at = now();
+    if (within(viewerReplies, 60_000, at) >= VIEWER_LANGUAGE.repliesPerMinute) return false;
+    if (!deps.reply(text, message.id)) return false;
+    viewerReplies.push(at);
+    return true;
+  }
   const read = () => {
     const value = database.db
       .select()
@@ -106,8 +138,87 @@ export function createParticipationService(deps: {
         ? (recipe?.language ?? 'en')
         : s.language;
   }
+  const viewerChoiceAllowed = () => read().viewerLanguages !== false;
+  /** Viewer-directed language: explicit choice → channel language → English. */
+  function viewerLanguage(viewerId: string): ParticipationLanguage {
+    const stored = viewerChoiceAllowed() ? preferences.get(viewerId) : null;
+    if (stored) return stored;
+    const channel = settings().language;
+    return channel === 'inherit' ? 'en' : channel;
+  }
+  /** Short viewer-directed guidance for the first live interaction, in `language`. */
+  function guidance(language: ParticipationLanguage) {
+    const first = api.view(language).interactions[0];
+    if (!first) return VIEWER_COPY[language].nothing;
+    return `${first.title}: ${first.instructions.slice(0, 2).join(' · ')}`.slice(0, 400);
+  }
   const api = {
     settings,
+    viewerLanguage,
+    /** Aggregate choices only (small groups suppressed); never per-viewer rows. */
+    viewerLanguages() {
+      return { enabled: viewerChoiceAllowed(), ...preferences.counts() };
+    },
+    /** Creator toggle. Disallowing deletes every stored viewer choice for the channel. */
+    setViewerLanguages(enabled: boolean) {
+      database.client.transaction(() => {
+        const record = read();
+        record.viewerLanguages = enabled;
+        write(record);
+        if (!enabled) preferences.clear();
+      })();
+      deps.changed();
+      return api.viewerLanguages();
+    },
+    /** `!riff language <en|fr|es|de|off>` / `!riff lang …` from any viewer. */
+    language(message: LiveChatMessage) {
+      const parsed = parseLanguageCommand(message.text);
+      if (!parsed) return { consumed: false, accepted: false };
+      if (
+        closed ||
+        deps.blocked() ||
+        message.channelId !== repo.channelId ||
+        (message.sourceChannelId && message.sourceChannelId !== message.channelId) ||
+        !message.id ||
+        message.id.length > 160 ||
+        !message.viewerId ||
+        message.viewerId.length > 160
+      )
+        return { consumed: true, accepted: false };
+      const at = now(),
+        key = viewerKey(repo.channelId, message.viewerId);
+      const last = languageViewers.get(key);
+      if (last !== undefined && at - last < VIEWER_LANGUAGE.perViewerMs)
+        return { consumed: true, accepted: false };
+      if (languageViewers.size >= 1000)
+        for (const [k, t] of languageViewers)
+          if (at - t >= VIEWER_LANGUAGE.perViewerMs) languageViewers.delete(k);
+      if (languageViewers.size >= 1000) return { consumed: true, accepted: false };
+      languageViewers.set(key, at);
+      const current = viewerLanguage(message.viewerId);
+      if (!viewerChoiceAllowed()) {
+        replyTo(message, VIEWER_COPY[current].disabled);
+        return { consumed: true, accepted: false };
+      }
+      if (parsed.choice === undefined) {
+        replyTo(message, VIEWER_COPY[current].supported);
+        return { consumed: true, accepted: false };
+      }
+      if (within(languageAccepted, 60_000, at) >= VIEWER_LANGUAGE.perChannelPerMinute)
+        return { consumed: true, accepted: false };
+      languageAccepted.push(at);
+      const choice = parsed.choice === 'off' ? null : parsed.choice;
+      preferences.set(message.viewerId, choice);
+      deps.changed();
+      const confirm = choice
+        ? VIEWER_COPY[choice].saved
+        : VIEWER_COPY[viewerLanguage(message.viewerId)].cleared;
+      // Without a chat reply, a new choice is confirmed by on-stream help in that
+      // language (same help limits and broadcast-language rule as `!riff help <lang>`).
+      if (!replyTo(message, confirm) && choice)
+        api.help({ ...message, text: `!riff help ${choice}` });
+      return { consumed: true, accepted: true };
+    },
     save(expectedRevision: number, input: unknown) {
       const next = settingsSchema.parse(input);
       const result = database.client.transaction(() => {
@@ -300,14 +411,21 @@ export function createParticipationService(deps: {
         write(r);
         return true;
       })();
+      // F20: a viewer's stored choice stands in for an explicit help language.
+      const chosen =
+        (match[1]?.toLowerCase() as ParticipationLanguage | undefined) ??
+        (viewerChoiceAllowed() ? (preferences.get(message.viewerId) ?? undefined) : undefined);
       if (accepted) {
+        // Viewer-directed guidance goes to that viewer in their language when the host
+        // reply sender is available; the shared panel keeps the rules below.
+        replyTo(message, guidance(chosen ?? viewerLanguage(message.viewerId)));
         // Unqualified help uses each recipe/channel preference, never a previous
         // request's language. Only an explicit language creates a timed override, and
         // never over an operator's explicit broadcast language: the shared panel stays
         // in the channel language while the help highlight still shows.
         temporary =
-          match[1] && settings().language === 'inherit'
-            ? { language: match[1].toLowerCase() as ParticipationLanguage, until: at + HELP_MS }
+          chosen && settings().language === 'inherit'
+            ? { language: chosen, until: at + HELP_MS }
             : null;
         helpUntil = at + HELP_MS;
         clearTimeout(timer);

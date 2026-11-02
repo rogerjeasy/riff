@@ -46,7 +46,16 @@ export function registerParticipationRoutes(app: FastifyInstance, service: Parti
   }
   app.get('/api/participation', async (_req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    return { settings: service.settings() };
+    return { settings: service.settings(), viewerLanguages: service.viewerLanguages() };
+  });
+  // F20: allow or disallow `!riff language`; disallowing deletes stored viewer choices.
+  app.post('/api/participation/viewer-languages', async (req, reply) => {
+    const parsed = z.object({ enabled: z.boolean() }).strict().safeParse(req.body);
+    if (!parsed.success)
+      return reply
+        .code(400)
+        .send({ message: 'Send {"enabled": true} or {"enabled": false} to change viewer choice.' });
+    return { viewerLanguages: service.setViewerLanguages(parsed.data.enabled) };
   });
   app.get('/participation', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');

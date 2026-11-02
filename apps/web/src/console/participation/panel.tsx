@@ -10,6 +10,7 @@ import {
   type Guidance,
   type ParticipationSettings,
 } from '../../participation/contracts.js';
+import { ViewerLanguages } from './viewer-languages.js';
 
 const LANGUAGE_OPTIONS = [
   {
@@ -188,11 +189,13 @@ export function ParticipationPanel() {
               </fieldset>
             </form>
           )}
+          <ViewerLanguages />
           <div className="panel-callout">
             <b>Late arrivals</b> can type <code>!riff help</code> (or <code>!riff help fr</code>,{' '}
             <code>es</code>, <code>de</code>) to bring today’s instructions back on stream. Limited
-            to once per viewer every 30 s and six times a minute per channel; help never posts in
-            chat. Visual priority for first-timers lives in the Adaptive director.
+            to once per viewer every 30 s and six times a minute per channel. Help posts in chat
+            only when chat authoring is on (as a budgeted reply in the viewer’s language). Visual
+            priority for first-timers lives in the Adaptive director.
           </div>
         </div>
         <aside className="participation-preview" aria-label="Viewer guide preview">

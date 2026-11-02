@@ -54,8 +54,8 @@ each recipe’s reviewed language (or the broadcast override); only an explicit 
 temporarily changes it, and only while the broadcast language is `inherit` — an operator’s
 explicit language is never overridden by a viewer (help still highlights in that language).
 Plain help clears a previous temporary language choice rather than extending it. Recipe
-guidance is prefixed with the installed profile’s `displayName`, carried structurally. No outbound chat message or new Twitch scope is
-used. Shared-chat echoes cannot trigger it. Limits are one accepted help per viewer in
+guidance is prefixed with the installed profile’s `displayName`, carried structurally. No new Twitch scope is used; the only outbound chat is the
+F20 viewer reply below, while chat authoring is on. Shared-chat echoes cannot trigger it. Limits are one accepted help per viewer in
 30 seconds, six per channel in 60 seconds, with ten-minute event deduplication. Hashed
 identities and bounded receipts survive restart. Panic clears temporary presentation and
 blocks admission; failed help leaves gameplay running. The privileged panic command keeps
@@ -71,3 +71,20 @@ Automated evidence covers actual rule projections, HTTP/auth separation, quotas/
 channel isolation, persisted settings, sharing/adaptation, device choices and rendering.
 The browser test covers narrow-screen layout and axe accessibility when socket binding
 is available. These tests do not certify assistive-technology or real-stream usability.
+
+## Viewer language preferences — F20
+
+`preferences.ts` owns `!riff language <en|fr|es|de|off>` (alias `!riff lang`) and the
+`viewer_preferences` table: one row per channel and SHA-256(`channelId:userId`) of the
+EventSub chatter id, never a display name. `off` deletes the row; rows idle 90 days are
+purged on write and on reads of the counts; at most 5,000 rows per channel (oldest update
+evicted); disabling viewer choice from the console deletes every row. Commands are limited
+to one per viewer per 10 s and 30 accepted per channel per minute.
+
+Viewer-directed text (language confirmations, help guidance) uses the viewer's choice, then
+an explicit broadcast language, then English. It is sent as a reviewed `Riff · ` reply,
+threaded to the viewer's message, only through chat authoring's host reply sender (on, scoped,
+within its 10/min budget, and at most 4 viewer replies a minute). Without that sender a new
+choice is confirmed by the on-stream help highlight in that language. Shared on-stream text
+stays in the channel language. The console sees only aggregate counts, with groups of 1–2
+suppressed.

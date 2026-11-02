@@ -203,7 +203,10 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     onPredictionProposal: (proposal) => predictionsRef.current?.propose(proposal),
     onTwitchActions: (actions, context) =>
       twitchFeaturesRef.current?.dispatch(actions, context) ?? Promise.resolve(),
-    onHelpChat: (message) => participationRef.current?.help(message).consumed ?? false,
+    onHelpChat: (message) =>
+      (participationRef.current?.language(message).consumed ||
+        participationRef.current?.help(message).consumed) ??
+      false,
     onSharedChat: (message) => shared.current?.member.input(message) ?? Promise.resolve(false),
     onStop: () => {
       try {
@@ -252,6 +255,7 @@ export async function createApp(dependencies: AppDependencies): Promise<RiffApp>
     blocked: () => runtime.panicked,
     changed: () => hub.publish('studio', null),
     fairness: () => directorService.participation(),
+    reply: (text, replyTo) => chatAuthoringRef.current?.systemReply(text, replyTo) ?? false,
     ...(dependencies.now ? { now: dependencies.now } : {}),
   });
   participationRef.current = participation;

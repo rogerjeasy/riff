@@ -425,11 +425,13 @@ Tables: `channels`, `channel_state`, `collaboration_connections`, `director_stat
 `proposal_generation_runs`, `rehearsal_scenarios`, `rehearsal_runs`,
 `rehearsal_regressions`, `scene_heads`, `scene_revisions`, `collaboration_sessions`,
 `collaboration_receipts`, `timers`, `channel_point_rewards`,
-`channel_point_redemptions`, `prediction_requests`.
+`channel_point_redemptions`, `prediction_requests`, `viewer_preferences`.
 Twitch event triggers (F19) add routes `GET /api/twitch/triggers` and the optional
 `/auth/twitch?triggers=<family,...>` consent query; no table.
 Migration 0019 adds columns only: `versions.report_hash`, `versions.approved_by` and
 `activity.detail` (F06/F16 below).
+Migration 0020 adds channel-scoped `viewer_preferences` (F20 below) and the guarded route
+`POST /api/participation/viewer-languages`.
 
 ---
 
@@ -900,7 +902,7 @@ phase, objectives and aggregates. Per-device explicit choices are separate from 
 broadcast settings. `!riff help [language]` highlights protected on-stream guidance for 15 s (`help` flag on
 the scene projection; an explicit channel language is never overridden by viewers),
 limited to one/viewer/30 seconds and six/channel/60 seconds, with durable deduplication;
-it sends no Twitch chat and changes no gameplay permissions. Version 2 mechanics have
+it sends Twitch chat only as the F20 viewer-language reply (chat authoring on) and changes no gameplay permissions. Version 2 mechanics have
 reviewed en/fr/es/de copy on both sides: server `participation/copy.ts` (`MECHANICS_COPY`:
 help/rule lines such as "Unlocks !boost at 20 points", "Round 2 of 3" on the phase line,
 elimination outcome) and web `sessions/mechanics-copy.ts` (HUD, meter aria text, scoreboard
@@ -910,6 +912,33 @@ tests require every key in every language with identical placeholders. Motion/co
 survive edits and recipe sharing/adaptation. Optional recipe metadata preserves old digests.
 The dock reuses exact artifact evidence and the existing approval API. Protocol/unit/DOM
 checks do not claim live OBS/Streamer.bot rendering or accessibility certification.
+
+## Viewer language preferences — F20
+
+Any viewer may type `!riff language <en|fr|es|de|off>` (alias `!riff lang`), handled by
+`participation.language` through the runtime help hook (after panic and owner authoring,
+before proposals; echoes and shared-chat lines never reach it). The choice is keyed only by
+the EventSub chatter user id, stored as SHA-256(`channelId:userId`) in `viewer_preferences`
+(`services/participation/preferences.ts`); display names and badges never select or elevate
+it. Retention: `off` deletes the row, choices idle 90 days are purged, at most 5,000 rows per
+channel (least recently updated evicted), and turning viewer choice off in the console deletes
+every row. Limits: one command per viewer per 10 s, 30 accepted changes per channel per
+minute, 4 viewer replies per minute inside chat authoring's 10/min host reply budget.
+Unknown or missing languages are answered with the supported list; the argument is never
+stored or echoed.
+
+Viewer-directed text uses viewer choice → explicit channel language → English: the
+`!riff language` confirmation and `!riff help` guidance (first live interaction's title and
+rules), sent as a reviewed, threaded `Riff · ` reply via `chatAuthoring.systemReply` only
+while chat authoring is on and its scope/budget allow. Otherwise a new choice is confirmed by
+the existing on-stream help highlight in that language. A stored choice stands in for an
+explicit `!riff help <lang>`, so the shared panel switches only under `inherit`, exactly as
+before. Shared on-stream text (rules panel, rejection toasts, automation and gift text) stays
+in the channel language because everyone sees the same video; generated code never sees
+viewer preferences, and anonymous gifts stay anonymous. `GET /api/participation` adds
+`viewerLanguages {enabled, total, languages[{language, count}]}` with counts of 1–2
+reported as `null`; `POST /api/participation/viewer-languages {enabled}` is the creator
+toggle. No per-viewer data reaches any route, snapshot or public view.
 
 ## Voice entry and aggregate insights — F09/F30
 

@@ -1057,7 +1057,7 @@ Service operations include propose/moderate/shortlist/vote/select, revise scene,
 
 Keep only the event fields needed for execution, explicit preferences, incident investigation, and reproducible tests. Proposed defaults: raw redacted debug payloads off; optional diagnostic retention 24 hours; execution metadata seven days; compile reports and versions retained until deletion; encrypted credentials until disconnect. Allow deletion of automations and channel data, with documented cleanup of backups.
 
-Redact tokens, cookies, OAuth codes, overlay keys, and private prompts from logs. Share sanitized fixture data, not identifiable chat transcripts. Never use subscriber spending to infer sensitive characteristics or rank personal worth. Do not infer language from names, nationality, or ethnicity.
+Redact tokens, cookies, OAuth codes, overlay keys, and private prompts from logs. Share sanitized fixture data, not identifiable chat transcripts. Never use subscriber spending to infer sensitive characteristics or rank personal worth. Do not infer language from names, nationality, or ethnicity. Implemented F20 viewer language choices are stored only as a channel-salted hash of the Twitch user id with the language and update time; `!riff language off` deletes the choice, idle choices are purged after 90 days, each channel keeps at most 5,000, and disabling viewer choice deletes them all.
 
 The streamer should understand what intent and code context is sent to the compiler provider. No live chat stream is sent to the model by default. Voice, if added, requires a separate description of audio handling and transcript review.
 

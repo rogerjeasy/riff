@@ -664,6 +664,28 @@ export const participationState = sqliteTable('participation_state', {
 });
 
 /**
+ * F20: a viewer's explicit language choice (`!riff language <lang>`). Keyed by a
+ * channel-salted SHA-256 of the EventSub chatter user id, never a display name. `off`
+ * deletes the row; rows idle for 90 days are purged; at most 5,000 rows per channel
+ * (the least recently updated is evicted). Disabling viewer choice deletes them all.
+ */
+export const viewerPreferences = sqliteTable(
+  'viewer_preferences',
+  {
+    channelId: text('channel_id')
+      .notNull()
+      .references(() => channels.id),
+    viewerKey: text('viewer_key').notNull(),
+    language: text('language').$type<'en' | 'fr' | 'es' | 'de'>().notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('viewer_preferences_viewer').on(table.channelId, table.viewerKey),
+    index('viewer_preferences_updated').on(table.channelId, table.updatedAt),
+  ],
+);
+
+/**
  * Host-owned named timers (F18). One pending row per automation and name; restart
  * replaces it. Rows survive restart and are resumed or expired under the shared grace
  * policy. Pause, panic, version change, rollback and incidents delete them.

@@ -249,10 +249,10 @@ export function createChatAuthoringService(deps: {
   const chat = () => (typeof deps.chat === 'function' ? deps.chat() : (deps.chat ?? null));
   function say(text: string, replyTo?: string) {
     const sink = chat();
-    if (!sink || !sink.status().available) return;
+    if (!sink || !sink.status().available) return false;
     const at = now();
     while (replies.length && at - (replies[0] ?? 0) >= 60_000) replies.shift();
-    if (replies.length >= L.repliesPerMinute) return;
+    if (replies.length >= L.repliesPerMinute) return false;
     replies.push(at);
     void sink.send(systemReply(text), replyTo).then(
       () => {
@@ -262,6 +262,7 @@ export function createChatAuthoringService(deps: {
         lastReplyError = 'The last chat reply could not be sent.';
       },
     );
+    return true;
   }
 
   function chatBlockers(version: VersionRow) {
@@ -667,6 +668,12 @@ export function createChatAuthoringService(deps: {
 
   return {
     enabled: () => state.enabled,
+    /**
+     * F20: one host-owned viewer-directed reply (fixed reviewed text only), sharing the
+     * chat reply budget. Only while chat authoring is on (it owns the chat-write scope).
+     */
+    systemReply: (text: string, replyTo?: string) =>
+      state.enabled && !deps.blocked() ? say(text, replyTo) : false,
     /** True when the message is an authoring command and was consumed. */
     handle(message: LiveChatMessage): boolean {
       const command = parseAuthorCommand(message.text);
