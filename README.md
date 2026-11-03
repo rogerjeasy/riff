@@ -26,6 +26,7 @@
 <p align="center">
   <strong><a href="https://youtu.be/EDgzq_fIspc">Demo video</a></strong> ·
   <strong><a href="#try-it">Try it</a></strong> ·
+  <a href="#gallery">Gallery</a> ·
   <a href="https://github.com/rogerjeasy/riff/releases/tag/v1.0.0">Release v1.0.0</a> ·
   <a href="docs/studio-guide.md">Studio guide</a> ·
   <a href="packages/sdk/SDK.md">SDK guide</a> ·
@@ -61,6 +62,74 @@ tomatoes on stream.
 | **Preview**  | Runs the same engine with private clocks, state and simulated outputs                                            | A proof sequence: three throws land, the fourth is blocked, duplicates are ignored |
 | **Approve**  | Binds approval to the artifact hash, the test-report hash and the live version on screen                         | An authority diff for anything that widens permissions                             |
 | **Play**     | Lets real Twitch chat, over EventSub, drive the OBS overlay                                                      | Pause, rollback and **Stop everything**, always one click away                     |
+
+## Gallery
+
+Screens from the production instance. The two overlay shots marked _sample data_ were rendered
+from sample overlay messages, not a live round. Click any image for the full 1800×1200 version.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/01-riff-cover.jpg"><img src="docs/assets/gallery/01-riff-cover.jpg" width="100%" alt="Real Twitch chat types !love and !tomato; the Riff overlay throws them onto the stream. Recorded live on production."></a>
+      <br><sub>Real Twitch chat types <code>!love</code> and <code>!tomato</code>; the Riff overlay throws them onto the stream. Recorded live on production.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/02-approach.jpg"><img src="docs/assets/gallery/02-approach.jpg" width="100%" alt="Describe, compile with OpenAI Codex, verify in a sandbox, rehearse privately, approve the exact version."></a>
+      <br><sub>Describe, compile with OpenAI Codex, verify in a sandbox, rehearse privately, approve the exact version.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/03-describe-codex.jpg"><img src="docs/assets/gallery/03-describe-codex.jpg" width="100%" alt="Codex compiles the sentence at runtime in a read-only, network-free workspace, with progress streamed live."></a>
+      <br><sub>Codex compiles the sentence at runtime in a read-only, network-free workspace, with progress streamed live.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/04-test-verdict.jpg"><img src="docs/assets/gallery/04-test-verdict.jpg" width="100%" alt="Plain-language evidence before anything goes live: when, what, who and how much, verified 10/10."></a>
+      <br><sub>Plain-language evidence before anything goes live: when, what, who and how much, verified 10/10.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/05-verification-pipeline.jpg"><img src="docs/assets/gallery/05-verification-pipeline.jpg" width="100%" alt="The host re-checks every stage, including policy checks Codex cannot edit."></a>
+      <br><sub>The host re-checks every stage, including policy checks Codex cannot edit.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/06-private-rehearsal.jpg"><img src="docs/assets/gallery/06-private-rehearsal.jpg" width="100%" alt="Private rehearsal with test viewers: two hearts fly, the third is blocked, a duplicate is ignored."></a>
+      <br><sub>Private rehearsal with test viewers: two hearts fly, the third is blocked, a duplicate is ignored.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/07-twitch-chat-overlay.jpg"><img src="docs/assets/gallery/07-twitch-chat-overlay.jpg" width="100%" alt="Real Twitch chat → EventSub → host admission → sandboxed handler → OBS overlay."></a>
+      <br><sub>Real Twitch chat → EventSub → host admission → sandboxed handler → OBS overlay.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/08-live-controls.jpg"><img src="docs/assets/gallery/08-live-controls.jpg" width="100%" alt="Every decision logged with its cause, and Stop everything one click away."></a>
+      <br><sub>Every decision logged with its cause, and <strong>Stop everything</strong> one click away.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/09-overlay-battle-vote.jpg"><img src="docs/assets/gallery/09-overlay-battle-vote.jpg" width="100%" alt="Broadcast overlay: team scoreboard with countdown, and the audience vote for the next mechanic (sample data)."></a>
+      <br><sub>Broadcast overlay: team scoreboard with countdown, and the audience vote for the next mechanic (sample data).</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/10-overlay-quiz.jpg"><img src="docs/assets/gallery/10-overlay-quiz.jpg" width="100%" alt="Quizzes, murals and shared rounds run on the same host-owned rules (sample data)."></a>
+      <br><sub>Quizzes, murals and shared rounds run on the same host-owned rules (sample data).</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/11-responsive.jpg"><img src="docs/assets/gallery/11-responsive.jpg" width="100%" alt="Creator console, public viewer guide and OBS control dock on phones and narrow docks."></a>
+      <br><sub>Creator console, public viewer guide and OBS control dock on phones and narrow docks.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <a href="docs/assets/gallery/12-built-with-codex.jpg"><img src="docs/assets/gallery/12-built-with-codex.jpg" width="100%" alt="Built in Codex threads: features F31–F40 across 1,278 Codex tool calls in the main build thread."></a>
+      <br><sub>Built in Codex threads: features F31–F40 across 1,278 Codex tool calls in the main build thread.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Try it
 
